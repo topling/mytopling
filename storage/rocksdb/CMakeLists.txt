@@ -143,36 +143,47 @@ IF(FB_WITH_WSENV)
   )
 ENDIF()
 
+IF(EXISTS ${ROCKSDB_ROOT}/sideplugin/topling-core/src/terark/gold_hash_map.hpp)
+  SET(TOPLING_CORE_NAME topling-core)
+ELSEIF(EXISTS ${ROCKSDB_ROOT}/sideplugin/topling-zip/src/terark/gold_hash_map.hpp)
+  SET(TOPLING_CORE_NAME topling-zip)
+ELSE()
+  MESSAGE(SEND_ERROR
+    "Missing ${ROCKSDB_ROOT}/sideplugin/topling-core/src/terark/gold_hash_map.hpp")
+ENDIF()
+
 INCLUDE_DIRECTORIES(
   ${ROCKSDB_ROOT}
   ${ROCKSDB_ROOT}/include
+  ${ROCKSDB_ROOT}/sideplugin/rockside/src
+  ${ROCKSDB_ROOT}/sideplugin/${TOPLING_CORE_NAME}/src
   ${ROCKSDB_ROOT}/third-party/gtest-1.8.1/fused-src
 )
 
 SET(ROCKSDB_SOURCES
   ${ROCKSDB_SOURCES}
-  ha_rocksdb.cc ha_rocksdb.h ha_rocksdb_proto.h
-  logger.h
-  rdb_datadic.cc rdb_datadic.h
-  rdb_iterator.cc rdb_iterator.h
-  rdb_cf_options.cc rdb_cf_options.h
-  rdb_cf_manager.cc rdb_cf_manager.h
-  rdb_converter.cc rdb_converter.h
-  properties_collector.cc properties_collector.h
-  event_listener.cc event_listener.h
-  rdb_i_s.cc rdb_i_s.h
-  rdb_index_merge.cc rdb_index_merge.h
-  rdb_io_watchdog.cc rdb_io_watchdog.h
-  rdb_perf_context.cc rdb_perf_context.h
-  rdb_mutex_wrapper.cc rdb_mutex_wrapper.h
+  ha_rocksdb.cc
+  rdb_datadic.cc
+  rdb_iterator.cc
+  rdb_cf_options.cc
+  rdb_cf_manager.cc
+  rdb_compact_filter.cc
+  rdb_converter.cc
+  properties_collector.cc
+  event_listener.cc
+  rdb_i_s.cc
+  rdb_index_merge.cc
+  rdb_io_watchdog.cc
+  rdb_perf_context.cc
+  rdb_mutex_wrapper.cc
   rdb_psi.h rdb_psi.cc
-  rdb_sst_info.cc rdb_sst_info.h
-  rdb_utils.cc rdb_utils.h rdb_buff.h
-  rdb_threads.cc rdb_threads.h
-  ha_rockspart.cc ha_rockspart.h
-  ../../sql/partitioning/partition_base.cc
-  nosql_access.cc nosql_access.h
-  sql_dd.cc sql_dd.h
+  rdb_sst_info.cc
+  rdb_utils.cc
+  rdb_threads.cc
+  ha_rockspart.cc
+  ${CMAKE_SOURCE_DIR}/sql/partitioning/partition_base.cc
+  nosql_access.cc
+  sql_dd.cc
   ${ROCKSDB_LIB_SOURCES}
 )
 
@@ -183,7 +194,20 @@ ELSE()
 ENDIF()
 
 IF(HAVE_EXTERNAL_ROCKSDB)
-  SET(rocksdb_static_libs ${rocksdb_static_libs} "${ROCKSDB_LIB_PATH}/${ROCKSDB_LIB_NAME}")
+  #SET(rocksdb_static_libs ${rocksdb_static_libs} "${ROCKSDB_LIB_PATH}/${ROCKSDB_LIB_NAME}")
+  # topling specific: use shared lib, specified in build.sh
+  IF(CMAKE_BUILD_TYPE STREQUAL "Release")
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb
+       -lterark-zbs-r -lterark-fsa-r -lterark-core-r)
+  ELSEIF(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug
+       -lterark-zbs-d -lterark-fsa-d -lterark-core-d)
+  ELSEIF(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug
+       -lterark-zbs-a -lterark-fsa-a -lterark-core-a)
+  ELSE()
+    message(ERROR "Unsupported CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
+  ENDIF()
 ENDIF()
 
 IF (WITH_JEMALLOC)
@@ -248,9 +272,19 @@ ENDIF()
 
 SET(rocksdb_static_libs ${rocksdb_static_libs} "-lrt" "-ldl" "-lpthread")
 
-MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT STATIC_ONLY
+MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
   LINK_LIBRARIES ${rocksdb_static_libs}
 )
+
+# MYSQL_ADD_PLUGIN will add C macro MYSQL_DYNAMIC_PLUGIN which makes
+# things much complex, so we use ADD_LIBRARY
+#MYSQL_ADD_PLUGIN(mytopling_dc ${ROCKSDB_SOURCES} DEFAULT MODULE_ONLY
+#  LINK_LIBRARIES ${rocksdb_static_libs} sql_main minchassis
+#)
+ADD_LIBRARY(mytopling_dc MODULE ${ROCKSDB_SOURCES})
+TARGET_LINK_LIBRARIES(mytopling_dc ${rocksdb_static_libs} sql_main minchassis)
+SET_TARGET_PROPERTIES(mytopling_dc PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugin_output_directory)
+MYSQL_INSTALL_TARGET(mytopling_dc DESTINATION ${INSTALL_PLUGINDIR} COMPONENT Server)
 
 IF(WITH_EMBEDDED_SERVER)
   ADD_SUBDIRECTORY(unittest)

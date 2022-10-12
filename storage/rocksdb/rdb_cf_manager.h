@@ -49,9 +49,9 @@ namespace myrocks {
 */
 
 class Rdb_cf_manager : public Ensure_initialized {
-  std::map<std::string, std::shared_ptr<rocksdb::ColumnFamilyHandle>>
+  terark::hash_strmap<std::shared_ptr<rocksdb::ColumnFamilyHandle>>
       m_cf_name_map;
-  std::map<uint32_t, std::shared_ptr<rocksdb::ColumnFamilyHandle>> m_cf_id_map;
+  terark::VectorIndexMap<uint32_t, std::shared_ptr<rocksdb::ColumnFamilyHandle>> m_cf_id_map;
 
   mutable mysql_mutex_t m_mutex;
 

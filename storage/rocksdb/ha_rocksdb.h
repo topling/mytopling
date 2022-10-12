@@ -29,6 +29,7 @@
 #include <vector>
 
 /* MySQL header files */
+#include <sql/log.h>
 #include <mysql/components/services/log_builtins.h>
 #include "my_checksum.h"
 #include "my_dbug.h"
@@ -202,6 +203,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
     TRUE <=> Primary Key columns can be decoded from the index
   */
   mutable bool m_pk_can_be_decoded;
+  bool m_iter_is_scan = false;
 
   uchar *m_pk_packed_tuple; /* Buffer for storing PK in StorageFormat */
   // ^^ todo: change it to 'char*'? TODO: ^ can we join this with last_rowkey?
@@ -234,7 +236,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   /* class to convert between Mysql format and RocksDB format*/
   std::unique_ptr<Rdb_converter> m_converter;
 
-  std::unique_ptr<Rdb_iterator> m_iterator;
+  std::unique_ptr<Rdb_iterator_base> m_iterator;
   std::unique_ptr<Rdb_iterator_base> m_pk_iterator;
 
   /*
@@ -356,7 +358,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   void load_auto_incr_value();
   ulonglong load_auto_incr_value_from_index();
   void update_auto_incr_val(ulonglong val);
-  void update_auto_incr_val_from_field();
+  void update_auto_incr_val_from_field(Rdb_transaction*);
   rocksdb::Status get_datadic_auto_incr(Rdb_transaction *const tx,
                                         const GL_INDEX_ID &gl_index_id,
                                         ulonglong *new_val) const;
@@ -1139,7 +1141,7 @@ unsigned long long get_partial_index_sort_max_mem(THD *thd);
 
 Rdb_transaction *get_tx_from_thd(THD *const thd);
 
-const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction *tx);
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction*, bool create_snapshot = true);
 
 rocksdb::Iterator *rdb_tx_get_iterator(
     THD *thd, rocksdb::ColumnFamilyHandle *const cf, bool skip_bloom_filter,
@@ -1147,6 +1149,12 @@ rocksdb::Iterator *rdb_tx_get_iterator(
     const rocksdb::Slice &eq_cond_upper_bound,
     const rocksdb::Snapshot **snapshot, TABLE_TYPE table_type,
     bool read_current = false, bool create_snapshot = true);
+
+rocksdb::Iterator *rdb_tx_refresh_iterator(
+    THD *thd, rocksdb::ColumnFamilyHandle *const cf, bool skip_bloom_filter,
+    const rocksdb::Slice &eq_cond_lower_bound,
+    const rocksdb::Slice &eq_cond_upper_bound,
+    const rocksdb::Snapshot *snapshot, TABLE_TYPE table_type);
 
 rocksdb::Status rdb_tx_get(Rdb_transaction *tx,
                            rocksdb::ColumnFamilyHandle *const column_family,
@@ -1201,7 +1209,13 @@ inline void rocksdb_smart_prev(bool seek_backward,
 // If the iterator is not valid it might be because of EOF but might be due
 // to IOError or corruption. The good practice is always check it.
 // https://github.com/facebook/rocksdb/wiki/Iterator#error-handling
-bool is_valid_iterator(rocksdb::Iterator *scan_it);
+bool is_valid_iter_err(rocksdb::Iterator *scan_it);
+inline bool is_valid_iterator(rocksdb::Iterator *scan_it) {
+  if (scan_it->Valid())
+    return true;
+  else
+    return is_valid_iter_err(scan_it);
+}
 
 bool rdb_should_hide_ttl_rec(const Rdb_key_def &kd,
                              const rocksdb::Slice &ttl_rec_val,

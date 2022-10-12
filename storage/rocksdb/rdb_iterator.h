@@ -69,6 +69,7 @@ class Rdb_iterator {
   virtual rocksdb::Slice key() = 0;
   virtual rocksdb::Slice value() = 0;
   virtual void reset() = 0;
+  virtual void release_snapshot() = 0;
 };
 
 class Rdb_iterator_base : public Rdb_iterator {
@@ -108,13 +109,17 @@ class Rdb_iterator_base : public Rdb_iterator {
   rocksdb::Slice value() override { return m_scan_it->value(); }
 
   void reset() override { release_scan_iterator(); }
+  void release_snapshot() override;
+
+  void init(THD *thd, const std::shared_ptr<Rdb_key_def>& kd,
+            const std::shared_ptr<Rdb_key_def>& pkd, const Rdb_tbl_def *tbl_def);
 
  protected:
   friend class Rdb_iterator;
-  const std::shared_ptr<Rdb_key_def> m_kd;
+  std::shared_ptr<Rdb_key_def> m_kd;
 
   // Rdb_key_def of the primary key
-  const std::shared_ptr<Rdb_key_def> m_pkd;
+  std::shared_ptr<Rdb_key_def> m_pkd;
 
   const Rdb_tbl_def *m_tbl_def;
 
@@ -122,15 +127,19 @@ class Rdb_iterator_base : public Rdb_iterator {
 
   /* Iterator used for range scans and for full table/index scans */
   rocksdb::Iterator *m_scan_it;
+  uint32_t m_call_cnt = 0; // for refresh_iter
+  void refresh_iter();
 
   /* Whether m_scan_it was created with skip_bloom=true */
   bool m_scan_it_skips_bloom;
+  bool m_has_been_setup = false;
 
   const rocksdb::Snapshot *m_scan_it_snapshot;
 
   /* Buffers used for upper/lower bounds for m_scan_it. */
   uchar *m_scan_it_lower_bound;
   uchar *m_scan_it_upper_bound;
+  size_t m_packed_buf_len;
   rocksdb::Slice m_scan_it_lower_bound_slice;
   rocksdb::Slice m_scan_it_upper_bound_slice;
 

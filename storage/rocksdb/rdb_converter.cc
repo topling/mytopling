@@ -710,6 +710,7 @@ int Rdb_converter::decode_value_header_for_pk(
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
+ROCKSDB_FLATTEN
 int Rdb_converter::convert_record_from_storage_format(
     const std::shared_ptr<Rdb_key_def> &pk_def,
     const rocksdb::Slice *const key_slice,

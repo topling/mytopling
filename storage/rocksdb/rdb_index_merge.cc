@@ -190,8 +190,7 @@ int Rdb_index_merge::add(const rocksdb::Slice &key, const rocksdb::Slice &val) {
 
   /* Find sort order of the new record */
   auto res =
-      m_offset_tree.emplace(m_rec_buf_unsorted->m_block.get() + rec_offset,
-                            m_cf_handle->GetComparator());
+      m_offset_tree.insert({m_rec_buf_unsorted->m_block.get() + rec_offset});
   if (!res.second) {
     my_printf_error(ER_DUP_ENTRY,
                     "Failed to insert the record: the key already exists",
@@ -486,14 +485,14 @@ int Rdb_index_merge::merge_buf_info::read_next_chunk_from_disk(File fd) {
   return HA_EXIT_SUCCESS;
 }
 
-/**
-  Get records from offset within sort buffer and compare them.
-  Sort by least to greatest.
-*/
-int Rdb_index_merge::merge_record_compare(
-    const uchar *const a_block, const uchar *const b_block,
-    const rocksdb::Comparator *const comparator) {
-  return comparator->Compare(as_slice(a_block), as_slice(b_block));
+ALWAYS_INLINE
+bool Rdb_index_merge::merge_record::operator<(merge_record y) const noexcept {
+  // topling specific: just bytewise compare
+  auto a = as_slice(m_block), b = as_slice(y.m_block);
+  auto n = std::min(a.size_, b.size_);
+  auto c = memcmp(a.data_, b.data_, n);
+  if (0 != c) return c < 0;
+  return a.size_ < b.size_;
 }
 
 /**

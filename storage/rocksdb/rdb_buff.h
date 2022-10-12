@@ -31,6 +31,8 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 
+#include <terark/io/MemStream.hpp>
+
 namespace myrocks {
 
 /*
@@ -218,8 +220,8 @@ inline void rdb_netbuf_read_gl_index(const uchar **netbuf_ptr,
 */
 
 class Rdb_string_reader {
-  const char *m_ptr;
-  uint m_len;
+  const uchar *m_ptr;
+  const uchar *m_end;
 
  private:
   Rdb_string_reader &operator=(const Rdb_string_reader &) = default;
@@ -236,9 +238,9 @@ class Rdb_string_reader {
   }
 
   explicit Rdb_string_reader(const std::string &str) {
-    m_len = str.length();
-    if (m_len) {
-      m_ptr = &str.at(0);
+    if (!str.empty()) {
+      m_ptr = (const uchar*)str.data();
+      m_end = (const uchar*)str.data() + str.size();
     } else {
       /*
         One can a create a Rdb_string_reader for reading from an empty string
@@ -247,12 +249,13 @@ class Rdb_string_reader {
         value.
       */
       m_ptr = nullptr;
+      m_end = nullptr;
     }
   }
 
   explicit Rdb_string_reader(const rocksdb::Slice *const slice) {
-    m_ptr = slice->data();
-    m_len = slice->size();
+    m_ptr = (const uchar*)slice->data();
+    m_end = (const uchar*)slice->end();
   }
 
   /*
@@ -261,54 +264,52 @@ class Rdb_string_reader {
   */
   const char *read(const uint size) {
     const char *res;
-    if (m_len < size) {
+    if (unlikely(m_ptr + size > m_end)) {
       res = nullptr;
     } else {
-      res = m_ptr;
+      res = (const char*)m_ptr;
       m_ptr += size;
-      m_len -= size;
     }
     return res;
   }
 
   bool read_uint8(uint *const res) {
-    const uchar *p;
-    if (!(p = reinterpret_cast<const uchar *>(read(1)))) {
+    if (unlikely(m_ptr >= m_end)) {
       return true;  // error
     } else {
-      *res = *p;
+      *res = *m_ptr++;
       return false;  // Ok
     }
   }
 
   bool read_uint16(uint *const res) {
-    const uchar *p;
-    if (!(p = reinterpret_cast<const uchar *>(read(2)))) {
+    if (unlikely(m_ptr + 2 > m_end)) {
       return true;  // error
     } else {
-      *res = rdb_netbuf_to_uint16(p);
+      *res = rdb_netbuf_to_uint16(m_ptr);
+      m_ptr += 2;
       return false;  // Ok
     }
   }
 
   bool read_uint64(uint64 *const res) {
-    const uchar *p;
-    if (!(p = reinterpret_cast<const uchar *>(read(sizeof(uint64))))) {
+    if (unlikely(m_ptr + 8 > m_end)) {
       return true;  // error
     } else {
-      *res = rdb_netbuf_to_uint64(p);
+      *res = rdb_netbuf_to_uint64(m_ptr);
+      m_ptr += 8;
       return false;  // Ok
     }
   }
 
-  uint remaining_bytes() const { return m_len; }
+  uint remaining_bytes() const { return m_end - m_ptr; }
 
   /*
     Return pointer to data that will be read by next read() call (if there is
     nothing left to read, returns pointer to beyond the end of previous read()
     call)
   */
-  const char *get_current_ptr() const { return m_ptr; }
+  const char *get_current_ptr() const { return (const char*)m_ptr; }
 };
 
 /*
@@ -327,113 +328,109 @@ class Rdb_string_reader {
 */
 
 class Rdb_string_writer {
-  std::vector<uchar> m_data;
-  size_t m_pos;
+  terark::AutoGrownMemIO m_data;
 
  public:
-  Rdb_string_writer(const Rdb_string_writer &rhs)
-      : m_data(rhs.m_data), m_pos(rhs.m_pos) {}
+  Rdb_string_writer(const Rdb_string_writer &rhs) {
+    m_data.clone(rhs.m_data);
+  }
 
   Rdb_string_writer &operator=(const Rdb_string_writer &rhs) {
-    m_data = rhs.m_data;
-    m_pos = rhs.m_pos;
+    m_data.clone(rhs.m_data);
     return *this;
   }
 
-  Rdb_string_writer(Rdb_string_writer &&rhs) noexcept
-      : m_data(std::move(rhs.m_data)), m_pos(rhs.m_pos) {
-    rhs.m_pos = 0;
+  Rdb_string_writer(Rdb_string_writer &&rhs) noexcept {
+    static_cast<terark::SeekableMemIO&>(m_data) =
+    static_cast<terark::SeekableMemIO&>(rhs.m_data);
+    rhs.m_data.risk_release_ownership();
   }
 
   Rdb_string_writer &operator=(Rdb_string_writer &&rhs) noexcept {
-    m_data = std::move(rhs.m_data);
-    m_pos = rhs.m_pos;
-    rhs.m_pos = 0;
-
+    if (m_data.begin()) ::free(m_data.begin());
+    static_cast<terark::SeekableMemIO&>(m_data) =
+    static_cast<terark::SeekableMemIO&>(rhs.m_data);
+    rhs.m_data.risk_release_ownership();
     return *this;
   }
-  Rdb_string_writer() : m_pos(0) {}
+  Rdb_string_writer() {}
 
   void reserve(size_t size) { m_data.resize(size); }
   void alloc(size_t size) {
-    if (m_data.size() < m_pos + size) {
-      m_data.resize(m_pos + size);
+    size_t pos = m_data.tell();
+    if (m_data.size() < pos + size) {
+      m_data.resize(pos + size);
     }
-    m_pos += size;
+    m_data.skip_unsafe(size);
   }
 
-  void clear() { m_pos = 0; }
-  void write_uint8(const uint val) {
-    alloc(sizeof(uint8));
-    rdb_netbuf_store_byte(m_data.data() + m_pos - sizeof(uint8),
-                          static_cast<uchar>(val));
-  }
+  void clear() { m_data.rewind(); }
+  void write_uint8(const uint val) { m_data.writeByte(val); }
   void write_uint16(const uint16 val) {
-    alloc(sizeof(uint16));
-    rdb_netbuf_store_uint16(m_data.data() + m_pos - sizeof(uint16), val);
+    uint16 be = htobe16(val);
+    m_data.ensureWrite(&be, 2);
   }
 
   void write_uint32(const uint32 val) {
-    alloc(sizeof(uint32));
-    rdb_netbuf_store_uint32(m_data.data() + m_pos - sizeof(uint32), val);
+    uint32 be = htobe32(val);
+    m_data.ensureWrite(&be, 4);
   }
 
   void write_uint64(const uint64 val) {
-    alloc(sizeof(uint64));
-    rdb_netbuf_store_uint64(m_data.data() + m_pos - sizeof(uint64), val);
+    uint64 be = htobe64(val);
+    m_data.ensureWrite(&be, 8);
   }
 
   void write(const uchar *const new_data, const size_t len) {
-    alloc(len);
-    memcpy(m_data.data() + m_pos - len, new_data, len);
+    m_data.ensureWrite(new_data, len);
   }
 
-  uchar *ptr() { return m_data.data(); }
-  const uchar *ptr() const { return m_data.data(); }
-  uchar *end() { return m_data.data() + m_pos; }
-  const uchar *end() const { return m_data.data() + m_pos; }
-  size_t get_current_pos() const { return m_pos; }
-  bool is_empty() const { return m_pos == 0; }
+  uchar *ptr() { return m_data.begin(); }
+  const uchar *ptr() const { return m_data.begin(); }
+  uchar *end() { return m_data.current(); }
+  const uchar *end() const { return m_data.current(); }
+  size_t get_current_pos() const { return m_data.tell(); }
+  bool is_empty() const { return m_data.current() == m_data.begin(); }
 
   void write_uint8_at(const size_t pos, const uint new_val) {
     // This function will only overwrite what was written
     assert(pos < get_current_pos());
-    m_data.data()[pos] = new_val;
+    m_data.begin()[pos] = new_val;
   }
 
   void write_uint16_at(const size_t pos, const uint new_val) {
     // This function will only overwrite what was written
     assert(pos < get_current_pos() && (pos + 1) < get_current_pos());
-    rdb_netbuf_store_uint16(m_data.data() + pos, new_val);
+    rdb_netbuf_store_uint16(m_data.begin() + pos, new_val);
   }
 
   void truncate(const size_t pos) {
     assert(pos < m_data.size());
-    m_pos = pos;
+    m_data.seek_unsafe(pos);
   }
 
   void alloc_init(const size_t len, const uchar val = 0) {
     alloc(len);
-    memset(m_data.data() + m_pos - len, val, len);
+    memset(m_data.current() - len, val, len);
   }
 
   /*
     An awful hack to deallocate the buffer without relying on the deconstructor.
     This is needed to suppress valgrind errors in rocksdb.partition
   */
-  void free() { std::vector<uchar>().swap(m_data); }
+  void free() { m_data.clear(); }
 
   rocksdb::Slice to_slice() {
-    return rocksdb::Slice(reinterpret_cast<char *>(m_data.data()), m_pos);
+    return rocksdb::Slice(reinterpret_cast<char *>(m_data.begin()), m_data.tell());
   }
 
   bool operator==(const Rdb_string_writer &rhs) const {
-    if (m_pos == rhs.m_pos) {
-      if (m_pos == 0) {
+    if (m_data.tell() == rhs.m_data.tell()) {
+      if (this->is_empty()) {
         // Both empty
         return true;
       }
-      return memcmp(ptr(), rhs.ptr(), m_pos) == 0;
+      return memcmp(ptr(), rhs.ptr(), m_data.tell()) == 0;
     }
 
     return false;

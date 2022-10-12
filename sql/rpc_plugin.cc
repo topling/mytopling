@@ -91,6 +91,15 @@ thd_err:
 }
 }  // namespace
 
+namespace myrocks {
+// when build rocksdb_se as dynamic lib, target pfs_connect_attr-t build fail
+// with missing symbol myrocks_select_by_key, I don't know how to fix this
+// issue, so just mark it as weak symbol
+__attribute__((weak))
+bypass_rpc_exception myrocks_select_by_key(
+    THD *thd, myrocks_columns *columns, const myrocks_select_from_rpc &param);
+}
+
 /**
   Run bypass select query
 */
