@@ -15050,12 +15050,13 @@ int ha_rocksdb::inplace_populate_sk(
     tx->release_snapshot(m_tbl_def->get_table_type());
   }
 
-  bool const can_use_auto_sort = tx->use_auto_sort_sst();
-
   for (const auto &index : indexes) {
     // Skip populating partial indexes.
     if (index->is_partial_index() && !THDVAR(ha_thd(), bulk_load_partial_index))
       continue;
+
+    bool is_unique = new_table_arg->key_info[index->get_keyno()].flags & HA_NOSAME;
+    bool can_use_auto_sort = tx->use_auto_sort_sst() && !is_unique;
 
     /*
       Note: We use the currently existing table + tbl_def object here,
