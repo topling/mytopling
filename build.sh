@@ -9,9 +9,9 @@ cd ${BUILD_DIR}
 #CXX_HOME=${CXX_HOME:-/opt/rh/gcc-toolset-11/root}
 CXX_HOME=${CXX_HOME:-/node-shared/opt/gcc-12.1.0}
 
-core=${PDIR}/rocksdb/sideplugin/topling-core
+core=${PDIR}/toplingdb/sideplugin/topling-core
 if [ ! -e $core ]; then
-  core=${PDIR}/rocksdb/sideplugin/topling-zip
+  core=${PDIR}/toplingdb/sideplugin/topling-zip
 fi
 if [ ! -e ${core} ]; then
   echo "Not Found ${core}, run commands:" >&2
@@ -23,7 +23,7 @@ fi
 
 # both TOPLING_LIB_DIR=/node-shared/lib and -L/node-shared/lib need
 # be specified
-cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/rocksdb \
+cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DTOPLING_CORE_HOME=${core} \
       -DTOPLING_LIB_DIR=/node-shared/lib \
       -DWITH_BOOST=${core}/boost-include \
@@ -42,4 +42,4 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/rocksdb \
 
 
 
-#      -DWITH_ZSTD=${PDIR}/rocksdb/sideplugin/topling-core/3rdparty/zstd
+#      -DWITH_ZSTD=${PDIR}/toplingdb/sideplugin/topling-core/3rdparty/zstd
