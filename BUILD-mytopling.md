@@ -34,6 +34,7 @@ You should have installed ToplingDB libs to `LIBDIR` above.
   git clone https://github.com/topling/mytopling.git
   cd mytopling
   git submodule update --init --recursive
+  export CXX_HOME=/usr
   bash build.sh -DTOPLING_LIB_DIR=/path/to/LIBDIR \
                 -DCMAKE_INSTALL_PREFIX=/path/to/mytopling/install/dir
 ```
