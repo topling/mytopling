@@ -30,8 +30,6 @@
           "# 精确指定",
           "rocksdb.memtable.payload.bytes.at.flush",
           "rocksdb.memtable.garbage.bytes.at.flush",
-          "# pika 未使用 txn",
-          "rocksdb.txn",
           "rocksdb.blobdb",
           "rocksdb.row.cache",
           "rocksdb.number.block",
@@ -117,7 +115,7 @@
         "keyRankCacheRatio": 0.001,
         "checksumLevel": 0,
         "entropyAlgo": "kNoEntropy",
-        "debugLevel": 0,
+        "debugLevel": 2,
         "softZipWorkingMemLimit": "16G",
         "hardZipWorkingMemLimit": "32G",
         "smallTaskMemory": "1G",
@@ -221,7 +219,7 @@
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
       "//max_bytes_for_level_base": "400M",
       "compaction_options_level": {"L1_score_boost": 5},
-      "target_file_size_base": "2M", "target_file_size_multiplier": 2,
+      "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
       "table_factory": "${dispatch}",
@@ -243,7 +241,7 @@
       "compaction_options_level": {"L1_score_boost": 5},
       "target_file_size_base": "16M", "target_file_size_multiplier": 2,
       "table_factory": "${dispatch}",
-      "paranoid_file_checks": true,
+      "//paranoid_file_checks": true,
       "//html_user_key_coder": "${sys_cf_key_coder}",
       "//compaction_executor_factory": "dcompact",
       "//compaction_filter_factory": "${NotNeeded}",
@@ -273,10 +271,10 @@
       "advise_random_on_open": true,
       "create_if_missing": true,
       "create_missing_column_families": true,
-      "max_background_flushes": 3,
+      "max_background_flushes": 2,
       "max_background_compactions": 32,
       "max_subcompactions": 1,
-      "max_level1_subcompactions": 13,
+      "max_level1_subcompactions": 17,
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
@@ -328,7 +326,7 @@
     "dcompact": {
       "class": "DcompactEtcd",
       "params": {
-        "info_log_level": "DEBUG_LEVEL",
+        "//info_log_level": "DEBUG_LEVEL",
         "estimate_speed": "10M",
         "timeout_multiplier": 5.0,
         "//2/etcd": {
@@ -416,7 +414,7 @@
           "//http://commented-host:8080",
           "//end_http_workers"
         ],
-        "dcompact_min_level": 20
+        "dcompact_min_level": 2
       }
     }
   }
