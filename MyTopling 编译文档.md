@@ -3,9 +3,7 @@
 ## 1. 环境配置
 
 **本文所使用的机器为阿里云的 ECS，系统为 Alibaba Cloud Linux 3.2104 LTS 64位。**
-
 \-
-
 安装 `liburing-devel`
 
 ```shellag-0-1gfss1ndfag-1-1gfss1ndf
@@ -51,12 +49,12 @@ sudo make install-shared \
 ## 3. 编译 MyTopling
 
 ```shell
- git clone https://github.com/topling/mytopling.git
- cd mytopling
- git submodule update --init --recursive
- export CXX_HOME=/usr
- bash build.sh -DTOPLING_LIB_DIR=/path/to/LIBDIR \
-               -DCMAKE_INSTALL_PREFIX=/path/to/mytopling/install/dir
+git clone https://github.com/topling/mytopling.git
+cd mytopling
+git submodule update --init --recursive
+export CXX_HOME=/usr
+bash build.sh -DTOPLING_LIB_DIR=/path/to/LIBDIR \
+              -DCMAKE_INSTALL_PREFIX=/path/to/mytopling/install/dir
 ```
 
 `DTOPLING_LIB_DIR` 和 `DCMAKE_INSTALL_PREFIX` 是必选项。
@@ -65,6 +63,13 @@ sudo make install-shared \
   
 - `DCMAKE_INSTALL_PREFIX`：指定 MyToplingDB 的安装位置。
   
+
+如果编译 ToplingDB 的时候没有指定 `PREFIX` 和 `LIBDIR`，那么这里 `DTOPLING_LIB_DIR` 应当为 `/usr/local`。`DCMAKE_INSTALL_PREFIX` 可以和 ToplingDB 一起放在 `/usr/local` 目录下，即这里最后一个语句可以为：
+
+```shell
+bash build.sh -DTOPLING_LIB_DIR=/usr/local/lib \
+              -DCMAKE_INSTALL_PREFIX=/usr/local/mytopling
+```
 
 上面的过程会在当前目录生成一个 `build-rls` 目录，我们执行下面的内容：
 
