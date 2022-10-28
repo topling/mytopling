@@ -91,14 +91,15 @@ thd_err:
 }
 }  // namespace
 
-namespace myrocks {
+extern void* g_myrocks_select_by_key;
 // when build rocksdb_se as dynamic lib, target pfs_connect_attr-t build fail
-// with missing symbol myrocks_select_by_key, I don't know how to fix this
-// issue, so just mark it as weak symbol
-__attribute__((weak))
-bypass_rpc_exception myrocks_select_by_key(
+// with missing symbol myrocks_select_by_key, to kill the compile time
+// dependency, we add global var g_myrocks_select_by_key which is defined
+// in common code(sql_class.cc), and init it in nosql_access.cc, reference
+// in this file
+typedef bypass_rpc_exception (*myrocks_select_by_key_t)(
     THD *thd, myrocks_columns *columns, const myrocks_select_from_rpc &param);
-}
+#define myrocks_select_by_key ((myrocks_select_by_key_t)g_myrocks_select_by_key)
 
 /**
   Run bypass select query
@@ -142,7 +143,7 @@ bypass_rpc_exception bypass_select(const myrocks_select_from_rpc *param) {
   current_thd->status_var.com_stat[SQLCOM_SELECT]++;
   myrocks_columns columns;
   THD *thd = current_thd;
-  const auto &ret = myrocks::myrocks_select_by_key(thd, &columns, *param);
+  const auto &ret = myrocks_select_by_key(thd, &columns, *param);
 
   // clean up before returning back to the rpc plugin
   trans_commit_stmt(thd);  // need to call this because we locked table

@@ -5005,3 +5005,5 @@ bool THD::set_dscp_on_socket() {
 
   return true;
 }
+
+void* g_myrocks_select_by_key = nullptr;
