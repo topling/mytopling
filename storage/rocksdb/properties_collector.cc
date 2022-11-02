@@ -180,12 +180,16 @@ Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
         m_last_stats->m_name = m_keydef->get_name();
       }
       else {
-        fprintf(stderr, "ERROR: not found gl_index_id{%d,%d}\n",
+        using namespace rocksdb;
+        rocksdb::Logger* info_log = nullptr;
+        WARN("not found gl_index_id{%d,%d}",
           gl_index_id.cf_id, gl_index_id.index_id);
       }
     }
     else {
-      fprintf(stderr, "ERROR: m_find_key_def is null\n");
+      using namespace rocksdb;
+      rocksdb::Logger* info_log = nullptr;
+      ERR("m_find_key_def is null");
     }
     m_cardinality_collector.Reset();
   }
