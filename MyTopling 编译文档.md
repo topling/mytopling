@@ -94,15 +94,14 @@ cp -a /root/topling/mytopling/build-rls/library_output_directory/libprotobuf* /u
 
 
 
-`conf_mysqld.sh`
+下载链接：https://github.com/topling/mytopling/conf
 
-`init_mysqld.sh`
-
-`start_mysqld.sh`
-
-`mytopling.json`
-
-
+```
+conf_mysqld.sh
+init_mysqld.sh
+start_mysqld.sh
+mytopling.json
+```
 
 建议将这四个文件放在同一目录下（不然需要自行修改路径相关的配置），后面逐个说明需要编辑修改的内容。
 
