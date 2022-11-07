@@ -139,7 +139,7 @@ bash init_mysqld.sh
 
 
 
-将 `mytopling.json` 中的 `http`-> `document_root` 字段修改为上面的数据目录字段。
+将 `mytopling.json` 中的 `http`-> `document_root` 字段修改为上面的数据目录字段。为了安全起见，可以为 log (mysql log, toplingdb log) 设置单独的目录，然后将 document_root 设置到 log 目录，如果不想通过 web 访问 log 文件，就不要设置 document_root。
 
 然后执行启动脚本：
 
