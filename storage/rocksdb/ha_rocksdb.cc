@@ -11681,6 +11681,7 @@ int ha_rocksdb::update_write_pk(const Rdb_key_def &kd,
       Write the primary key directly to an SST file using an SstFileWriter
      */
     rc = bulk_load_key(row_info.tx, kd, row_info.new_pk_slice, value_slice,
+                      !row_info.tx->use_auto_sort_sst() &&
                        THDVAR(table->in_use, bulk_load_allow_unsorted));
   } else if (row_info.skip_unique_check || row_info.tx->m_ddl_transaction) {
     /*
