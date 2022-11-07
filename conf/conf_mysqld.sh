@@ -12,6 +12,7 @@ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/lib64/
 export LD_LIBRARY_PATH=/usr/lib/gcc/x86_64-redhat-linux/10/:${LD_LIBRARY_PATH}
 export LD_LIBRARY_PATH=/usr/local/lib/mysqlrouter:${LD_LIBRARY_PATH}
 export LD_LIBRARY_PATH=/usr/local/lib/plugin:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=/usr/local/lib/private:${LD_LIBRARY_PATH}
 export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
 #export LD_LIBRARY_PATH=/node-shared/opt/lib:${LD_LIBRARY_PATH}
 export PATH=/usr/local/bin:${PATH}

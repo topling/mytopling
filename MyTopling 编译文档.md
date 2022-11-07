@@ -37,7 +37,7 @@ make -j`nproc` DEBUG_LEVEL=0 shared_lib
 make install-shared
 ```
 
-上面 `make install-shared` 有可选变量  `PREFIX` 和 `LIBDIR`项：
+上面 `make install-shared` 有可选变量  `PREFIX` 和 `LIBDIR`项：
 
 - `PREFIX`：默认为 `/usr/local`，为 ToplingDB 的安装位置。
   
@@ -84,13 +84,9 @@ make install
 
 ## 4. 运行 MyTopling
 
-### 4.1. 拷贝动态库
+### 
 
-```
-cp -a /root/topling/mytopling/build-rls/library_output_directory/libprotobuf* /usr/local/lib
-```
-
-### 4.2. 下载脚本与配置文件
+### 4.1. 下载脚本与配置文件
 
 
 
@@ -109,7 +105,7 @@ mytopling.json
 
 
 
-### 4.3. 初始化
+### 4.2. 初始化
 
 
 
@@ -135,7 +131,7 @@ bash init_mysqld.sh
 
 
 
-### 4.4. 配置并运行
+### 4.3. 配置并运行
 
 
 
