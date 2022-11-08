@@ -1,7 +1,7 @@
-##Documents
-[简介（中文版）](README.mytopling-zh_cn.md)
-[如何编译（中文版）](BUILD-mytopling-zh_CN.md)
-[Build MyTopling](BUILD-mytopling.md)
+## Documents
+* [How to Build MyTopling](BUILD-mytopling.md)
+* [简介（中文版）](README.mytopling-zh_cn.md)
+* [如何编译（中文版）](BUILD-mytopling-zh_CN.md)
 
 ---
 
