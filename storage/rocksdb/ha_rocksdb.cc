@@ -11681,6 +11681,7 @@ int ha_rocksdb::update_write_pk(const Rdb_key_def &kd,
       Write the primary key directly to an SST file using an SstFileWriter
      */
     rc = bulk_load_key(row_info.tx, kd, row_info.new_pk_slice, value_slice,
+                      !row_info.tx->use_auto_sort_sst() &&
                        THDVAR(table->in_use, bulk_load_allow_unsorted));
   } else if (row_info.skip_unique_check || row_info.tx->m_ddl_transaction) {
     /*
@@ -13218,6 +13219,8 @@ void Rdb_drop_index_thread::run() {
         std::unordered_set<GL_INDEX_ID> finished;
         rocksdb::ReadOptions read_opts;
         read_opts.total_order_seek = true;  // disable bloom filter
+        read_opts.ignore_range_deletions =
+            !rocksdb_enable_delete_range_for_drop_index;
 
         for (const auto d : indices) {
           uint32 cf_flags = 0;
@@ -13816,6 +13819,8 @@ static int calculate_cardinality_table_scan(
   } else {
     read_opts.total_order_seek = true;
   }
+  read_opts.ignore_range_deletions =
+        !rocksdb_enable_delete_range_for_drop_index;
 
   Rdb_tbl_card_coll cardinality_collector(rocksdb_table_stats_sampling_pct);
 
@@ -17651,6 +17656,8 @@ rocksdb::Iterator *rdb_tx_get_iterator(
       // TODO(mung): set based on WHERE conditions
       read_opts.total_order_seek = true;
       read_opts.snapshot = *snapshot;
+      read_opts.ignore_range_deletions =
+            !rocksdb_enable_delete_range_for_drop_index;
       return rdb->NewIterator(read_opts, cf);
     } else {
       return nullptr;

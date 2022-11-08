@@ -2688,3 +2688,10 @@ bypass_rpc_exception myrocks_select_by_key(
 }
 
 }  // namespace myrocks
+
+extern void* g_myrocks_select_by_key;
+
+__attribute__((constructor))
+static void init_g_myrocks_bypass_select() {
+  g_myrocks_select_by_key = (void*)&myrocks::myrocks_select_by_key;
+}

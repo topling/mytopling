@@ -1,3 +1,17 @@
+**This guide was tested on Alibaba Cloud Linux 3.2104 LTS 64 bit.**
+# 0. Prerequisite
+Install required packages.
+```bash
+sudo yum config-manager --set-enabled powertool
+sudo yum install -y liburing-devel
+sudo yum install -y openssl-devel \
+                    ncurses-devel \
+                    libtirpc-devel \
+                    rpcgen \
+                    bison \
+                    libudev-devel
+```
+
 # 1. First build ToplingDB
 ```bash
   cd /path/to/topling # you should create this dir
@@ -17,6 +31,7 @@
 # 2. Build MyTopling
 Now we have compiled [ToplingDB](https://github.com/topling/toplingdb) and [topling-zip](https://github.com/topling/topling-zip), MyTopling requires these two on compiling and running.
 
+Please make sure repository toplingdb and mytopling are cloned to same parent dir(/path/to/topling).
 ## 2.1. Compile time dependencies(include dirs)
 include dirs are auto added in mytopling `build.sh`.
 ```bash
