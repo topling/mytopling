@@ -90,7 +90,7 @@ make install
 
 
 
-下载链接：https://github.com/topling/mytopling/conf
+[下载链接](https://github.com/topling/mytopling/tree/topling-8.0.28-2022-10-12-9cc489f6/mytopling-conf)
 
 ```
 conf_mysqld.sh
@@ -99,7 +99,7 @@ start_mysqld.sh
 mytopling.json
 ```
 
-建议将这四个文件放在同一目录下（不然需要自行修改路径相关的配置），后面逐个说明需要编辑修改的内容。
+建议将这四个文件放在同一目录下（不然需要自行修改路径相关的配置）。
 
 我这里在 `/root/topling` 下。
 
@@ -135,7 +135,7 @@ bash init_mysqld.sh
 
 
 
-将 `mytopling.json` 中的 `http`-> `document_root` 字段修改为上面的数据目录字段。为了安全起见，可以为 log (mysql log, toplingdb log) 设置单独的目录，然后将 document_root 设置到 log 目录，如果不想通过 web 访问 log 文件，就不要设置 document_root。
+将 `mytopling.json` 中的 `http`-> `document_root` 字段修改为上面的数据目录字段。为了安全起见，可以为 log (mysql log, toplingdb log) 设置单独的目录，然后将 `document_root` 设置到 log 目录，如果不想通过 web 访问 log 文件，就不要设置 `document_root`。
 
 然后执行启动脚本：
 
