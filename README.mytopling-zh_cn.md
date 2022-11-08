@@ -3,6 +3,10 @@ MyTopling 是拓扑岭([topling.cn](https://topling.cn))开发的 MySQL 兼容�
 
 MyTopling fork 自 facebook 的 [myrocks-8.0.28](https://github.com/facebook/mysql-5.6/tree/fb-mysql-8.0.28)，进行了大幅修改：
 1. 将存储引擎从 RocksDB 替换为 ToplingDB
+1. 修改了 MyRocks 的 bug
+   * https://github.com/facebook/mysql-5.6/issues/1211
+   * https://github.com/facebook/mysql-5.6/pull/1213
+   * https://github.com/facebook/mysql-5.6/pull/1218
 1. 对 myrocks 的接入层进行了深度优化
 1. 对 ToplingDB Transaction 进行了深度优化
    * Transaction 代码虽然在 ToplingDB/RocksDB 中，但其主要是为 MyTopling/MyRocks 服务的
