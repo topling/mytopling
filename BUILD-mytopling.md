@@ -70,3 +70,66 @@ To explore more feature of MyTopling Server, read and modify [mytopling.json](st
 
 Reference: [ToplingDB SidePlugin Manual](https://github.com/topling/rockside/wiki)
 
+
+
+
+
+### 3.1. Download the script and configurations
+
+[Download link](https://github.com/topling/mytopling/tree/topling-8.0.28-2022-10-12-9cc489f6/mytopling-conf)
+
+```
+conf_mysqld.sh
+init_mysqld.sh
+start_mysqld.sh
+mytopling.json
+```
+
+You are advised to save the four files in the same directory (otherwise, you need to modify path-related configurations). 
+
+I'm here under '/root/topling'.
+
+
+
+### 3.2. Initialize
+
+First determine where to start MyTopling. Here I am `/root/topling`:
+
+```shell
+cd /root/topling
+```
+
+Then determine where to store the data. Here I am `/root/mytopling/data` :
+
+create data directory:
+
+```shell
+mkdir -p /root/mytopling/data
+```
+
+Execute:
+
+```shell
+bash init_mysqld.sh
+```
+
+
+
+### 3.3. Configure and run
+
+Modify the `http`-> `document_root` field in `mytopling.json` to the data directory field above. For security, you can set a separate directory for log (mysql log, toplingdb log), and then set `document_root` to the log directory. If you don't want to access log files through the web, don't set `document_root`.
+
+Then execute the startup script:
+
+```shell
+bash start_mysqld.sh
+```
+
+
+
+The final output is as follows to indicate success:
+
+```
+2022-11-04T10:37:59.557896Z 0 [System] [MY-010931] [Server] /home/terark/topling/mytopling-install/bin/mysqld: ready for connections. Version: '8.0.28'  socket: '/tmp/mysql.sock'  port: 3306  MyTopling Enterprise.
+```
+
