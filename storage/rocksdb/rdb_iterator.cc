@@ -220,21 +220,23 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
 // created Iterator may reference a newer rocksdb::Version object, The data
 // view of these 2 iterators are identical.
 void Rdb_iterator_base::refresh_iter() {
-#if 1
-  m_scan_it->RefreshKeepSnapshot();
-#else
-  // this will get wrong snapshot, m_scan_it_snapshot may be different
-  // with the snapshot inside m_scan_it
   std::string curr_key;
   bool valid = m_scan_it->Valid();
   if (valid) {
     curr_key = m_scan_it->key().ToString();
   }
+#if 1
+  m_scan_it->RefreshKeepSnapshot();
+#else
+  // this will get wrong snapshot, m_scan_it_snapshot may be different
+  // with the snapshot inside m_scan_it, for example when m_scan_it_snapshot
+  // is NULL.
   delete m_scan_it;
   bool skip_bloom = m_scan_it_skips_bloom;
   m_scan_it = rdb_tx_refresh_iterator(
       m_thd, m_kd->get_cf(), skip_bloom, m_scan_it_lower_bound_slice,
       m_scan_it_upper_bound_slice, m_scan_it_snapshot, m_table_type);
+#endif
   if (valid) {
     m_scan_it->Seek(curr_key);
     SHIP_ASSERT(m_scan_it->Valid());
@@ -242,7 +244,6 @@ void Rdb_iterator_base::refresh_iter() {
   } else {
     SHIP_ASSERT(!m_scan_it->Valid());
   }
-#endif
 }
 
 int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
