@@ -7323,7 +7323,10 @@ else {
   sql_print_information("RocksDB: Opening TransactionDB...");
   if (side_conf) {
     using namespace rocksdb;
-    g_repo.m_impl->db_js[".rocksdb"]["params"]["path"] = rocksdb_datadir;
+    json& params = g_repo.m_impl->db_js[".rocksdb"]["params"];
+    params["path"] = rocksdb_datadir;
+    params["txn_db_options"]["write_policy"] =
+        enum_stdstr(TxnDBWritePolicy(rocksdb_write_policy));
     DB_MultiCF* dbm = nullptr;
     status = g_repo.OpenDB(&dbm);
     if (!status.ok()) {
