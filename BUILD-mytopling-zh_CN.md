@@ -3,8 +3,6 @@
 ## 1. 环境配置
 
 **本文所使用的机器为阿里云的 ECS，系统为 Alibaba Cloud Linux 3.2104 LTS 64位。**
-\-
-安装 `liburing-devel`
 
 安装下列包：
 
