@@ -1050,8 +1050,14 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
       ::exit(HA_EXIT_FAILURE);
     }
     ROCKSDB_VERIFY_EQ(g_repo.m_impl->db_options.name2p->size(), 1);
-    rocksdb_auto_sort_sst_factory = PluginFactorySP<TableFactory>::GetPlugin(
-      "rocksdb_auto_sort_sst_factory", ROCKSDB_FUNC, "auto_sort", g_repo);
+    try {
+      rocksdb_auto_sort_sst_factory = PluginFactorySP<TableFactory>::GetPlugin(
+        "rocksdb_auto_sort_sst_factory", ROCKSDB_FUNC, "auto_sort", g_repo);
+    } catch (const rocksdb::Status& es) {
+      fprintf(stderr, "WARN: TableFactory auto_sort is not defined: %s\n",
+        es.ToString().c_str());
+      rocksdb_auto_sort_sst_factory = nullptr;
+    }
     // set rocksdb_enable_auto_sort_sst default as true if
     // rocksdb_auto_sort_sst_factory is defined
     rocksdb_enable_auto_sort_sst = nullptr != rocksdb_auto_sort_sst_factory;
