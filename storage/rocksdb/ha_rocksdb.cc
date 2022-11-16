@@ -1058,9 +1058,6 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
         es.ToString().c_str());
       rocksdb_auto_sort_sst_factory = nullptr;
     }
-    // set rocksdb_enable_auto_sort_sst default as true if
-    // rocksdb_auto_sort_sst_factory is defined
-    rocksdb_enable_auto_sort_sst = nullptr != rocksdb_auto_sort_sst_factory;
     o = g_repo.m_impl->db_options.name2p->begin()->second;
     o->max_open_files = -1; // topling specific
     g_repo.Put("rdb_listener", json{
