@@ -13,6 +13,7 @@
     "//end": "end"
   },
   "AnyPlugin": {
+    "git_info":         "GitInfoShower",
     "sys_cf_key_coder": "HtmlTextUserKeyCoder",
     "html_text_key_coder":         "HtmlTextUserKeyCoder"
   },
