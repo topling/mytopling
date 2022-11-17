@@ -162,6 +162,7 @@ INCLUDE_DIRECTORIES(
 
 SET(ROCKSDB_SOURCES
   ${ROCKSDB_SOURCES}
+  show_git_info.cc
   ha_rocksdb.cc
   rdb_datadic.cc
   rdb_iterator.cc
@@ -270,6 +271,7 @@ IF (HAVE_ZLIB_H)
   SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY})
 ENDIF()
 
+SET(rocksdb_static_libs ${rocksdb_static_libs} "-lstdc++fs")
 SET(rocksdb_static_libs ${rocksdb_static_libs} "-lrt" "-ldl" "-lpthread")
 
 MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
