@@ -162,6 +162,7 @@ INCLUDE_DIRECTORIES(
 
 SET(ROCKSDB_SOURCES
   ${ROCKSDB_SOURCES}
+  show_git_info.cc
   ha_rocksdb.cc
   rdb_datadic.cc
   rdb_iterator.cc
