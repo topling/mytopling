@@ -46,8 +46,10 @@ bool Rdb_cf_options::init(
   assert(override_cf_options != nullptr);
 
   m_default_cf_opts.comparator = rocksdb::BytewiseComparator();
+/*
   m_default_cf_opts.compaction_filter_factory.reset(
       new Rdb_compact_filter_factory);
+*/
 
   m_default_cf_opts.table_factory.reset(
       rocksdb::NewBlockBasedTableFactory(table_options));

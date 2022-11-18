@@ -41,7 +41,7 @@ Rdb_cond_var::Rdb_cond_var() { mysql_cond_init(0, &m_cond); }
 Rdb_cond_var::~Rdb_cond_var() { mysql_cond_destroy(&m_cond); }
 
 rocksdb::Status Rdb_cond_var::Wait(
-    const std::shared_ptr<rocksdb::TransactionDBMutex> mutex_arg) {
+    const std::shared_ptr<rocksdb::TransactionDBMutex>& mutex_arg) {
   return WaitFor(mutex_arg, ONE_YEAR_IN_MICROSECS);
 }
 
@@ -60,7 +60,7 @@ rocksdb::Status Rdb_cond_var::Wait(
 */
 
 rocksdb::Status Rdb_cond_var::WaitFor(
-    const std::shared_ptr<rocksdb::TransactionDBMutex> mutex_arg,
+    const std::shared_ptr<rocksdb::TransactionDBMutex>& mutex_arg,
     int64_t timeout_micros) {
   auto *mutex_obj = reinterpret_cast<Rdb_mutex *>(mutex_arg.get());
   assert(mutex_obj != nullptr);
@@ -77,7 +77,8 @@ rocksdb::Status Rdb_cond_var::WaitFor(
   PSI_stage_info old_stage;
   mysql_mutex_assert_owner(mutex_ptr);
 
-  if (current_thd && mutex_obj->m_old_stage_info.count(current_thd) == 0) {
+  // using lazy_insert_i will reduce a search on m_old_stage_info,
+  auto pre_insert = [&,this](void*) {
     /*
       WaitFor may be called multiple times before the lock is acquired or
       lock timeout.
@@ -95,7 +96,13 @@ rocksdb::Status Rdb_cond_var::WaitFor(
       that will cause mutex to be released. Defer the release until the mutex
       that is unlocked by RocksDB's Pessimistic Transactions system.
     */
-    mutex_obj->set_unlock_action(&old_stage);
+    // after this lambda return, old_stage will be inserted.
+    // mutex is safe to be unlocked and lock again during this lambda call.
+    return true;
+  };
+  if (current_thd) {
+    auto cons = terark::CopyConsFunc<PSI_stage_info>(old_stage);
+    mutex_obj->m_old_stage_info.lazy_insert_i(current_thd, cons, pre_insert);
   }
 
 #endif
@@ -183,29 +190,15 @@ rocksdb::Status Rdb_mutex::TryLockFor(
   return rocksdb::Status::OK();
 }
 
-#ifndef STANDALONE_UNITTEST
-void Rdb_mutex::set_unlock_action(const PSI_stage_info *const old_stage_arg) {
-  assert(old_stage_arg != nullptr);
-
-  mysql_mutex_assert_owner(&m_mutex);
-  assert(m_old_stage_info.count(current_thd) == 0);
-
-  m_old_stage_info[current_thd] =
-      std::make_shared<PSI_stage_info>(*old_stage_arg);
-}
-#endif
-
 // Unlock Mutex that was successfully locked by Lock() or TryLockUntil()
 void Rdb_mutex::UnLock() {
 #ifndef STANDALONE_UNITTEST
-  if (m_old_stage_info.count(current_thd) > 0) {
-    const std::shared_ptr<PSI_stage_info> old_stage =
-        m_old_stage_info[current_thd];
-    m_old_stage_info.erase(current_thd);
+  PSI_stage_info old_stage;
+  if (m_old_stage_info.erase(current_thd, &old_stage)) {
     // MySQL 8.0 requires you to unlock the mutex before THD_EXIT_COND while
     // 5.6 THD_EXIT_COND does it for you
     RDB_MUTEX_UNLOCK_CHECK(m_mutex);
-    THD_EXIT_COND(current_thd, old_stage.get());
+    THD_EXIT_COND(current_thd, &old_stage);
     thd_wait_end(current_thd);
     return;
   }

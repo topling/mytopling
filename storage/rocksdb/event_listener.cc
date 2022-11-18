@@ -30,6 +30,8 @@
 #include "./properties_collector.h"
 #include "./rdb_datadic.h"
 
+#include <topling/side_plugin_factory.h>
+
 namespace myrocks {
 
 static std::vector<Rdb_index_stats> extract_index_stats(
@@ -123,4 +125,13 @@ void Rdb_event_listener::OnBackgroundError(
     abort();
   }
 }
+
+namespace detail {
+using namespace rocksdb;
+static std::shared_ptr<EventListener> New_Rdb_event_listener() {
+  return std::make_shared<Rdb_event_listener>(rdb_get_ddl_manager());
+}
+ROCKSDB_FACTORY_REG_0("Rdb_event_listener", New_Rdb_event_listener);
+}
+
 }  // namespace myrocks

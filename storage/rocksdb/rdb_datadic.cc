@@ -54,6 +54,9 @@
 #include "./rdb_psi.h"
 #include "./rdb_utils.h"
 
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
+
 extern CHARSET_INFO my_charset_utf16_bin;
 extern CHARSET_INFO my_charset_utf16le_bin;
 extern CHARSET_INFO my_charset_utf32_bin;
@@ -63,6 +66,20 @@ namespace myrocks {
 void get_mem_comparable_space(const CHARSET_INFO *cs,
                               const std::vector<uchar> **xfrm, size_t *xfrm_len,
                               size_t *mb_len);
+
+#define PSI_my_malloc(size) my_malloc(PSI_NOT_INSTRUMENTED  , size, MYF(0))
+template<class T>
+T* MyMalloc(size_t num) { return (T*)PSI_my_malloc(sizeof(T) * num); }
+
+struct DcompactAutoInitMySQL {
+   DcompactAutoInitMySQL() {  my_thread_global_init(); }
+  ~DcompactAutoInitMySQL() {  my_thread_global_end();  }
+};
+
+Rdb_key_def::Rdb_key_def() {
+  static DcompactAutoInitMySQL just_for_distributed_compaction;
+  mysql_mutex_init(0, &m_mutex, MY_MUTEX_INIT_FAST);
+}
 
 /*
   Decode  current key field
@@ -209,6 +226,7 @@ Rdb_key_field_iterator::Rdb_key_field_iterator(
   m_curr_bitmap_pos = 0;
 }
 
+inline
 bool Rdb_key_field_iterator::has_next() { return m_fpi_next < m_fpi_end; }
 
 /**
@@ -299,6 +317,7 @@ Rdb_key_def::Rdb_key_def(
   m_total_index_flags_length =
       calculate_index_flag_offset(m_index_flags_bitmap, MAX_FLAG);
   assert(m_cf_handle);
+  m_cf_id = cf_handle_arg->GetID();
 }
 
 Rdb_key_def::Rdb_key_def(const Rdb_key_def &k)
@@ -338,6 +357,8 @@ Rdb_key_def::Rdb_key_def(const Rdb_key_def &k)
         reinterpret_cast<uint *>(my_malloc(PSI_NOT_INSTRUMENTED, size, MYF(0)));
     memcpy(m_pk_part_no, k.m_pk_part_no, size);
   }
+  assert(m_cf_handle->GetID() == k.m_cf_id);
+  m_cf_id = k.m_cf_id;
 }
 
 Rdb_key_def::~Rdb_key_def() {
@@ -560,6 +581,315 @@ void Rdb_key_def::setup(const TABLE *const tbl,
     m_maxlength = max_len;
 
     RDB_MUTEX_UNLOCK_CHECK(m_mutex);
+  }
+}
+
+static uint16_t DoLookupFuncId(void const* func_array[], size_t num,
+                               void const* func_lookup, const char* family) {
+  if (nullptr == func_lookup)
+    return 0;
+  for (size_t i = 0; i < num; ++i) {
+    if (func_lookup == func_array[i])
+      return uint16_t(i+1);
+  }
+  ROCKSDB_DIE("func family: %s, bad func ptr = %p\n", family, func_lookup);
+  return 0;
+}
+template<class FuncPtr>
+static uint16_t LookupFuncId(FuncPtr const func_array[], size_t num,
+                             FuncPtr const func, const char* family) {
+  static_assert(sizeof(FuncPtr) == sizeof(void*));
+  return DoLookupFuncId((void const**)func_array, num,
+                        (void const*)func, family);
+}
+
+#define MAKE_FUNC_WIRE_MAPPING(family, func1, ...) \
+const decltype(&func1) func_ptr_##family[] = { \
+  ROCKSDB_PP_MAP(ROCKSDB_PP_PREPEND, &, func1, ##__VA_ARGS__) \
+}; \
+const char* func_name_##family[] = { \
+  ROCKSDB_PP_STR(func1, ##__VA_ARGS__) \
+}; \
+inline \
+static uint16_t \
+id_of_##family(decltype(&func1) func) { \
+  return LookupFuncId(func_ptr_##family, \
+    ROCKSDB_PP_EXTENT(func_ptr_##family), func, #family); \
+} \
+static const char* name_of_##family(size_t idx) { \
+  if (0 == idx) \
+    return "nullptr(family:" #family ")"; \
+  if (idx > ROCKSDB_PP_EXTENT(func_name_##family)) { \
+    ROCKSDB_DIE("func family=%s, bad func idx = %zd\n", #family, idx); \
+  } \
+  return func_name_##family[idx-1]; \
+} \
+static const char* name_of_##family(decltype(&func1) func) { \
+  auto id = id_of_##family(func); \
+  return name_of_##family(id); \
+} \
+static decltype(&func1) ptr_of_##family(size_t idx) { \
+  if (0 == idx) \
+    return nullptr; \
+  if (idx > ROCKSDB_PP_EXTENT(func_ptr_##family)) { \
+    ROCKSDB_DIE("func family=%s, bad func idx = %zd\n", #family, idx); \
+  } \
+  return func_ptr_##family[idx-1]; \
+}
+///////////////////////////////////////////////////////////////////////////
+
+MAKE_FUNC_WIRE_MAPPING(pack_func,
+  Rdb_key_def::pack_integer<1>,
+  Rdb_key_def::pack_integer<2>,
+  Rdb_key_def::pack_integer<3>,
+  Rdb_key_def::pack_integer<4>,
+  Rdb_key_def::pack_integer<8>,
+  Rdb_key_def::pack_double,
+  Rdb_key_def::pack_float,
+#if 1 // mysql-8.0
+  Rdb_key_def::pack_binary_str,
+  Rdb_key_def::pack_newdate,
+  Rdb_key_def::pack_with_varlength_encoding,
+#else
+  Rdb_key_def::pack_new_decimal,
+  Rdb_key_def::pack_datetime2,
+  Rdb_key_def::pack_timestamp2,
+  Rdb_key_def::pack_time2,
+  Rdb_key_def::pack_year,
+  Rdb_key_def::pack_newdate,
+  Rdb_key_def::pack_blob,
+  Rdb_key_def::pack_with_make_sort_key,
+#endif
+
+  Rdb_key_def::pack_unsigned<1>,
+  Rdb_key_def::pack_unsigned<2>,
+  Rdb_key_def::pack_unsigned<3>,
+  Rdb_key_def::pack_unsigned<4>,
+  Rdb_key_def::pack_unsigned<8>,
+
+  Rdb_key_def::pack_bit,
+  Rdb_key_def::pack_string,
+
+  Rdb_key_def::pack_with_varlength_encoding,
+  Rdb_key_def::pack_with_varlength_space_pad
+)
+
+MAKE_FUNC_WIRE_MAPPING(unpack_func,
+  Rdb_key_def::unpack_integer<1>,
+  Rdb_key_def::unpack_integer<2>,
+  Rdb_key_def::unpack_integer<3>,
+  Rdb_key_def::unpack_integer<4>,
+  Rdb_key_def::unpack_integer<8>,
+  Rdb_key_def::unpack_double,
+  Rdb_key_def::unpack_float,
+  Rdb_key_def::unpack_bit,
+  Rdb_key_def::unpack_binary_str,
+  Rdb_key_def::unpack_binary_varlength,
+
+//Rdb_key_def::unpack_binary_or_utf8_varlength_space_pad,
+  *Rdb_key_def::unpack_binary_varlength_space_pad,  // <1>
+  *Rdb_key_def::unpack_utf8_varlength_space_pad,    // <2>
+  *Rdb_key_def::unpack_utf8mb4_varlength_space_pad, // <3>
+
+  Rdb_key_def::unpack_newdate,
+
+  Rdb_key_def::unpack_unsigned<1>,
+  Rdb_key_def::unpack_unsigned<2>,
+  Rdb_key_def::unpack_unsigned<3>,
+  Rdb_key_def::unpack_unsigned<4>,
+  Rdb_key_def::unpack_unsigned<8>,
+
+  Rdb_key_def::unpack_unknown_varlength,
+  Rdb_key_def::unpack_simple_varlength_space_pad,
+  Rdb_key_def::unpack_simple,
+  Rdb_key_def::unpack_unknown
+  // Rdb_key_def::unpack_floating_point
+)
+
+MAKE_FUNC_WIRE_MAPPING(skip_func,
+  Rdb_key_def::skip_max_length,
+  Rdb_key_def::skip_variable_length_encoding,
+  Rdb_key_def::skip_variable_space_pad
+)
+
+MAKE_FUNC_WIRE_MAPPING(make_unpack_func,
+  Rdb_key_def::make_unpack_simple_varlength,
+  Rdb_key_def::make_unpack_simple,
+  Rdb_key_def::make_unpack_unknown_varlength,
+  Rdb_key_def::make_unpack_unknown,
+  Rdb_key_def::dummy_make_unpack_info
+)
+
+using DioReader = terark::LittleEndianDataInput<NonOwnerFileStream>;
+using DioWriter = terark::LittleEndianDataOutput<NonOwnerFileStream>;
+
+} // namespace myrocks
+
+DATA_IO_DUMP_RAW_MEM_E(enum_field_types) // global namespace
+
+namespace myrocks {
+DATA_IO_DUMP_RAW_MEM_E(Rdb_key_def::INDEX_KEY_TYPE)
+struct Rdb_field_packing_fixed_part : Rdb_field_packing {
+  DATA_IO_LOAD_SAVE(Rdb_field_packing_fixed_part,
+    & m_max_image_len
+    & m_unpack_data_len
+    & m_unpack_data_offset
+    & m_field_is_nullable
+    & m_field_unsigned_flag
+    & m_field_real_type
+    & m_field_null_bit_mask
+    & m_field_pack_length
+    & m_field_null_offset
+    & m_field_offset
+    // & m_field_charset
+    & m_is_secondary_key
+    & m_varlength_bytes
+    & m_segment_size
+    & m_unpack_info_uses_two_bytes
+    & m_covered
+    & m_unpack_info_stores_value
+    & m_max_field_bytes
+  );
+};
+
+const long MYTOPLING_LOG_LEVEL = terark::getEnvLong("MYTOPLING_LOG_LEVEL");
+
+void Rdb_field_packing_write(DioWriter& dio, const Rdb_field_packing& fp) {
+  dio & static_cast<const Rdb_field_packing_fixed_part&>(fp);
+/*
+  if (fp.space_xfrm) {
+    dio & *fp.space_xfrm;
+  } else {
+    dio & (unsigned char)(0);
+  }
+*/
+  // dio & *m_charset_codec;
+
+  dio & id_of_pack_func(fp.m_pack_func);
+  dio & id_of_make_unpack_func(fp.m_make_unpack_info_func);
+  dio & id_of_unpack_func(fp.m_unpack_func);
+  dio & id_of_skip_func(fp.m_skip_func);
+
+  if (MYTOPLING_LOG_LEVEL >= 2) {
+    #define LOG_FUNC_ID_NAME(prefix) LOG_FUNC_ID_NAME2(prefix, m_##prefix)
+    #define LOG_FUNC_ID_NAME2(prefix, member) \
+        fprintf(stderr, #prefix " id = %d, name = %s\n", \
+            id_of_##prefix(fp.member), \
+          name_of_##prefix(fp.member))
+    LOG_FUNC_ID_NAME(pack_func);
+    LOG_FUNC_ID_NAME(unpack_func);
+    LOG_FUNC_ID_NAME(skip_func);
+    LOG_FUNC_ID_NAME2(make_unpack_func, m_make_unpack_info_func);
+  }
+}
+
+void Rdb_field_packing_read(DioReader& dio, Rdb_field_packing& fp) {
+  dio & static_cast<Rdb_field_packing_fixed_part&>(fp);
+/*
+  std::vector<uchar> sx;
+  dio & sx;
+  if (!fp.space_xfrm) {
+    fp.space_xfrm = new std::vector<uchar>();
+  }
+  fp.space_xfrm->swap(sx);
+*/
+  // dio & *m_charset_codec;
+
+  uint16_t func_id = 0;
+  dio & func_id; fp.m_pack_func = ptr_of_pack_func(func_id);
+  dio & func_id; fp.m_make_unpack_info_func = ptr_of_make_unpack_func(func_id);
+  dio & func_id; fp.m_unpack_func = ptr_of_unpack_func(func_id);
+  dio & func_id; fp.m_skip_func = ptr_of_skip_func(func_id);
+}
+
+struct Rdb_key_def_fixed_part : Rdb_key_def {
+  DATA_IO_LOAD_SAVE(Rdb_key_def_fixed_part,
+    & m_index_number
+    & m_cf_id
+    & m_index_dict_version
+    & m_index_type
+    & m_kv_format_version
+    & m_is_reverse_cf
+    & m_is_per_partition_cf
+    & m_name
+    & m_index_flags_bitmap
+    & m_total_index_flags_length
+
+    & m_ttl_rec_offset
+    & m_ttl_duration
+    & m_ttl_column
+
+    & m_max_blob_length
+    & m_pk_key_parts
+
+    & m_keyno
+    & m_key_parts
+
+    & m_ttl_pk_key_part_offset
+
+    & m_ttl_field_index
+    & m_partial_index_keyparts
+    & m_partial_index_threshold
+
+    // & m_prefix_extractor // ignore
+
+    & m_maxlength
+
+    & m_store_covered_bitmap
+  );
+};
+
+///@brief append serialized data to bytes
+void Rdb_key_def::serde_write(NonOwnerFileStream& fs) const {
+  using namespace terark;
+  auto& dio = (DioWriter&)fs;
+  dio & static_cast<const Rdb_key_def_fixed_part&>(*this);
+  dio & Rdb_index_stats::materialize({m_stats});
+  if (m_pk_part_no) {
+    dio.writeByte(1);
+    dio.ensureWrite(m_pk_part_no, sizeof(uint)* m_key_parts);
+  } else {
+    dio.writeByte(0);
+  }
+
+  assert(nullptr != m_pack_info || 0 == m_key_parts);
+  for (size_t i = 0; i < m_key_parts; ++i) {
+    Rdb_field_packing_write(dio, m_pack_info[i]);
+  }
+}
+
+///@returns consumed number of bytes
+void Rdb_key_def::serde_read(NonOwnerFileStream& fs) {
+  using namespace terark;
+  auto& dio = (DioReader&)fs;
+  dio & static_cast<Rdb_key_def_fixed_part&>(*this);
+  {
+    std::string data;
+    dio & data;
+    std::vector<Rdb_index_stats> vec;
+    int err = Rdb_index_stats::unmaterialize(data, &vec);
+    if (HA_EXIT_SUCCESS != err) {
+      abort();
+    }
+    if (vec.size() != 1) {
+      abort();
+    }
+    m_stats = std::move(vec[0]);
+  }
+  if (dio.readByte()) {
+    m_pk_part_no = MyMalloc<uint>(m_key_parts);
+    dio.ensureRead(m_pk_part_no, sizeof(uint) * m_key_parts);
+  } else {
+    m_pk_part_no = nullptr;
+  }
+
+  assert(nullptr == m_pack_info);
+  if (m_key_parts) {
+    m_pack_info = MyMalloc<Rdb_field_packing>(m_key_parts);
+    for (size_t i = 0; i < m_key_parts; ++i) {
+      new (&m_pack_info[i]) Rdb_field_packing;
+      Rdb_field_packing_read(dio, m_pack_info[i]);
+    }
   }
 }
 
@@ -1055,8 +1385,9 @@ uint Rdb_key_def::pack_index_tuple(TABLE *const tbl, uchar *const pack_buffer,
   key_restore(tbl->record[0], const_cast<uchar *>(key_tuple),
               &tbl->key_info[m_keyno], key_len);
 
-  uint n_used_parts = my_count_bits(keypart_map);
+  uint n_used_parts;
   if (keypart_map == HA_WHOLE_KEY) n_used_parts = 0;  // Full key is used
+  else n_used_parts = my_count_bits(keypart_map);
 
   /* Then, convert the record into a mem-comparable form */
   return pack_record(tbl, pack_buffer, tbl->record[0], packed_tuple, nullptr,
@@ -1287,7 +1618,7 @@ uchar *Rdb_key_def::pack_field(
   @return
     Length of the packed tuple
 */
-
+ROCKSDB_FLATTEN
 uint Rdb_key_def::pack_record(const TABLE *const tbl, uchar *const pack_buffer,
                               const uchar *const record,
                               uchar *const packed_tuple,
@@ -4808,6 +5139,113 @@ const std::shared_ptr<Rdb_key_def> &Rdb_ddl_manager::find(
   return empty;
 }
 
+///@brief append to bytes
+void Rdb_ddl_manager::write_key_def_all(NonOwnerFileStream& fs) {
+  std::vector<std::shared_ptr<Rdb_key_def> > view;
+  size_t committed = m_index_num_to_keydef.size();
+  size_t uncommitted = m_index_num_to_uncommitted_keydef.size();
+  view.reserve((committed + uncommitted) * 5 / 4);
+
+  mysql_rwlock_rdlock(&m_rwlock);
+  for (auto& kv : m_index_num_to_uncommitted_keydef) {
+    view.push_back(kv.second);
+  }
+  for (const auto& kv : m_ddl_map) {
+    Rdb_tbl_def* tbl = kv.second;
+    auto*  arr = tbl->m_key_descr_arr;
+    size_t num = tbl->m_key_count;
+    for (size_t i = 0; i < num; ++i)
+      view.push_back(arr[i]);
+  }
+  mysql_rwlock_unlock(&m_rwlock);
+
+  // don't include __system__ column family
+  auto cfh = rdb_get_cf_manager().get_cf(DEFAULT_SYSTEM_CF_NAME);
+  uint32_t sys_cf_id = cfh->GetID();
+  view.erase(std::remove_if(view.begin(), view.end(),
+   [sys_cf_id](const std::shared_ptr<Rdb_key_def>& x) {
+     return x->get_cf_id() == sys_cf_id;
+   }), view.end());
+
+  std::sort(view.begin(), view.end()); // sort - unique by ptr value
+  view.erase(std::unique(view.begin(), view.end()), view.end());
+
+  std::sort(view.begin(), view.end(), TERARK_CMP_P(get_gl_index_id(), <));
+
+  fs.write_var_uint64(view.size());
+  for (const auto& kd : view) {
+    kd->serde_write(fs);
+  }
+}
+
+///@brief append to bytes
+void Rdb_ddl_manager::write_key_def_rng(NonOwnerFileStream& fs,
+      uint32_t cf_id,
+      rocksdb::Slice smallest_user_key,
+      rocksdb::Slice largest_user_key) {
+  std::vector<std::shared_ptr<Rdb_key_def> > view;
+  view.reserve((m_index_num_to_keydef.size() +
+    m_index_num_to_uncommitted_keydef.size()) * 5 / 4);
+
+  //assert(smallest_user_key.size() >= 4);
+  //assert( largest_user_key.size() >= 4);
+  uint32_t min_index_num = 0;
+  uint32_t max_index_num = UINT32_MAX;
+  if (smallest_user_key.size() >= 4) {
+    min_index_num = rdb_netbuf_to_uint32((const uchar*)smallest_user_key.data());
+  }
+  if (largest_user_key.size() >= 4) {
+    max_index_num = rdb_netbuf_to_uint32((const uchar*)largest_user_key.data());
+  }
+
+  mysql_rwlock_rdlock(&m_rwlock);
+  for (auto& kv : m_index_num_to_uncommitted_keydef) {
+    uint32_t cf = kv.second->get_cf_id();
+    uint32_t ii = kv.second->get_index_number();
+    if (cf == cf_id && ii >= min_index_num && ii <= max_index_num)
+      view.push_back(kv.second);
+  }
+  for (const auto& kv : m_ddl_map) {
+    Rdb_tbl_def* tbl = kv.second;
+    auto*  arr = tbl->m_key_descr_arr;
+    size_t num = tbl->m_key_count;
+    for (size_t i = 0; i < num; ++i) {
+      uint32_t cf = arr[i]->get_cf_id();
+      uint32_t ii = arr[i]->get_index_number();
+      if (cf == cf_id && ii >= min_index_num && ii <= max_index_num)
+        view.push_back(arr[i]);
+    }
+  }
+  mysql_rwlock_unlock(&m_rwlock);
+
+  std::sort(view.begin(), view.end());
+  view.erase(std::unique(view.begin(), view.end()), view.end());
+
+  std::sort(view.begin(), view.end(), TERARK_CMP_P(get_gl_index_id(), <));
+
+  fs.write_var_uint64(view.size());
+  for (const auto& kd : view) {
+    kd->serde_write(fs);
+  }
+}
+
+rocksdb::Status Rdb_ddl_manager::read_key_def_all(NonOwnerFileStream& fs,
+         std::vector<std::shared_ptr<Rdb_key_def> >* vec) {
+  try {
+    size_t n = (size_t)fs.read_var_uint64();
+    vec->resize(n);
+    for (size_t i = 0, n = vec->size(); i < n; ++i) {
+      (*vec)[i] = std::make_shared<Rdb_key_def>();
+      (*vec)[i]->serde_read(fs);
+    }
+  }
+  catch (const std::exception& ex) {
+    return rocksdb::Status::Incomplete(
+      "Rdb_ddl_manager::read_key_def_all()", ex.what());
+  }
+  return rocksdb::Status::OK();
+}
+
 // this method returns the name of the table based on an index id. It acquires
 // a read lock on m_rwlock.
 const std::string Rdb_ddl_manager::safe_get_table_name(
@@ -4868,6 +5306,8 @@ void Rdb_ddl_manager::persist_stats(const bool sync) {
 
   std::vector<Rdb_index_stats> stats;
   std::vector<Rdb_index_stats> tmp_table_stats;
+  stats.reserve(local_stats2store.size());
+  tmp_table_stats.reserve(local_stats2store.size());
   for (auto &it : local_stats2store) {
     if (m_cf_manager->is_tmp_column_family(it.first.cf_id)) {
       tmp_table_stats.push_back(it.second);
@@ -5418,6 +5858,7 @@ void Rdb_dict_manager::delete_index_info(rocksdb::WriteBatch *batch,
   delete_with_prefix(batch, Rdb_key_def::AUTO_INC, gl_index_id);
 }
 
+static bool decode_index_info(const rocksdb::Slice& value, Rdb_index_info* index_info);
 bool Rdb_dict_manager::get_index_info(
     const GL_INDEX_ID &gl_index_id,
     struct Rdb_index_info *const index_info) const {
@@ -5425,8 +5866,6 @@ bool Rdb_dict_manager::get_index_info(
     index_info->m_gl_index_id = gl_index_id;
   }
 
-  bool found = false;
-  bool error = false;
   std::string value;
   Rdb_buf_writer<Rdb_key_def::INDEX_NUMBER_SIZE * 3> key_writer;
   dump_index_id(&key_writer, Rdb_key_def::INDEX_INFO, gl_index_id);
@@ -5436,12 +5875,20 @@ bool Rdb_dict_manager::get_index_info(
     if (!index_info) {
       return true;
     }
+    return decode_index_info(value, index_info);
+  }
+  return false;
+}
 
-    const uchar *const val = (const uchar *)value.c_str();
+static bool decode_index_info(const rocksdb::Slice& value, Rdb_index_info* index_info) {
+    bool found = false;
+    bool error = false;
+    const uchar *const val = (const uchar *)value.data();
     const uchar *ptr = val;
     index_info->m_index_dict_version = rdb_netbuf_to_uint16(val);
     ptr += RDB_SIZEOF_INDEX_INFO_VERSION;
 
+  {
     switch (index_info->m_index_dict_version) {
       case Rdb_key_def::INDEX_INFO_VERSION_FIELD_FLAGS:
         /* Sanity check to prevent reading bogus TTL record. */
@@ -5494,6 +5941,41 @@ bool Rdb_dict_manager::get_index_info(
   }
 
   return found;
+}
+
+void Rdb_dict_manager::get_all_index_info(std::vector<Rdb_index_info>* info_vec) const {
+  info_vec->resize(0);
+  rocksdb::ReadOptions options;
+  options.total_order_seek = true;
+  auto iter = m_db->NewIterator(options, m_system_cfh);
+  uchar searchkey[4];
+  rdb_netbuf_store_uint32(searchkey, Rdb_key_def::INDEX_INFO);
+  iter->Seek(rocksdb::Slice((char*)searchkey, 4));
+  for (; iter->Valid(); iter->Next()) {
+    auto key = iter->key();
+    auto value = iter->value();
+    if (key.size() <= 4) {
+      sql_print_error("MyTopling: get_all_index_info: key.size() = %zd, expected > 4", key.size());
+      abort();
+    }
+    const uint32_t itype = rdb_netbuf_to_uint32((const uchar*)key.data());
+    if (itype != Rdb_key_def::INDEX_INFO) {
+      break;
+    }
+    if (key.size() < 12) {
+      sql_print_error("MyTopling: get_all_index_info: key.size() = %zd, expected == 12", key.size());
+      abort();
+    }
+    info_vec->push_back(Rdb_index_info());
+    Rdb_index_info& info = info_vec->back();
+    //info.m_index_type = Rdb_key_def::INDEX_INFO;
+    info.m_gl_index_id.cf_id = rdb_netbuf_to_uint32((const uchar*)key.data() + 4);
+    info.m_gl_index_id.index_id = rdb_netbuf_to_uint32((const uchar*)key.data() + 8);
+    if (!decode_index_info(value, &info)) {
+      info_vec->pop_back();
+    }
+  }
+  delete iter;
 }
 
 bool Rdb_dict_manager::get_cf_flags(const uint32_t cf_id,
@@ -5608,6 +6090,24 @@ void Rdb_dict_manager::get_all_dropped_cfs(
 void Rdb_dict_manager::get_ongoing_index_operation(
     std::unordered_set<GL_INDEX_ID> *gl_index_ids,
     Rdb_key_def::DATA_DICT_TYPE dd_type) const {
+  auto fetch = [gl_index_ids](GL_INDEX_ID x) { gl_index_ids->insert(x); };
+  get_ongoing_index_operation_tpl(fetch, dd_type);
+}
+
+void Rdb_dict_manager::get_ongoing_index_operation(
+    std::vector<GL_INDEX_ID> *vec,
+    Rdb_key_def::DATA_DICT_TYPE dd_type) const {
+  auto fetch = [vec](GL_INDEX_ID x) { vec->push_back(x); };
+  get_ongoing_index_operation_tpl(fetch, dd_type);
+  vec->shrink_to_fit();
+  std::sort(vec->begin(), vec->end());
+}
+
+template<class ResultFetcher>
+void
+Rdb_dict_manager::get_ongoing_index_operation_tpl(
+        ResultFetcher fetch,
+        Rdb_key_def::DATA_DICT_TYPE dd_type) const {
   assert(dd_type == Rdb_key_def::DDL_DROP_INDEX_ONGOING ||
               dd_type == Rdb_key_def::DDL_CREATE_INDEX_ONGOING);
 
@@ -5640,7 +6140,7 @@ void Rdb_dict_manager::get_ongoing_index_operation(
         rdb_netbuf_to_uint32(ptr + Rdb_key_def::INDEX_NUMBER_SIZE);
     gl_index_id.index_id =
         rdb_netbuf_to_uint32(ptr + 2 * Rdb_key_def::INDEX_NUMBER_SIZE);
-    gl_index_ids->insert(gl_index_id);
+    fetch(gl_index_id);
   }
   delete it;
 }
