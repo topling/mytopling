@@ -167,11 +167,7 @@ Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
       // with this object.  Currently this happens earlier in this function
       // when we are switching to a new Rdb_key_def and when this object
       // is destructed.
-     #if 0
-      m_keydef = m_ddl_manager->safe_find(gl_index_id);
-     #else
       m_keydef = m_find_key_def(gl_index_id);
-     #endif
       if (m_keydef != nullptr) {
         // resize the array to the number of columns.
         // It will be initialized with zeroes
