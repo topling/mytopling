@@ -219,6 +219,7 @@ public:
   }
 
   // for compact worker
+  mutable uint64 m_num_deleted = 0;
   mutable uint64 m_num_expired = 0;
   mutable const CompactionParams* m_cp = nullptr;
   mutable std::shared_ptr<Rdb_compact_filter::WireData> m_wire;
@@ -226,13 +227,12 @@ public:
 
 Rdb_compact_filter::~Rdb_compact_filter() {
   if (m_num_expired) {
-    if (IsCompactionWorker()) {
-      m_fac->m_num_expired += m_num_expired;
-    }
-    else {
-      // Increment stats by num expired at the end of compaction
-      rdb_update_global_stats(ROWS_EXPIRED, m_num_expired);
-    }
+    m_fac->m_num_expired += m_num_expired;
+    // Increment stats by num expired at the end of compaction
+    rdb_update_global_stats(ROWS_EXPIRED, m_num_expired);
+  }
+  if (m_num_deleted) {
+    m_fac->m_num_deleted += m_num_deleted;
   }
 }
 
@@ -347,6 +347,28 @@ struct Rdb_compact_filter_factory_SerDe : SerDeFunc<CompactionFilterFactory> {
 std::shared_ptr<CompactionFilterFactory> New_Rdb_compact_filter_factory() {
   return std::make_shared<Rdb_compact_filter_factory>();
 }
+
+using namespace rocksdb;
+struct Compaction_Filter_Stat_Manip : PluginManipFunc<CompactionFilterFactory> {
+  void Update(CompactionFilterFactory*, const json&, const json&,
+              const SidePluginRepo &repo) const {}
+  std::string ToString(const CompactionFilterFactory &fac,
+                       const json &dump_options,
+                       const SidePluginRepo &) const {
+    if (auto f = dynamic_cast<const Rdb_compact_filter_factory *>(&fac)) {
+      json js;
+      js["Class"] = "Rdb_compact_filter_factory";
+      js["NumExpired"] = f->m_num_expired;
+      js["NumDeleted"] = f->m_num_deleted;
+
+      return JsonToString(js, dump_options);
+    }
+    THROW_InvalidArgument("Unknow CompactionFilterFactory");
+  }
+};
+
+ROCKSDB_REG_PluginManip("Rdb_compact_filter_factory", Compaction_Filter_Stat_Manip);
+
 namespace detail {
 using namespace rocksdb;
 ROCKSDB_REG_PluginSerDe(Rdb_compact_filter_factory);
