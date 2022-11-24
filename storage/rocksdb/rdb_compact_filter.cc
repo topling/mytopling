@@ -228,8 +228,10 @@ public:
 Rdb_compact_filter::~Rdb_compact_filter() {
   if (m_num_expired) {
     m_fac->m_num_expired += m_num_expired;
-    // Increment stats by num expired at the end of compaction
-    rdb_update_global_stats(ROWS_EXPIRED, m_num_expired);
+    if (!IsCompactionWorker()) {
+      // Increment stats by num expired at the end of compaction
+      rdb_update_global_stats(ROWS_EXPIRED, m_num_expired);
+    }
   }
   if (m_num_deleted) {
     m_fac->m_num_deleted += m_num_deleted;
