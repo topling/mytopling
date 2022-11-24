@@ -227,7 +227,6 @@ public:
 };
 
 Rdb_compact_filter::~Rdb_compact_filter() {
-  using terark::as_atomic;
   if (m_num_expired) {
     as_atomic(m_fac->m_num_expired) += m_num_expired;
     if (!IsCompactionWorker()) {
@@ -250,9 +249,7 @@ void Rdb_compact_filter::WireData::InitFromDB(uint32_t cf_id) {
     }
   }
   if (rdb_is_binlog_ttl_enabled()) {
-    m_snapshot_timestamp =
-        std::min(rocksdb_binlog_ttl_compaction_timestamp.load(),
-                 m_snapshot_timestamp);
+    minimize(m_snapshot_timestamp, rocksdb_binlog_ttl_compaction_timestamp);
   }
   auto dman = rdb_get_dict_manager()->get_dict_manager_selector_const(cf_id);
   dman->get_ongoing_drop_indexes(&m_del_vec);
