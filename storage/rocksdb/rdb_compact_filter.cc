@@ -15,6 +15,7 @@
 #include <time.h>
 
 #include <boost/range/algorithm/binary_search.hpp>
+#include <terark/util/atomic.hpp>
 #include <terark/util/function.hpp>
 #include <terark/valvec.hpp>
 #include <terark/io/FileStream.hpp>
@@ -226,15 +227,16 @@ public:
 };
 
 Rdb_compact_filter::~Rdb_compact_filter() {
+  using terark::as_atomic;
   if (m_num_expired) {
-    m_fac->m_num_expired += m_num_expired;
+    as_atomic(m_fac->m_num_expired) += m_num_expired;
     if (!IsCompactionWorker()) {
       // Increment stats by num expired at the end of compaction
       rdb_update_global_stats(ROWS_EXPIRED, m_num_expired);
     }
   }
   if (m_num_deleted) {
-    m_fac->m_num_deleted += m_num_deleted;
+    as_atomic(m_fac->m_num_deleted) += m_num_deleted;
   }
 }
 
@@ -309,6 +311,7 @@ struct Rdb_compact_filter_factory_SerDe : SerDeFunc<CompactionFilterFactory> {
     LittleEndianDataOutput<NonOwnerFileStream> dio(output);
     if (IsCompactionWorker()) {
       dio << fac.m_num_expired;
+      dio << fac.m_num_deleted; // non-compatible change at 2022-11-24
     }
     else {
       auto wire = std::make_shared<Rdb_compact_filter::WireData>();
@@ -337,11 +340,16 @@ struct Rdb_compact_filter_factory_SerDe : SerDeFunc<CompactionFilterFactory> {
     }
     else {
       uint64_t m_num_expired = 0;
+      uint64_t m_num_deleted = 0;
       dio >> m_num_expired;
+      dio >> m_num_deleted; // non-compatible change at 2022-11-24
       if (m_num_expired) {
+        terark::as_atomic(fac->m_num_expired) += m_num_expired;
         // Increment stats by num expired at the end of compaction
         rdb_update_global_stats(ROWS_EXPIRED, (uint)m_num_expired);
       }
+      if (m_num_deleted)
+        terark::as_atomic(fac->m_num_deleted) += m_num_deleted;
     }
   }
 };
@@ -353,10 +361,10 @@ std::shared_ptr<CompactionFilterFactory> New_Rdb_compact_filter_factory() {
 using namespace rocksdb;
 struct Compaction_Filter_Stat_Manip : PluginManipFunc<CompactionFilterFactory> {
   void Update(CompactionFilterFactory*, const json&, const json&,
-              const SidePluginRepo &repo) const {}
+              const SidePluginRepo &) const override {}
   std::string ToString(const CompactionFilterFactory &fac,
                        const json &dump_options,
-                       const SidePluginRepo &) const {
+                       const SidePluginRepo &) const override {
     if (auto f = dynamic_cast<const Rdb_compact_filter_factory *>(&fac)) {
       json js;
       js["Class"] = "Rdb_compact_filter_factory";
