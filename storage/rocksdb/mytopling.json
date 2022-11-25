@@ -148,6 +148,10 @@
     }
   },
   "MemTableRepFactory": {
+    "dyna": {
+      "class": "Dyna",
+      "params": { "real_fac": "${cspp}" }
+    },
     "cspp": {
       "class": "cspp",
       "params": {
@@ -211,7 +215,7 @@
       "//level0_slowdown_writes_trigger": 200,
       "//level0_stop_writes_trigger": 300,
       "level0_file_num_compaction_trigger": 4,
-      "memtable_factory": "${cspp}",
+      "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
       "//max_bytes_for_level_base": "400M",
       "compaction_options_level": {"L1_score_boost": 5},

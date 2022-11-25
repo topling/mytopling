@@ -1168,8 +1168,16 @@ static bool binlog_format_used = false;
 /* MySQL git hashes and dates */
 static char git_hash[] = MYSQL_GIT_HASH;
 static char git_date[] = MYSQL_GIT_DATE;
+#if 0
 static char rocksdb_git_hash[] = ROCKSDB_GIT_HASH;
 static char rocksdb_git_date[] = ROCKSDB_GIT_DATE;
+#else
+#pragma GCC diagnostic ignored "-Wcast-qual"
+extern const char* rocksdb_build_git_sha  __attribute__((weak));
+extern const char* rocksdb_build_git_date __attribute__((weak));
+static const char* rocksdb_git_hash = rocksdb_build_git_sha  ? strchr(rocksdb_build_git_sha , ':') + 1 : "none";
+static const char* rocksdb_git_date = rocksdb_build_git_date ? strchr(rocksdb_build_git_date, ':') + 1 : "none";
+#endif
 
 LEX_STRING opt_init_connect, opt_init_replica;
 
