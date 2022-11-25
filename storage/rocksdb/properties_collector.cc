@@ -814,7 +814,14 @@ struct PropertiesCollector_Stat_Manip : PluginManipFunc<TablePropertiesCollector
       js["CompactParams"]["deletes"] = f->m_params.m_deletes;
       js["CompactParams"]["window"] = f->m_params.m_window;
       js["CompactParams"]["file_size"] = f->m_params.m_file_size;
-      js["TableStatsSamplingPCT"] = f->m_table_stats_sampling_pct;
+      js["table_stats_sampling_pct"] = f->m_table_stats_sampling_pct;
+      js["rocksdb_num_sst_entry_put"] = rocksdb_num_sst_entry_put.load();
+      js["rocksdb_num_sst_entry_delete"] = rocksdb_num_sst_entry_delete.load();
+      js["rocksdb_num_sst_entry_singledelete"] = rocksdb_num_sst_entry_singledelete.load();
+      js["rocksdb_num_sst_entry_merge"] = rocksdb_num_sst_entry_merge.load();
+      js["rocksdb_num_sst_entry_other"] = rocksdb_num_sst_entry_other.load();
+      js["rocksdb_additional_compaction_triggers"] = rocksdb_additional_compaction_triggers.load();
+      js["rocksdb_compaction_sequential_deletes_count_sd"] = rocksdb_compaction_sequential_deletes_count_sd;
 
       return JsonToString(js, dump_options);
     }
