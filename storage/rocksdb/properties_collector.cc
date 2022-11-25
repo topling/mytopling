@@ -793,5 +793,35 @@ struct Rdb_tbl_prop_coll_factory_SerDe : SerDeFunc<TablePropertiesCollectorFacto
 };
 
 ROCKSDB_REG_PluginSerDe(Rdb_tbl_prop_coll_factory);
+
+struct PropertiesCollector_Stat_Manip : PluginManipFunc<TablePropertiesCollectorFactory> {
+  void Update(TablePropertiesCollectorFactory*, const json&, const json&,
+              const SidePluginRepo &) const override {}
+  std::string ToString(const TablePropertiesCollectorFactory &fac,
+                       const json &dump_options,
+                       const SidePluginRepo &) const override {
+    if (auto f = dynamic_cast<const Rdb_tbl_prop_coll_factory *>(&fac)) {
+      json js;
+      js["Class"] = f->Name();
+      js["CompactParams"]["deletes"] = f->m_params.m_deletes;
+      js["CompactParams"]["window"] = f->m_params.m_window;
+      js["CompactParams"]["file_size"] = f->m_params.m_file_size;
+      js["table_stats_sampling_pct"] = f->m_table_stats_sampling_pct;
+      js["num_sst_entry_put"] = rocksdb_num_sst_entry_put.load();
+      js["num_sst_entry_delete"] = rocksdb_num_sst_entry_delete.load();
+      js["num_sst_entry_singledelete"] = rocksdb_num_sst_entry_singledelete.load();
+      js["num_sst_entry_merge"] = rocksdb_num_sst_entry_merge.load();
+      js["num_sst_entry_other"] = rocksdb_num_sst_entry_other.load();
+      js["additional_compaction_triggers"] = rocksdb_additional_compaction_triggers.load();
+      js["compaction_sequential_deletes_count_sd"] = rocksdb_compaction_sequential_deletes_count_sd;
+
+      return JsonToString(js, dump_options);
+    }
+    THROW_InvalidArgument("Unknow TablePropertiesCollectorFactory");
+  }
+};
+
+ROCKSDB_REG_PluginManip("Rdb_tbl_prop_coll_factory", PropertiesCollector_Stat_Manip);
+
 } // namespace detail
 }  // namespace myrocks
