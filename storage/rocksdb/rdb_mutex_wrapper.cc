@@ -98,7 +98,6 @@ rocksdb::Status Rdb_cond_var::WaitFor(
     */
     // after this lambda return, old_stage will be inserted.
     // mutex is safe to be unlocked and lock again during this lambda call.
-    return true;
   };
   if (current_thd) {
     auto cons = terark::CopyConsFunc<PSI_stage_info>(old_stage);
