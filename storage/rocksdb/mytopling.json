@@ -15,6 +15,10 @@
   "AnyPlugin": {
     "sys_info": "SysInfoShower",
     "git_info": "GitInfoShower",
+    "hex_key_coder": {
+      "class": "HexUserKeyCoder",
+      "params": { "prefix_len": 4 }
+    },
     "sys_cf_key_coder": "HtmlTextUserKeyCoder",
     "html_text_key_coder": "HtmlTextUserKeyCoder"
   },
@@ -223,7 +227,7 @@
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
       "table_factory": "${dispatch}",
-      "//html_user_key_coder": "${html_text_key_coder}",
+      "html_user_key_coder": "${hex_key_coder}",
       "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
       "paranoid_file_checks": false,
       "sst_partitioner_factory": "by_prefix",
