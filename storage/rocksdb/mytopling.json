@@ -173,6 +173,7 @@
         "chunk_size": "32K",
         "use_vm": true,
         "use_hugepage": false,
+        "read_by_writer_token": true,
         "token_use_idle": true
       }
     },
