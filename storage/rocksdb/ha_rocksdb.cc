@@ -192,6 +192,7 @@ namespace detail {
 }
 using  rocksdb::json;
 static rocksdb::SidePluginRepo g_repo;
+bool g_svr_read_only = false;
 
 static int mysql_value_to_bool(struct st_mysql_value *value,
                                bool *return_value);
@@ -5787,6 +5788,7 @@ static void rocksdb_disable_file_deletions_update(
 static bool rocksdb_flush_wal(handlerton *const hton MY_ATTRIBUTE((__unused__)),
                               bool binlog_group_flush) {
   assert(rdb != nullptr);
+  if (g_svr_read_only) return HA_EXIT_SUCCESS;
 
   // Don't flush log if 2pc isn't enabled
   if (binlog_group_flush && !rocksdb_enable_2pc) return HA_EXIT_SUCCESS;
@@ -7369,6 +7371,7 @@ static int rocksdb_init_internal(void *const p) {
   rdb_open_tables.init();
   Ensure_cleanup rdb_open_tables_cleanup([]() { rdb_open_tables.free(); });
 
+if (!g_svr_read_only) {
 #ifdef HAVE_PSI_INTERFACE
   rdb_bg_thread.init(rdb_signal_bg_psi_mutex_key, rdb_signal_bg_psi_cond_key);
   rdb_drop_idx_thread.init(rdb_signal_drop_idx_psi_mutex_key,
@@ -7381,6 +7384,7 @@ static int rocksdb_init_internal(void *const p) {
   rdb_is_thread.init();
   rdb_mc_thread.init();
 #endif
+}
   rdb_collation_data_mutex.init(rdb_collation_data_mutex_key,
                                 MY_MUTEX_INIT_FAST);
   rdb_mem_cmp_space_mutex.init(rdb_mem_cmp_space_mutex_key, MY_MUTEX_INIT_FAST);
@@ -7838,10 +7842,13 @@ else {
   sql_print_information("RocksDB: Opening TransactionDB...");
   if (side_conf) {
     using namespace rocksdb;
+    json& method = g_repo.m_impl->db_js[".rocksdb"]["method"];
     json& params = g_repo.m_impl->db_js[".rocksdb"]["params"];
     params["path"] = rocksdb_datadir;
     params["txn_db_options"]["write_policy"] =
         enum_stdstr(TxnDBWritePolicy(rocksdb_write_policy));
+    g_svr_read_only = method == "TransactionDB::OpenAsSecondary";
+    fprintf(stderr, "g_svr_read_only = %d\n", g_svr_read_only);
     DB_MultiCF* dbm = nullptr;
     status = g_repo.OpenDB(&dbm);
     if (!status.ok()) {
@@ -7928,6 +7935,7 @@ else {
 
   Rdb_sst_info::init(rdb);
 
+if (!g_svr_read_only) {
   /*
     Enable auto compaction, things needed for compaction filter are finished
     initializing
@@ -7946,6 +7954,8 @@ else {
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
+}
+if (!g_svr_read_only) {
 #ifndef HAVE_PSI_INTERFACE
   auto err = rdb_bg_thread.create_thread(BG_THREAD_NAME);
 #else
@@ -8000,6 +8010,8 @@ else {
         err);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
+}
+int err;
 
   DBUG_EXECUTE_IF("rocksdb_init_failure_threads",
                   { DBUG_RETURN(HA_EXIT_FAILURE); });
@@ -8085,7 +8097,7 @@ else {
 static int rocksdb_shutdown(bool minimalShutdown) {
   int error = 0;
 
-  if (!minimalShutdown) {
+  if (!minimalShutdown && !g_svr_read_only) {
     // signal the drop index thread to stop
     rdb_drop_idx_thread.signal(true);
 

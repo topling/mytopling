@@ -70,6 +70,7 @@ void get_mem_comparable_space(const CHARSET_INFO *cs,
 #define PSI_my_malloc(size) my_malloc(PSI_NOT_INSTRUMENTED  , size, MYF(0))
 template<class T>
 T* MyMalloc(size_t num) { return (T*)PSI_my_malloc(sizeof(T) * num); }
+extern bool g_svr_read_only;
 
 struct DcompactAutoInitMySQL {
    DcompactAutoInitMySQL() {  my_thread_global_init(); }
@@ -5299,6 +5300,8 @@ void Rdb_ddl_manager::adjust_stats(
 }
 
 void Rdb_ddl_manager::persist_stats(const bool sync) {
+  if (g_svr_read_only) return;
+
   mysql_rwlock_wrlock(&m_rwlock);
   const auto local_stats2store = std::move(m_stats2store);
   m_stats2store.clear();
@@ -5708,6 +5711,7 @@ bool Rdb_dict_manager::init(rocksdb::TransactionDB *const rdb_dict,
       rocksdb::Slice(reinterpret_cast<char *>(m_key_buf_max_index_id),
                      Rdb_key_def::INDEX_NUMBER_SIZE);
 
+if (!g_svr_read_only) {
   resume_drop_indexes();
   rollback_ongoing_index_creation();
 
@@ -5728,6 +5732,7 @@ bool Rdb_dict_manager::init(rocksdb::TransactionDB *const rdb_dict,
                                   enable_remove_orphaned_dropped_cfs)) {
     return HA_EXIT_FAILURE;
   }
+}
 
   initialized = true;
   return HA_EXIT_SUCCESS;
@@ -6386,6 +6391,10 @@ void Rdb_dict_manager::rollback_ongoing_index_creation() const {
 
 void Rdb_dict_manager::rollback_ongoing_index_creation(
     const std::unordered_set<GL_INDEX_ID> &gl_index_ids) const {
+  if (gl_index_ids.empty()) {
+    return;
+  }
+
   const std::unique_ptr<rocksdb::WriteBatch> wb = begin();
   rocksdb::WriteBatch *const batch = wb.get();
 
