@@ -15,6 +15,7 @@ export LD_LIBRARY_PATH=/node-shared/lib:${LD_LIBRARY_PATH}
 export PATH=/node-shared/mytopling-${type}/bin:${PATH}
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling.json
+#export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling-community.json
 export JsonOptionsRepo_DebugLevel=2
 export csppDebugLevel=0
 export TOPLINGDB_CACHE_SST_FILE_ITER=1

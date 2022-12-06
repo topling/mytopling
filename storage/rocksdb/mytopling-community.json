@@ -1,0 +1,283 @@
+{
+  "http": {
+    "document_root": "/nvme-shared/mytopling/datadir/data",
+    "hide_files_patterns": "*.sst|*.dbtmp",
+    "num_threads": "50",
+    "listening_ports": "2013"
+  },
+  "setenv": {
+    "DictZipBlobStore_zipThreads": 32
+  },
+  "permissions": {
+    "web_compact": true,
+    "//end": "end"
+  },
+  "AnyPlugin": {
+    "sys_info": "SysInfoShower",
+    "git_info": "GitInfoShower",
+    "hex_key_coder": {
+      "class": "HexUserKeyCoder",
+      "params": { "prefix_len": 4 }
+    },
+    "sys_cf_key_coder": "HtmlTextUserKeyCoder",
+    "html_text_key_coder": "HtmlTextUserKeyCoder"
+  },
+  "Statistics": {
+    "stat": {
+      "class": "default",
+      "params": {
+        "discard_tickers": [
+          "rocksdb.memtable.payload.bytes.at.flush",
+          "rocksdb.memtable.garbage.bytes.at.flush",
+          "rocksdb.blobdb",
+          "rocksdb.row.cache",
+          "rocksdb.number.block",
+          "rocksdb.persistent",
+          "rocksdb.sim.block.cache"
+        ],
+        "discard_histograms": [
+          "rocksdb.blobdb",
+          "# comment end of array"
+        ],
+        "stats_level": "kExceptDetailedTimers"
+      }
+    }
+  },
+  "CompactionFilterFactory": {
+    "compact_filter": {
+      "class": "Rdb_compact_filter_factory",
+      "params": {}
+    }
+  },
+  "TableFactory": {
+    "auto_sort": {
+      "class": "VecAutoSortTable",
+      "params": {
+        "debugLevel": 0,
+        "fileWriteBufferSize": "64K",
+        "collectProperties": false,
+        "forceNeedCompact": true
+      }
+    },
+    "bb": {
+      "class": "BlockBasedTable",
+      "params": {}
+    },
+    "sng": {
+      "class": "SingleFastTable",
+      "params": {
+        "indexType": "MainPatricia"
+      }
+    },
+    "dispatch": {
+      "class": "DispatcherTable",
+      "params": {
+        "default": "fast",
+        "readers": {
+          "VecAutoSortTable": "auto_sort",
+          "BlockBasedTable": "bb",
+          "SingleFastTable": "sng"
+        },
+        "level_writers": [
+          "sng", "sng",
+          "bb", "bb", "bb", "bb", "bb"
+        ]
+      }
+    }
+  },
+  "MemTableRepFactory": {
+    "dyna": {
+      "class": "Dyna",
+      "params": { "real_fac": "${cspp}" }
+    },
+    "cspp": {
+      "class": "cspp",
+      "params": {
+        "mem_cap": "2G",
+        "use_vm": true,
+        "use_hugepage": true,
+        "read_by_writer_token": true,
+        "token_use_idle": true
+      }
+    },
+    "cspp_small": {
+      "class": "cspp",
+      "params": {
+        "mem_cap": "32M",
+        "chunk_size": "32K",
+        "use_vm": true,
+        "use_hugepage": false,
+        "read_by_writer_token": true,
+        "token_use_idle": true
+      }
+    },
+    "skiplist": {
+      "class": "SkipList",
+      "params": { "lookahead": 0 }
+    }
+  },
+  "WBWIFactory": {
+    "cspp": {
+      "class": "CSPP_WBWI",
+      "params": {
+        "trie_reserve_cap": "128K",
+        "data_reserve_cap": "512K"
+      }
+    },
+    "skiplist": {
+      "class": "SkipList",
+      "params": {}
+    }
+  },
+  "MergeOperator": {
+    "system_merge_op": {
+      "class": "Rdb_system_merge_op",
+      "params": {}
+    }
+  },
+  "TablePropertiesCollectorFactory": {
+    "tbl_prop_coll": {
+      "class": "Rdb_tbl_prop_coll_factory",
+      "params": {}
+    }
+  },
+  "SstPartitionerFactory": {
+    "by_prefix": {
+      "class": "FixedPrefix",
+      "params": { "prefix_len": 4 }
+    }
+  },
+  "CFOptions": {
+    "default": {
+      "num_levels": 7, "max_bytes_for_level_multiplier": 10,
+      "disable_auto_compactions": true,
+      "level0_file_num_compaction_trigger": 4,
+      "memtable_factory": "${dyna}",
+      "max_write_buffer_number": 4, "write_buffer_size": "1G",
+      "compaction_options_level": {"L1_score_boost": 5},
+      "target_file_size_base": "32M", "target_file_size_multiplier": 2,
+      "soft_pending_compaction_bytes_limit": "1T",
+      "hard_pending_compaction_bytes_limit": "2T",
+      "table_factory": "${bb}",
+      "html_user_key_coder": "${hex_key_coder}",
+      "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
+      "paranoid_file_checks": false,
+      "sst_partitioner_factory": "by_prefix",
+      "compression_per_level": [
+        "kNoCompression", "kNoCompression",
+        "kZSTD", "kZSTD","kZSTD","kZSTD", "kZSTD"
+      ],
+      "compaction_executor_factory": "dcompact",
+      "compaction_filter_factory": "${compact_filter}"
+    },
+    "__system__": {
+      "num_levels": 7, "max_bytes_for_level_multiplier": 10,
+      "disable_auto_compactions": true,
+      "level0_file_num_compaction_trigger": 4,
+      "memtable_factory": "${cspp_small}",
+      "max_write_buffer_number": 4, "write_buffer_size": "16M",
+      "compaction_options_level": {"L1_score_boost": 5},
+      "target_file_size_base": "16M", "target_file_size_multiplier": 2,
+      "table_factory": "${bb}",
+      "merge_operator": "${system_merge_op}"
+    }
+  },
+  "DBOptions": {
+    "dbopt": {
+      "allow_fdatasync": false,
+      "advise_random_on_open": true,
+      "create_if_missing": true,
+      "create_missing_column_families": true,
+      "max_background_flushes": 2,
+      "max_background_compactions": 32,
+      "max_subcompactions": 1,
+      "max_level1_subcompactions": 17,
+      "//write_buffer_manager": "${wbm}",
+      "inplace_update_support": false,
+      "WAL_size_limit_MB": 0,
+      "wal_dir": "/dev/shm/mytopling/wal",
+      "//db_paths" : [
+        "/path/to/local/filesystem/for/level/0",
+        "/path/to/nfs/filesystem/for/level/1",
+        "/path/to/nfs/filesystem/for/level/2/to/level/n"
+      ],
+      "db_log_dir": "/nvme-shared/mytopling/log",
+      "wbwi_factory": "${cspp}",
+      "statistics": "${stat}",
+      "allow_mmap_reads": false
+    }
+  },
+  "TransactionDBMutexFactory": {
+    "mtx_fac": {
+      "class": "Rdb_mutex_factory",
+      "params": {}
+    }
+  },
+  "databases": {
+    ".rocksdb": {
+      "method": "TransactionDB::Open",
+      "params": {
+        "db_options": "${dbopt}",
+        "txn_db_options": {
+          "key_prefix_len": 4,
+          "super_stripes": 1,
+          "num_stripes": 19,
+          "transaction_lock_timeout": 2000,
+          "custom_mutex_factory": "${mtx_fac}"
+        },
+        "column_families": {
+          "default": "${default}",
+          "__system__": "${__system__}"
+        },
+        "path": "/nvme-shared/mytopling/datadir/.rocksdb"
+      }
+    }
+  },
+  "open": "${.rocksdb}",
+  "CompactionExecutorFactory": {
+    "dcompact": {
+      "class": "DcompactEtcd",
+      "params": {
+        "//info_log_level": "DEBUG_LEVEL",
+        "estimate_speed": "10M",
+        "timeout_multiplier": 5.0,
+        "//2/etcd": {
+          "url": "etcd.topling.cn:2379",
+          "ca": "/node-shared/certs/ca.pem",
+          "cert": "/node-shared/certs/topling-client-chain.pem",
+          "key": "/node-shared/certs/topling-client-key.pem",
+          "//username": "leipeng",
+          "//password": "topling@123",
+          "load_balancer": "round_robin"
+        },
+        "//etcd": {
+          "url": "https://dell2.topling.cn:2379",
+          "ca": "/node-shared/certs/ca.pem",
+          "cert": "/node-shared/certs/topling-client-chain.pem",
+          "key": "/node-shared/certs/topling-client-key.pem",
+          "load_balancer": "round_robin"
+        },
+        "etcd_root": "/dcompact-worker-cluster-1",
+
+        "hoster_root": "/nvme-shared/mytopling/datadir/.rocksdb",
+        "instance_name": "mytopling-test-instance",
+        "nfs_mnt_flags": "",
+        "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
+        "nfs_mnt_opt": "vers=3,noatime",
+        "web_domain": "topling.in",
+        "http_max_retry": 99,
+        "http_timeout": 10,
+        "http_workers": [
+          "//http://192.168.100.10:8080",
+          { "url": "//http://192.168.100.3:8080", "web_url": "http://dell3.topling.in:2011" },
+          { "url": "//http://192.168.100.116:8081", "web_url": "http://dell3.topling.in:2011" },
+          { "url": "//http://192.168.100.117:8081", "base_url": "http://192.168.31.3:55071", "web_url": "http://dell3.topling.in:2011" },
+          "//http://commented-host:8080",
+          "//end_http_workers"
+        ],
+        "//dcompact_min_level": "set as 20 can disable dcompact in fact",
+        "dcompact_min_level": 20
+      }
+    }
+  }
+}
