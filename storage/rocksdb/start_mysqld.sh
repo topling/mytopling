@@ -90,7 +90,7 @@ if [ $# -eq 0 ]; then
     #--rocksdb_bulk_load
     --rocksdb_allow_concurrent_memtable_write=on
     --rocksdb_force_compute_memtable_stats=off
-   --rocksdb_write_disable_wal=ON  --rocksdb_flush_log_at_trx_commit=0
+   #--rocksdb_write_disable_wal=ON  --rocksdb_flush_log_at_trx_commit=0
    #--rocksdb_write_disable_wal=OFF --rocksdb_flush_log_at_trx_commit=2
    #--rocksdb_info_log_level=debug_level
    #--rocksdb_bulk_load=ON
