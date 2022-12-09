@@ -72,7 +72,7 @@
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
-        "default": "fast",
+        "default": "sng",
         "readers": {
           "VecAutoSortTable": "auto_sort",
           "BlockBasedTable": "bb",
