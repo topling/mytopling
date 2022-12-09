@@ -90,13 +90,6 @@
       "class": "BlockBasedTable",
       "params": {}
     },
-    "fast": {
-      "class": "ToplingFastTable",
-      "params": {
-        "indexType": "MainPatricia",
-        "keyPrefixLen": 0
-      }
-    },
     "sng": {
       "class": "SingleFastTable",
       "params": {
@@ -136,12 +129,11 @@
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
-        "default": "fast",
+        "default": "sng",
         "readers": {
           "VecAutoSortTable": "auto_sort",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng",
-          "ToplingFastTable": "fast",
           "ToplingZipTable": "dzip"
         },
         "level_writers": [
