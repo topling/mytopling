@@ -17,14 +17,9 @@ public:
   void Update(const json&, const json&, const SidePluginRepo&) override {}
   std::string ToString(const json& dump_options, const SidePluginRepo&)
   const override {
-    json js, jtop, jzip;
+    void JS_ModuleGitInfo_Add(json&, bool html);
     bool html = JsonSmartBool(dump_options, "html", true);
-
-    if (JS_ZipTable_AddVersion) {
-      JS_ZipTable_AddVersion(jzip, html);
-    }
-    JS_TopTable_AddVersion(jtop, html);
-
+    json js;
     std::string mysql_git_hash(MYSQL_GIT_HASH);
     js["mytopling"]["git_sha"] = html ?
         "<a href=\"https://github.com/topling/mytopling/commit/"
@@ -32,27 +27,7 @@ public:
         + mysql_git_hash + "</a>"
         : mysql_git_hash;
     js["mytopling"]["git_date"] = MYSQL_GIT_DATE;
-
-    js["toplingdb"] = jtop["version"]["rocksdb"];
-
-    constexpr uint SHA_BEGIN_POS = 33;
-    std::string git_cspp_mem =
-        std::string(git_version_hash_info_cspp_memtable()).substr(SHA_BEGIN_POS);
-    std::string git_cspp_wbwi =
-        std::string(git_version_hash_info_cspp_wbwi()).substr(SHA_BEGIN_POS);
-    if (html) {
-      js["cspp-memtable"] = insert_html_link_and_symbol(
-          git_cspp_mem, "https://github.com/topling/cspp-memtable/commit/");
-      js["cspp-wbwi"] = insert_html_link_and_symbol(
-          git_cspp_wbwi, "https://github.com/topling/cspp-wbwi/commit/");
-    } else {
-      js["cspp-memtable"] = git_cspp_mem;
-      js["cspp-wbwi"] = git_cspp_wbwi;
-    }
-    js.merge_patch(jzip["version"]);
-    js["topling-sst"] = jtop["version"]["topling-sst"];
-    js["topling-zip"] = jtop["version"]["topling-zip"];
-
+    JS_ModuleGitInfo_Add(js, html);
     return JsonToString(js, dump_options);
   }
 
