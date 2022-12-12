@@ -94,7 +94,7 @@ if [ $# -eq 0 ]; then
     #--rocksdb_bulk_load
     --rocksdb_allow_concurrent_memtable_write=on
     --rocksdb_force_compute_memtable_stats=off
-   --rocksdb_write_disable_wal=ON  --rocksdb_flush_log_at_trx_commit=0
+    --rocksdb_write_disable_wal=ON  --rocksdb_flush_log_at_trx_commit=0
    #--rocksdb_write_disable_wal=OFF --rocksdb_flush_log_at_trx_commit=2
    #--rocksdb_info_log_level=debug_level
    #--rocksdb_bulk_load=ON
@@ -116,6 +116,7 @@ fi
 binlog_args=(
   --disable-log-bin --gtid_mode=OFF --enforce_gtid_consistency=OFF
  #--sync_binlog=0 --binlog-order-commits=OFF
+  --server-id=2
 )
 #dbg='numactl -N 0 --preferred 0'
 ${dbg} mysqld ${common_args[@]} ${binlog_args[@]} ${innodb_args[@]} ${rocksdb_args[@]} $@

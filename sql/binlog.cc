@@ -9208,6 +9208,11 @@ bool MYSQL_BIN_LOG::write_event(Log_event *event_info,
   bool error = true;
   DBUG_TRACE;
 
+  extern bool binlog_is_ddl(const LEX*);
+  if (binlog_filter->ddl_only() && !binlog_is_ddl(thd->lex)) {
+    return false; // ok
+  }
+
   if (thd->binlog_evt_union.do_union) {
     /*
       In Stored function; Remember that function call caused an update.
@@ -13820,6 +13825,30 @@ const char *get_locked_tables_mode_name(
 }
 #endif
 
+bool binlog_is_ddl(const LEX* lex) {
+  if (lex->create_info && lex->create_info->options & HA_LEX_CREATE_TMP_TABLE) {
+    return false; // do not log
+  }
+  bool ret = false;
+  switch (lex->sql_command) {
+    case SQLCOM_CREATE_DB:
+    case SQLCOM_CREATE_TABLE:
+    case SQLCOM_CREATE_INDEX:
+    case SQLCOM_ALTER_DB:
+    case SQLCOM_ALTER_TABLE:
+    case SQLCOM_DROP_TABLE:
+    case SQLCOM_DROP_INDEX:
+    case SQLCOM_DROP_DB:
+    case SQLCOM_DROP_VIEW:
+      ret = true; // log
+      break;
+    default:
+      ret = false; // do not log this ddl event
+      break;
+  }
+  return ret;
+}
+
 /**
   Decide on logging format to use for the statement and issue errors
   or warnings as needed.  The decision depends on the following
@@ -14419,6 +14448,10 @@ int THD::decide_logging_format(TABLE_LIST *tables) {
       clear_binlog_local_stmt_filter();
     }
 
+    if (binlog_filter->ddl_only() && !binlog_is_ddl(lex)) {
+      m_binlog_filter_state = BINLOG_FILTER_SET;
+    }
+
     if (!error &&
         !is_dml_gtid_compatible(write_to_some_transactional_table,
                                 write_to_some_non_transactional_table,
@@ -14497,9 +14530,11 @@ int THD::decide_logging_format(TABLE_LIST *tables) {
         ("decision: no logging since "
          "mysql_bin_log.is_open() = %d "
          "and (options & OPTION_BIN_LOG) = 0x%llx "
+         "and binlog_ddl_only = %d"
          "and binlog_format = %lu "
          "and binlog_filter->db_ok(db) = %d",
          mysql_bin_log.is_open(), (variables.option_bits & OPTION_BIN_LOG),
+         binlog_filter->ddl_only(),
          variables.binlog_format, binlog_filter->db_ok(m_db.str)));
 
     for (TABLE_LIST *table = tables; table; table = table->next_global) {
@@ -15616,6 +15651,11 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, const char *query_arg,
   DBUG_PRINT("enter",
              ("qtype: %s  query: '%s'", show_query_type(qtype), query_arg));
   assert(query_arg && mysql_bin_log.is_open());
+
+  if (binlog_filter->ddl_only() && !binlog_is_ddl(lex)) {
+    m_binlog_filter_state = BINLOG_FILTER_SET;
+    return 0;
+  }
 
   if (get_binlog_local_stmt_filter() == BINLOG_FILTER_SET) {
     /*

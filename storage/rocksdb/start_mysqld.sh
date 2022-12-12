@@ -46,7 +46,7 @@ common_args=(
   --max_connections=8000
   --max_heap_table_size=67108864
   --read_buffer_size=1048576
- #--skip_name_resolve=ON
+  --skip_name_resolve=ON
   --table_open_cache=8192
   --thread_cache_size=200
  #--thread_handling=pool-of-threads
@@ -110,8 +110,9 @@ if [ $type = dbg ]; then
 fi
 #dbg="gdb --args"
 binlog_args=(
-  --disable-log-bin --gtid_mode=OFF --enforce_gtid_consistency=OFF
+ #--disable-log-bin --gtid_mode=OFF --enforce_gtid_consistency=OFF
  #--sync_binlog=0 --binlog-order-commits=OFF
+  --binlog-ddl-only=ON --binlog-order-commits=ON
 )
 #dbg='numactl -N 0 --preferred 0'
 ${dbg} mysqld ${common_args[@]} ${binlog_args[@]} ${innodb_args[@]} ${rocksdb_args[@]} $@

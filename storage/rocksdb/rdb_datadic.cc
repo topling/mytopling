@@ -5745,6 +5745,7 @@ std::unique_ptr<rocksdb::WriteBatch> Rdb_dict_manager::begin() const {
 void Rdb_dict_manager::put_key(rocksdb::WriteBatchBase *const batch,
                                const rocksdb::Slice &key,
                                const rocksdb::Slice &value) const {
+ if (!g_svr_read_only)
   batch->Put(m_system_cfh, key, value);
 }
 
@@ -5757,6 +5758,7 @@ rocksdb::Status Rdb_dict_manager::get_value(const rocksdb::Slice &key,
 
 void Rdb_dict_manager::delete_key(rocksdb::WriteBatchBase *batch,
                                   const rocksdb::Slice &key) const {
+ if (!g_svr_read_only)
   batch->Delete(m_system_cfh, key);
 }
 
@@ -5769,6 +5771,7 @@ rocksdb::Iterator *Rdb_dict_manager::new_iterator() const {
 
 int Rdb_dict_manager::commit(rocksdb::WriteBatch *const batch,
                              const bool sync) const {
+  if (g_svr_read_only) return HA_EXIT_SUCCESS;
   if (!batch) return HA_ERR_ROCKSDB_COMMIT_FAILED;
   int res = HA_EXIT_SUCCESS;
   rocksdb::WriteOptions options;
@@ -5810,6 +5813,7 @@ void Rdb_dict_manager::delete_with_prefix(
 
 void Rdb_dict_manager::add_or_update_index_cf_mapping(
     rocksdb::WriteBatch *batch, struct Rdb_index_info *const index_info) const {
+  if (g_svr_read_only) return;
   Rdb_buf_writer<Rdb_key_def::INDEX_NUMBER_SIZE * 3> key_writer;
   dump_index_id(&key_writer, Rdb_key_def::INDEX_INFO,
                 index_info->m_gl_index_id);
@@ -5828,6 +5832,7 @@ void Rdb_dict_manager::add_or_update_index_cf_mapping(
 void Rdb_dict_manager::add_cf_flags(rocksdb::WriteBatch *const batch,
                                     const uint32_t cf_id,
                                     const uint32_t cf_flags) const {
+  if (g_svr_read_only) return;
   assert(batch != nullptr);
 
   Rdb_buf_writer<Rdb_key_def::INDEX_NUMBER_SIZE * 2> key_writer;
@@ -6280,6 +6285,7 @@ bool Rdb_dict_manager::is_drop_index_empty() const {
 void Rdb_dict_manager::add_drop_table(
     std::shared_ptr<Rdb_key_def> *const key_descr, const uint32 n_keys,
     rocksdb::WriteBatch *const batch) const {
+  if (g_svr_read_only) return;
   std::unordered_set<GL_INDEX_ID> dropped_index_ids;
   for (uint32 i = 0; i < n_keys; i++) {
     dropped_index_ids.insert(key_descr[i]->get_gl_index_id());
@@ -6296,6 +6302,7 @@ void Rdb_dict_manager::add_drop_table(
 void Rdb_dict_manager::add_drop_index(
     const std::unordered_set<GL_INDEX_ID> &gl_index_ids,
     rocksdb::WriteBatch *const batch) const {
+  if (g_svr_read_only) return;
   for (const auto &gl_index_id : gl_index_ids) {
     log_start_drop_index(gl_index_id, "Begin");
     start_drop_index(batch, gl_index_id);
@@ -6412,6 +6419,7 @@ void Rdb_dict_manager::rollback_ongoing_index_creation(
 void Rdb_dict_manager::log_start_drop_table(
     const std::shared_ptr<Rdb_key_def> *const key_descr, const uint32 n_keys,
     const char *const log_action) const {
+  if (g_svr_read_only) return;
   for (uint32 i = 0; i < n_keys; i++) {
     log_start_drop_index(key_descr[i]->get_gl_index_id(), log_action);
   }

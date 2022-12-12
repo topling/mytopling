@@ -13809,6 +13809,7 @@ rocksdb::Range ha_rocksdb::get_range(
 }
 
 static int delete_range(const std::unordered_set<GL_INDEX_ID> &indices) {
+  if (g_svr_read_only) return 0;
   int ret = 0;
   rocksdb::WriteBatch batch;
   for (const auto &d : indices) {
