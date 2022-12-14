@@ -229,6 +229,7 @@
           "default": "${default}",
           "__system__": "${__system__}"
         },
+        "auto_catch_up_delay_ms": 100,
         "//path": "/nvme-shared/mytopling/datadir/.rocksdb"
       }
     }
