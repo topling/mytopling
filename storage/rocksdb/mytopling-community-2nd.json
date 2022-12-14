@@ -215,7 +215,7 @@
   },
   "databases": {
     ".rocksdb": {
-      "method": "TransactionDB::Open",
+      "method": "TransactionDB::OpenAsSecondary",
       "params": {
         "db_options": "${dbopt}",
         "txn_db_options": {
