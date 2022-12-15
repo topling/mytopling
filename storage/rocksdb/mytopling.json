@@ -106,6 +106,7 @@
         "indexTempLevel": 0,
         "indexCacheRatio": 0.0,
         "indexMemAsResident": false,
+        "builderMinLevel": 6,
         "acceptCompressionRatio": 0.8,
         "enableStatistics": false,
         "warmupLevel": "kIndex",
@@ -314,6 +315,7 @@
     "dcompact": {
       "class": "DcompactEtcd",
       "params": {
+        "allow_fallback_to_local": true,
         "//info_log_level": "DEBUG_LEVEL",
         "estimate_speed": "10M",
         "timeout_multiplier": 5.0,
@@ -342,7 +344,7 @@
         "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
         "nfs_mnt_opt": "vers=3,noatime",
         "web_domain": "topling.in",
-        "http_max_retry": 99,
+        "http_max_retry": 3,
         "http_timeout": 10,
         "http_workers": [
           "//http://192.168.100.10:8080",
