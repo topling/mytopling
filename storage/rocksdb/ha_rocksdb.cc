@@ -8208,6 +8208,9 @@ static int rocksdb_shutdown(bool minimalShutdown) {
     cf_manager.cleanup();
 
     if (side_conf) {
+      rocksdb::FlushOptions fo;
+      fo.allow_write_stall = true;
+      rdb->Flush(fo);
       g_repo.CloseAllDB(false); // dont delete rdb and cf_handles
     }
     delete rdb;
