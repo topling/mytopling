@@ -117,6 +117,7 @@ binlog_args=(
   --disable-log-bin --gtid_mode=OFF --enforce_gtid_consistency=OFF
  #--sync_binlog=0 --binlog-order-commits=OFF
   --server-id=2
+  --replica_parallel_workers=0
 )
 #dbg='numactl -N 0 --preferred 0'
 ${dbg} mysqld ${common_args[@]} ${binlog_args[@]} ${innodb_args[@]} ${rocksdb_args[@]} $@
