@@ -7838,6 +7838,11 @@ else {
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
+  if (rocksdb_enable_tmp_table) {
+    sql_print_error("MyTopling: rocksdb_enable_tmp_table must be off");
+    DBUG_RETURN(HA_EXIT_FAILURE);
+  }
+
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: Opening TransactionDB...");
   if (side_conf) {
@@ -7848,7 +7853,7 @@ else {
     params["txn_db_options"]["write_policy"] =
         enum_stdstr(TxnDBWritePolicy(rocksdb_write_policy));
     g_svr_read_only = method == "TransactionDB::OpenAsSecondary";
-    fprintf(stderr, "g_svr_read_only = %d\n", g_svr_read_only);
+    //fprintf(stderr, "g_svr_read_only = %d\n", g_svr_read_only);
     DB_MultiCF* dbm = nullptr;
     status = g_repo.OpenDB(&dbm);
     if (!status.ok()) {
