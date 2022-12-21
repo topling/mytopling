@@ -238,30 +238,12 @@
     "dcompact": {
       "class": "DcompactEtcd",
       "params": {
-        "//info_log_level": "DEBUG_LEVEL",
+        "allow_fallback_to_local": true,
+        "info_log_level": "INFO_LEVEL",
         "estimate_speed": "10M",
         "timeout_multiplier": 5.0,
-        "//2/etcd": {
-          "url": "etcd.topling.cn:2379",
-          "ca": "/node-shared/certs/ca.pem",
-          "cert": "/node-shared/certs/topling-client-chain.pem",
-          "key": "/node-shared/certs/topling-client-key.pem",
-          "//username": "leipeng",
-          "//password": "topling@123",
-          "load_balancer": "round_robin"
-        },
-        "//etcd": {
-          "url": "https://dell2.topling.cn:2379",
-          "ca": "/node-shared/certs/ca.pem",
-          "cert": "/node-shared/certs/topling-client-chain.pem",
-          "key": "/node-shared/certs/topling-client-key.pem",
-          "load_balancer": "round_robin"
-        },
-        "etcd_root": "/dcompact-worker-cluster-1",
-
         "hoster_root": "/nvme-shared/mytopling/datadir/.rocksdb",
         "instance_name": "mytopling-test-instance",
-        "nfs_mnt_flags": "",
         "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
         "nfs_mnt_opt": "vers=3,noatime",
         "web_domain": "topling.in",
