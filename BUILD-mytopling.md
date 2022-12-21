@@ -2,7 +2,7 @@
 # 0. Prerequisite
 Install required packages.
 ```bash
-sudo yum config-manager --set-enabled powertool
+sudo yum config-manager --set-enabled powertools
 sudo yum install -y liburing-devel
 sudo yum install -y openssl-devel \
                     ncurses-devel \
