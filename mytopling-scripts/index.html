@@ -1,0 +1,65 @@
+<html>
+    <head>
+    <title>SidePlugins</title>
+    <link rel="stylesheet" type="text/css" href="/style.css">
+    </head>
+    <script>
+        function grafana() {
+            let url = new URL(location.href);
+            let idx = url.host.lastIndexOf(":8000");
+            if (idx > 0) {
+                let gra = url.host.substr(0, idx) + ":3000";
+                location.href = "http://" + gra;
+            } else {
+                alert("not at online site");
+            }
+        }
+    </script>
+    <body>
+        <p><a href="https://topling.cn">Topling Inc.</a> This is <strong>Engine Inspector</strong>, for metrics, see <a href='javascript:grafana()'>Grafana</a>!</p>
+        <p>Frequent SidePlugins</p>
+        <table border=1><tbody>
+            <tr align="left">
+                <th>name</th>
+                <th>type</th>
+            </tr>
+            <tr><td><a href="/db">db</a></td><td>DataBase</td></tr>
+            <tr><td><a href="/any_plugin">any_plugin</a></td><td>AnyPlugin</td></tr>
+            <tr><td><a href="/props">props</a></td><td>CFPropertiesWebView</td></tr>
+            <tr><td><a href="/cf_options">cf_options</a></td><td>CFOptions</td></tr>
+            <tr><td><a href="/db_options">db_options</a></td><td>DBOptions</td></tr>
+            <tr><td><a href="/memtable_factory">memtable_factory</a></td><td>MemTableRepFactory</td></tr>
+            <tr><td><a href="/statistics">statistics</a></td><td>Statistics</td></tr>
+            <tr><td><a href="/table_factory">table_factory</a></td><td>TableFactory</td></tr>
+            <tr><td><a href="/compaction_executor_factory">compaction_executor_factory</a></td><td>CompactionExecutorFactory</td></tr>
+            <tr><td><a href="/compaction_filter_factory">compaction_filter_factory</a></td><td>CompactionFilterFactory</td></tr>
+            <tr><td><a href="/options">options</a></td><td>Options</td></tr>
+            <tr><td><a href="/merge_operator">merge_operator</a></td><td>MergeOperator</td></tr>
+        </tbody></table>
+        <hr/>
+        <p>Other SidePlugins</p>
+        <table border=1><tbody>
+            <tr><td><a href="/cache">cache</a></td><td>Cache</td></tr>
+            <tr><td><a href="/persistent_cache">persistent_cache</a></td><td>PersistentCache</td></tr>
+            <tr><td><a href="/comparator">comparator</a></td><td>Comparator</td></tr>
+            <tr><td><a href="/compaction_thread_limiter">compaction_thread_limiter</a></td><td>ConcurrentTaskLimiter</td></tr>
+            <tr><td><a href="/env">env</a></td><td>Env</td></tr>
+            <tr><td><a href="/event_listener">event_listener</a></td><td>EventListener</td></tr>
+            <tr><td><a href="/file_checksum_gen_factory">file_checksum_gen_factory</a></td><td>FileChecksumGenFactory</td></tr>
+            <tr><td><a href="/file_system">file_system</a></td><td>FileSystem</td></tr>
+            <tr><td><a href="/filter_policy">filter_policy</a></td><td>FilterPolicy</td></tr>
+            <tr><td><a href="/flush_block_policy_factory">flush_block_policy_factory</a></td><td>FlushBlockPolicyFactory</td></tr>
+            <tr><td><a href="/info_log">info_log</a></td><td>Logger</td></tr>
+            <tr><td><a href="/memory_allocator">memory_allocator</a></td><td>MemoryAllocator</td></tr>
+            <tr><td><a href="/rate_limiter">rate_limiter</a></td><td>RateLimiter</td></tr>
+            <tr><td><a href="/sst_file_manager">sst_file_manager</a></td><td>SstFileManager</td></tr>
+            <tr><td><a href="/statistics">statistics</a></td><td>Statistics</td></tr>
+            <tr><td><a href="/table_properties_collector_factory">table_properties_collector_factory</a></td><td>TablePropertiesCollectorFactory</td></tr>
+            <tr><td><a href="/txn_db_mutex_factory">txn_db_mutex_factory</a></td><td>TransactionDBMutexFactory</td></tr>
+            <tr><td><a href="/slice_transform">slice_transform</a></td><td>SliceTransform</td></tr>
+            <tr><td><a href="/sst_partitioner_factory">sst_partitioner_factory</a></td><td>SstPartitionerFactory</td></tr>
+            <tr><td><a href="/compaction_executor_factory">compaction_executor_factory</a></td><td>CompactionExecutorFactory</td></tr>
+            <tr><td><a href="/write_buffer_manager">write_buffer_manager</a></td><td>WriteBufferManager</td></tr>
+        </tbody></table>
+    </body>
+</html>

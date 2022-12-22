@@ -1,0 +1,58 @@
+table {
+  border-collapse: collapse;
+}
+
+table td,
+table th {
+  padding: 5px;
+  border-top: 1px solid rgb(190, 190, 190);
+  border-bottom: 1px solid rgb(190, 190, 190);
+  /*text-align: center;*/
+}
+
+table table {
+  border-style: hidden;
+}
+
+table tr:hover {
+  background-color: rgb(250, 250, 250);
+}
+
+table table tr:hover {
+  background-color: rgb(240, 240, 240);
+}
+
+table table table tr:hover {
+  background-color: rgb(230, 230, 230);
+}
+
+table table table table tr:hover {
+  background-color: rgb(220, 220, 220);
+}
+
+a {
+  text-decoration: none;
+}
+
+a:link {
+  color: #0969da;
+  /*
+  padding: 3px;
+  */
+}
+
+/*
+a:visited {
+  color: #0969da;
+}
+*/
+
+a:hover {
+  color: #0969da;
+  text-decoration: underline;
+}
+
+a:active {
+  color: #0969da;
+  text-decoration: underline;
+}
