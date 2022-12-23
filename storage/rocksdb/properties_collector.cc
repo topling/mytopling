@@ -178,7 +178,7 @@ Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
       else {
         using namespace rocksdb;
         rocksdb::Logger* info_log = nullptr;
-        WARN("not found gl_index_id{%d,%d}",
+        DEBG("not found gl_index_id{%d,%d}",
           gl_index_id.cf_id, gl_index_id.index_id);
       }
     }
