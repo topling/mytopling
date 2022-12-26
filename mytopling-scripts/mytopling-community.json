@@ -142,9 +142,9 @@
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
       "memtable_factory": "${dyna}",
-      "max_write_buffer_number": 4, "write_buffer_size": "4M",
+      "max_write_buffer_number": 4, "write_buffer_size": "1G",
       "compaction_options_level": {"L1_score_boost": 5},
-      "target_file_size_base": "2M", "target_file_size_multiplier": 2,
+      "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
       "table_factory": "${dispatch}",
@@ -234,7 +234,7 @@
         "http_timeout": 10,
         "http_workers": [
           "//这里修改为dcompact-worker服务器的地址",
-          "http://172.16.2.224:8000"
+          "http://10.0.0.1:8000"
         ],
         "dcompact_min_level": 2
       }
