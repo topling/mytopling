@@ -167,7 +167,6 @@
         "kNoCompression", "kNoCompression",
         "kZSTD", "kZSTD","kZSTD","kZSTD", "kZSTD"
       ],
-      "compaction_executor_factory": "dcompact",
       "compaction_filter_factory": "${compact_filter}"
     },
     "__system__": {
@@ -229,56 +228,9 @@
           "default": "${default}",
           "__system__": "${__system__}"
         },
-        "auto_catch_up_delay_ms": 100,
-        "//path": "/nvme-shared/mytopling/datadir/.rocksdb"
+        "auto_catch_up_delay_ms": 100
       }
     }
   },
-  "open": "${.rocksdb}",
-  "CompactionExecutorFactory": {
-    "dcompact": {
-      "class": "DcompactEtcd",
-      "params": {
-        "//info_log_level": "DEBUG_LEVEL",
-        "estimate_speed": "10M",
-        "timeout_multiplier": 5.0,
-        "//2/etcd": {
-          "url": "etcd.topling.cn:2379",
-          "ca": "/node-shared/certs/ca.pem",
-          "cert": "/node-shared/certs/topling-client-chain.pem",
-          "key": "/node-shared/certs/topling-client-key.pem",
-          "//username": "leipeng",
-          "//password": "topling@123",
-          "load_balancer": "round_robin"
-        },
-        "//etcd": {
-          "url": "https://dell2.topling.cn:2379",
-          "ca": "/node-shared/certs/ca.pem",
-          "cert": "/node-shared/certs/topling-client-chain.pem",
-          "key": "/node-shared/certs/topling-client-key.pem",
-          "load_balancer": "round_robin"
-        },
-        "etcd_root": "/dcompact-worker-cluster-1",
-
-        "hoster_root": "/nvme-shared/mytopling/datadir/.rocksdb",
-        "instance_name": "mytopling-test-instance",
-        "nfs_mnt_flags": "",
-        "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
-        "nfs_mnt_opt": "vers=3,noatime",
-        "web_domain": "topling.in",
-        "http_max_retry": 99,
-        "http_timeout": 10,
-        "http_workers": [
-          "http://192.168.100.10:8080",
-          { "url": "//http://192.168.100.3:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.116:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.117:8081", "base_url": "http://192.168.31.3:55071", "web_url": "http://dell3.topling.in:2011" },
-          "//http://commented-host:8080",
-          "//end_http_workers"
-        ],
-        "//dcompact_min_level": "set as 20 can disable dcompact in fact",
-        "dcompact_min_level": 20
-      }
-    }
-  }
+  "open": "${.rocksdb}"
 }

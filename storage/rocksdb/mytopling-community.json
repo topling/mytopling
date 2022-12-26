@@ -228,8 +228,7 @@
         "column_families": {
           "default": "${default}",
           "__system__": "${__system__}"
-        },
-        "//path": "/nvme-shared/mytopling/datadir/.rocksdb"
+        }
       }
     }
   },
