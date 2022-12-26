@@ -6,7 +6,7 @@ TOPLINGDB_INSTALL_DIR=$STORAGE/toplingdb
 
 export LD_LIBRARY_PATH=$TOPLINGDB_INSTALL_DIR/lib64/:$MYTOPLING_INSTALL_DIR/lib/private
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
-export TOPLING_SIDEPLUGIN_CONF=${STORAGE}/mytopling-scripts/mytopling.json
+export TOPLING_SIDEPLUGIN_CONF=${STORAGE}/mytopling-scripts/mytopling-community.json
 
 #export JsonOptionsRepo_DebugLevel=2
 #export csppDebugLevel=0
