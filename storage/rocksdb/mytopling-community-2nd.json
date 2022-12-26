@@ -95,7 +95,7 @@
       "params": {
         "mem_cap": "2G",
         "use_vm": true,
-        "use_hugepage": true,
+        "use_hugepage": false,
         "read_by_writer_token": true,
         "token_use_idle": true
       }
@@ -158,7 +158,7 @@
       "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
-      "table_factory": "${dispatch}",
+      "table_factory": "${bb}",
       "html_user_key_coder": "${hex_key_coder}",
       "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
       "paranoid_file_checks": false,
@@ -167,7 +167,6 @@
         "kNoCompression", "kNoCompression",
         "kZSTD", "kZSTD","kZSTD","kZSTD", "kZSTD"
       ],
-      "compaction_executor_factory": "dcompact",
       "compaction_filter_factory": "${compact_filter}"
     },
     "__system__": {
@@ -195,7 +194,7 @@
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
-      "wal_dir": "/dev/shm/mytopling/wal",
+      "//wal_dir": "/dev/shm/mytopling/wal",
       "//db_paths" : [
         "/path/to/local/filesystem/for/level/0",
         "/path/to/nfs/filesystem/for/level/1",
@@ -215,7 +214,7 @@
   },
   "databases": {
     ".rocksdb": {
-      "method": "TransactionDB::Open",
+      "method": "TransactionDB::OpenAsSecondary",
       "params": {
         "db_options": "${dbopt}",
         "txn_db_options": {
@@ -228,37 +227,10 @@
         "column_families": {
           "default": "${default}",
           "__system__": "${__system__}"
-        }
+        },
+        "auto_catch_up_delay_ms": 100
       }
     }
   },
-  "open": "${.rocksdb}",
-  "CompactionExecutorFactory": {
-    "dcompact": {
-      "class": "DcompactEtcd",
-      "params": {
-        "allow_fallback_to_local": true,
-        "info_log_level": "INFO_LEVEL",
-        "estimate_speed": "10M",
-        "timeout_multiplier": 5.0,
-        "hoster_root": "/nvme-shared/mytopling/datadir/.rocksdb",
-        "instance_name": "mytopling-test-instance",
-        "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
-        "nfs_mnt_opt": "vers=3,noatime",
-        "web_domain": "topling.in",
-        "http_max_retry": 99,
-        "http_timeout": 10,
-        "http_workers": [
-          "http://192.168.100.10:8080",
-          { "url": "//http://192.168.100.3:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.116:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.117:8081", "base_url": "http://192.168.31.3:55071", "web_url": "http://dell3.topling.in:2011" },
-          "//http://commented-host:8080",
-          "//end_http_workers"
-        ],
-        "//dcompact_min_level": "set as 20 can disable dcompact in fact",
-        "dcompact_min_level": 20
-      }
-    }
-  }
+  "open": "${.rocksdb}"
 }
