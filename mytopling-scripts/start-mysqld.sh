@@ -13,8 +13,6 @@ export TOPLING_SIDEPLUGIN_CONF=${STORAGE}/mytopling-scripts/mytopling-community.
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
 export BULK_LOAD_DEL_TMP=1
 
-
-
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job-*
 ulimit -n 100000
 
@@ -44,24 +42,6 @@ common_args=(
 dram=`awk '$1 == "MemTotal:"{print $2*1024}' /proc/meminfo`
 part=`nproc`
 part=$((part<64?part:64)) # innodb_buffer_pool_instances max is 64
-innodb_args1=(
-  --innodb_flush_log_at_trx_commit=0
-  --innodb_buffer_pool_chunk_size=$((dram/2/part))
-  --innodb_buffer_pool_instances=${part}
-  --innodb_buffer_pool_size=$((dram/2))
-  --innodb_adaptive_hash_index=OFF
-  --innodb_disable_sort_file_cache=ON
-  --innodb_doublewrite_pages=64
-  --innodb_purge_threads=1
-  --innodb_io_capacity=1000000
-  --innodb_io_capacity_max=1000000
-  --innodb_log_buffer_size=8388608
-  --innodb_log_compressed_pages=OFF
-  --innodb_flush_method=O_DIRECT
-  --innodb_log_file_size=1572864000
-  --innodb_page_cleaners=8
-  --innodb_strict_mode=OFF
-)
 
 if [ $# -eq 0 ]; then
   rocksdb_args=(--plugin-load=ha_rocksdb_se.so
