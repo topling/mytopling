@@ -101,6 +101,7 @@
       "params": {
         "localTempDir": "/tmp",
         "indexMemAsResident": false,
+        "builderMinLevel": 6,
         "acceptCompressionRatio": 0.8,
         "enableStatistics": false,
         "warmupLevel": "kIndex",
