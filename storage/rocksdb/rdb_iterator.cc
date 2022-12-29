@@ -221,7 +221,7 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
       auto ro = rdb_tx_acquire_snapshot(tx);
       snap = ro.snapshot;
     }
-    auto s = m_scan_it->Refresh(snap);
+    auto s = m_scan_it->Refresh(snap, false/*keep_iter_pos*/);
     ROCKSDB_VERIFY_F(s.ok(), "%s: %s", typeid(*m_scan_it).name(), s.ToString().c_str());
     m_has_been_setup = true;
   }
