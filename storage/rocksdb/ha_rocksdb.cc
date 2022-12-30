@@ -7843,6 +7843,11 @@ else {
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
+  if (rocksdb_use_default_sk_cf) {
+    sql_print_error("MyTopling: rocksdb_use_default_sk_cf must be off");
+    DBUG_RETURN(HA_EXIT_FAILURE);
+  }
+
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: Opening TransactionDB...");
   if (side_conf) {
