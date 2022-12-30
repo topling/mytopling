@@ -92,9 +92,7 @@
     },
     "sng": {
       "class": "SingleFastTable",
-      "params": {
-        "indexType": "MainPatricia"
-      }
+      "params": {}
     },
     "dzip": {
       "class": "ToplingZipTable",

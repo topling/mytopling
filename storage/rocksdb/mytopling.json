@@ -92,9 +92,7 @@
     },
     "sng": {
       "class": "SingleFastTable",
-      "params": {
-        "indexType": "MainPatricia"
-      }
+      "params": {}
     },
     "dzip": {
       "class": "ToplingZipTable",
@@ -295,8 +293,7 @@
         "column_families": {
           "default": "${default}",
           "__system__": "${__system__}"
-        },
-        "path": "/nvme-shared/mytopling/datadir/.rocksdb"
+        }
       }
     }
   },
@@ -337,7 +334,7 @@
         "http_max_retry": 3,
         "http_timeout": 10,
         "http_workers": [
-          "//http://192.168.100.10:8080",
+          "http://192.168.100.10:8080",
           "//http://192.168.100.10:8081",
           "//http://192.168.100.2:8080",
           "//http://192.168.100.2:8081",
