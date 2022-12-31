@@ -226,10 +226,6 @@
         "timeout_multiplier": 5.0,
         "hoster_root": "/mnt/mynfs/datadir/mytopling-instance-1",
         "instance_name": "mytopling-instance-1",
-        "nfs_mnt_flags": "",
-        "nfs_mnt_src": "nfs-host-name:/",
-        "nfs_mnt_opt": "vers=3,nolock,noatime",
-        "web_domain": "topocloud.cn",
         "http_max_retry": 3,
         "http_timeout": 10,
         "http_workers": [

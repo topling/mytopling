@@ -14,15 +14,16 @@ export ZIP_SERVER_OPTIONS="listening_ports=8090:num_threads=32"
 export CPU_CORE_COUNT=`nproc`
 export MAX_PARALLEL_COMPACTIONS=$[$CPU_CORE_COUNT * 1]
 export MAX_WAITING_COMPACTIONS=$[$CPU_CORE_COUNT * 2]
-export DOCUMENT_ROOT=/mnt/mynfs/infolog/dcompact-worker-1
 export WORKER_DB_ROOT=$DOCUMENT_ROOT/worker
-export STD_ROOT=$DOCUMENT_ROOT/stdlog
+export NFS_MOUNT_ROOT=/mnt/mynfs/datadir
 
+DOCUMENT_ROOT=/mnt/mynfs/infolog/dcompact-worker-1
+STD_ROOT=$DOCUMENT_ROOT/stdlog
 
 mkdir -p $DOCUMENT_ROOT
 mkdir -p $WORKER_DB_ROOT
 mkdir -p $STD_ROOT
 
-LD_PRELOAD=libmytopling_dc.so /mnt/mynfs/opt/bin/dcompact_worker.exe \
+env LD_PRELOAD=libmytopling_dc.so /mnt/mynfs/opt/bin/dcompact_worker.exe \
     -D listening_ports=8000 -D num_threads=50 \
     -D document_root=$DOCUMENT_ROOT >> $STD_ROOT/stdout 2>> $STD_ROOT/stderr
