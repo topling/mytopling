@@ -23,6 +23,6 @@ mkdir -p $DOCUMENT_ROOT
 mkdir -p $WORKER_DB_ROOT
 mkdir -p $STD_ROOT
 
-LD_PRELOAD=libmytopling_dc.so /mnt/mynfs/dcompact/dcompact_worker.exe \
+LD_PRELOAD=libmytopling_dc.so /mnt/mynfs/opt/bin/dcompact_worker.exe \
     -D listening_ports=8000 -D num_threads=50 \
     -D document_root=$DOCUMENT_ROOT >> $STD_ROOT/stdout 2>> $STD_ROOT/stderr

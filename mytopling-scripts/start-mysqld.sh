@@ -63,7 +63,7 @@ binlog_args=(
   --binlog-ddl-only=ON --binlog-order-commits=ON
 )
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job*
-/mnt/mynfs/opt/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${innodb_args[@]} ${rocksdb_args[@]} $@ \
+/mnt/mynfs/opt/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${rocksdb_args[@]} $@ \
   1> /mnt/mynfs/infolog/mytopling-instance-1/stdlog/stdout \
   2> /mnt/mynfs/infolog/mytopling-instance-1/stdlog/stderr
 
