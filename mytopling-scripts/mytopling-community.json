@@ -39,6 +39,19 @@
       "params": {}
     }
   },
+  "Cache": {
+    "block_cache": {
+      "class": "LRUCache",
+      "params": {
+        "capacity": "1G",
+        "num_shard_bits": -1,
+        "strict_capacity_limit": false,
+        "high_pri_pool_ratio": 0.75,
+        "use_adaptive_mutex": false,
+        "metadata_charge_policy": "kFullChargeCacheMetadata"
+      }
+    }
+  },
   "TableFactory": {
     "auto_sort": {
       "class": "VecAutoSortTable",
@@ -51,7 +64,11 @@
     },
     "bb": {
       "class": "BlockBasedTable",
-      "params": {}
+      "params": {
+        "block_cache": "${block_cache}",
+        "index_type": "kTwoLevelIndexSearch",
+        "block_size": "8K"
+      }
     },
     "sng": {
       "class": "SingleFastTable",
