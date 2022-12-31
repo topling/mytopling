@@ -1,18 +1,16 @@
 #!/bin/bash
-STORAGE=/storage
-MYTOPLING_INSTALL_DIR=$STORAGE/mytopling
-MYTOPLING_DATA_DIR=$STORAGE/mytopling-instance-1
-TOPLINGDB_INSTALL_DIR=$STORAGE/toplingdb
 
-export LD_LIBRARY_PATH=$TOPLINGDB_INSTALL_DIR/lib64/:$MYTOPLING_INSTALL_DIR/lib/private
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib/private
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
-export TOPLING_SIDEPLUGIN_CONF=${STORAGE}/mytopling-scripts/mytopling-community.json
+export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/mytopling-community.json
 
 #export JsonOptionsRepo_DebugLevel=2
 #export csppDebugLevel=0
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
 export BULK_LOAD_DEL_TMP=1
 
+MYTOPLING_DATA_DIR=/mnt/mynfs/datadir/mytopling-instance-1
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job-*
 ulimit -n 100000
 
@@ -44,12 +42,13 @@ part=`nproc`
 part=$((part<64?part:64)) # innodb_buffer_pool_instances max is 64
 
 if [ $# -eq 0 ]; then
-  rocksdb_args=(--plugin-load=ha_rocksdb_se.so
+  rocksdb_args=(
+    --plugin-load=ha_rocksdb_se.so
     --rocksdb --default-storage-engine=rocksdb
     --rocksdb_datadir=${MYTOPLING_DATA_DIR}/.rocksdb
     --rocksdb_allow_concurrent_memtable_write=on
     --rocksdb_force_compute_memtable_stats=off
-    --rocksdb_reuse_iter=on
+    --rocksdb_reuse_iter=on # 此选项打开时，长期空闲的数据库连接会导致内存泄露，请谨慎使用
     --rocksdb_write_policy=write_committed
     --rocksdb_mrr_batch_size=32 --rocksdb_async_queue_depth=32
     --rocksdb_lock_wait_timeout=10
@@ -58,10 +57,13 @@ if [ $# -eq 0 ]; then
 fi
 
 binlog_args=(
-    #使用binlog-ddl-only时MyTopling不能做上游数据库
+  # 使用 binlog-ddl-only 时 MyTopling 可配置为基于共享存储的多副本集群，
+  # 但此配置下 MyTopling 不能做为传统 MySQL 主从中的上游数据库，因为此
+  # 配置下 binlog 只会记录 DDL 操作
   --binlog-ddl-only=ON --binlog-order-commits=ON
 )
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job*
-$MYTOPLING_INSTALL_DIR/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${innodb_args[@]} ${rocksdb_args[@]} $@ > /infolog/stdlog/stdlog 2> /infolog/stdlog/stderr
-
+/mnt/mynfs/opt/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${innodb_args[@]} ${rocksdb_args[@]} $@ \
+  1> /mnt/mynfs/infolog/mytopling-instance-1/stdlog/stdout \
+  2> /mnt/mynfs/infolog/mytopling-instance-1/stdlog/stderr
 

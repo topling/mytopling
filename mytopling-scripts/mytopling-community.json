@@ -1,6 +1,6 @@
 {
   "http": {
-    "document_root": "/infolog",
+    "document_root": "/mnt/mynfs/infolog/mytopling-instance-1",
     "hide_files_patterns": "*.sst|*.dbtmp",
     "num_threads": "50",
     "listening_ports": "8000"
@@ -173,7 +173,7 @@
   },
   "DBOptions": {
     "dbopt": {
-      "db_log_dir": "/infolog/.rocksdb/",
+      "db_log_dir": "/mnt/mynfs/infolog/mytopling-instance-1",
       "allow_fdatasync": false,
       "advise_random_on_open": true,
       "create_if_missing": true,
@@ -184,7 +184,7 @@
       "max_level1_subcompactions": 7,
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
-      "wal_dir": "/storage/wal",
+      "wal_dir": "/mnt/mynfs/wal/mytopling-instance-1",
       "wbwi_factory": "${cspp}",
       "statistics": "${stat}",
       "allow_mmap_reads": false
@@ -224,7 +224,7 @@
         "info_log_level": "INFO_LEVEL",
         "estimate_speed": "10M",
         "timeout_multiplier": 5.0,
-        "hoster_root": "/storage/mytopling-instance-1",
+        "hoster_root": "/mnt/mynfs/datadir/mytopling-instance-1",
         "instance_name": "mytopling-instance-1",
         "nfs_mnt_flags": "",
         "nfs_mnt_src": "nfs-host-name:/",
