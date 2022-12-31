@@ -49,7 +49,9 @@ You should have installed ToplingDB libs to `LIBDIR` above.
   git clone https://github.com/topling/mytopling.git
   cd mytopling
   git submodule update --init --recursive
-  export CXX_HOME=/usr
+  export CXX=g++ # optional, for example you want to use clang++ or other CXX
+  export CC=gcc  # optional, for example you want to use clang or other CC
+  export CXX_HOME=/usr # optional, if you want to use an alternative CXX
   bash build.sh -DTOPLING_LIB_DIR=/path/to/LIBDIR \
                 -DCMAKE_INSTALL_PREFIX=/path/to/mytopling/install/dir
 ```

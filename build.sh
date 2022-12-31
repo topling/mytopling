@@ -7,7 +7,10 @@ cd ${BUILD_DIR}
 #CXX_HOME=${CXX_HOME:-/opt/rh/gcc-toolset-9/root}
 #CXX_HOME=${CXX_HOME:-/opt/rh/gcc-toolset-10/root}
 #CXX_HOME=${CXX_HOME:-/opt/rh/gcc-toolset-11/root}
-CXX_HOME=${CXX_HOME:-/node-shared/opt/gcc-12.1.0}
+CXX_BIN_DIR=`which ${CXX:-g++}`
+CXX_BIN_DIR=`dirname ${CXX_BIN_DIR}`
+CXX_HOME_DEFAULT=`realpath ${CXX_BIN_DIR}/..`
+CXX_HOME=${CXX_HOME:-${CXX_HOME_DEFAULT}}
 
 core=${PDIR}/toplingdb/sideplugin/topling-core
 if [ ! -e $core ]; then
@@ -25,7 +28,7 @@ fi
 # be specified
 cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DTOPLING_CORE_HOME=${core} \
-      -DTOPLING_LIB_DIR=/node-shared/lib \
+      -DTOPLING_LIB_DIR=/opt/toplingdb/lib \
       -DWITH_BOOST=${core}/boost-include \
       -DCMAKE_C_COMPILER=${CXX_HOME}/bin/${CC:-gcc} \
       -DCMAKE_CXX_COMPILER=${CXX_HOME}/bin/${CXX:-g++} \
@@ -35,11 +38,5 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DWITH_ZSTD=bundled \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_SKIP_RPATH=1 \
-      -DCMAKE_INSTALL_PREFIX=/node-shared/mytopling-rls \
+      -DCMAKE_INSTALL_PREFIX=/opt/mytopling-rls \
       "$@" ..
-
-
-
-
-
-#      -DWITH_ZSTD=${PDIR}/toplingdb/sideplugin/topling-core/3rdparty/zstd
