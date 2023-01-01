@@ -4,7 +4,7 @@
 * [MySQL README(Upstream)](README), [MyTopling README(中文版)](README.mytopling-zh_cn.md)
 
 ## MyTopling 与其它 MySQL 的性能对比（sysbench）
-注：原版 sysbench 只能随机生成数据，我们[修改版的 sysbench](https://github.com/topling/sysbench) 增加了从文件加载真实数据的功能。该测试中使用 wikipedia 数据。
+注：原版 sysbench 只能随机生成数据，我们[修改版的 sysbench](https://github.com/topling/sysbench) 增加了从文件加载真实数据的功能。该测试中使用 wikipedia 数据。更多信息，请参考[对比测试](https://github.com/topling/mytopling/wiki/MyTopling-Sysbench-With-Other-MySQL)。
 
 ![image](https://user-images.githubusercontent.com/1574991/210158799-ecf947e2-a058-417d-a879-79b35b55728f.png)
 
