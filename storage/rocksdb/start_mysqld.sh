@@ -6,12 +6,7 @@ if [ -z "${type}" ]; then
 fi
 mydir=`dirname $0`
 mydir=`cd $mydir; pwd`
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/lib64/
-export LD_LIBRARY_PATH=/node-shared/opt/gcc-12.1.0/lib64:${LD_LIBRARY_PATH}
-export LD_LIBRARY_PATH=/node-shared/mytopling-${type}/lib/mysqlrouter:${LD_LIBRARY_PATH}
-export LD_LIBRARY_PATH=/node-shared/mytopling-${type}/lib/plugin:${LD_LIBRARY_PATH}
-export LD_LIBRARY_PATH=/node-shared/lib:${LD_LIBRARY_PATH}
-#export LD_LIBRARY_PATH=/node-shared/opt/lib:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=/node-shared/opt/gcc-12.1.0/lib64:/node-shared/lib
 export PATH=/node-shared/mytopling-${type}/bin:${PATH}
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling.json
