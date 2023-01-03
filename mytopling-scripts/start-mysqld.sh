@@ -1,7 +1,6 @@
 #!/bin/bash
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib/private
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/mytopling-community.json
 
