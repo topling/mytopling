@@ -37,6 +37,5 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DWITH_ZLIB=system \
       -DWITH_ZSTD=bundled \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_SKIP_RPATH=1 \
       -DCMAKE_INSTALL_PREFIX=/opt/mytopling-rls \
       "$@" ..
