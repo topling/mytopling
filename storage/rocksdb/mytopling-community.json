@@ -49,6 +49,19 @@
       "params": {}
     }
   },
+  "Cache": {
+    "block_cache": {
+      "class": "LRUCache",
+      "params": {
+        "capacity": "1G",
+        "num_shard_bits": -1,
+        "strict_capacity_limit": false,
+        "high_pri_pool_ratio": 0.75,
+        "use_adaptive_mutex": false,
+        "metadata_charge_policy": "kFullChargeCacheMetadata"
+      }
+    }
+  },
   "TableFactory": {
     "auto_sort": {
       "class": "VecAutoSortTable",
@@ -61,14 +74,13 @@
     },
     "bb": {
       "class": "BlockBasedTable",
-      "params": {}
-    },
-    "sng": {
-      "class": "SingleFastTable",
       "params": {
-        "indexType": "MainPatricia"
+        "block_cache": "${block_cache}",
+        "index_type": "kTwoLevelIndexSearch",
+        "block_size": "8K"
       }
     },
+    "sng": "SingleFastTable",
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
@@ -246,11 +258,11 @@
         "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
         "nfs_mnt_opt": "vers=3,noatime",
         "web_domain": "topling.in",
-        "http_max_retry": 99,
-        "http_timeout": 10,
+        "overall_timeout": 3,
+        "http_max_retry": 3,
+        "http_timeout": 1,
         "http_workers": [
           "http://192.168.100.10:8080",
-          { "url": "//http://192.168.100.3:8080", "web_url": "http://dell3.topling.in:2011" },
           { "url": "//http://192.168.100.116:8081", "web_url": "http://dell3.topling.in:2011" },
           { "url": "//http://192.168.100.117:8081", "base_url": "http://192.168.31.3:55071", "web_url": "http://dell3.topling.in:2011" },
           "//http://commented-host:8080",

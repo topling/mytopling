@@ -1,6 +1,6 @@
 {
   "http": {
-    "document_root": "/nvme-shared/mytopling/datadir/data",
+    "document_root": "/nvme-shared/mytopling/log",
     "hide_files_patterns": "*.sst|*.dbtmp",
     "num_threads": "50",
     "listening_ports": "2013"
@@ -68,15 +68,20 @@
       "params": {}
     }
   },
-  "TableFactory": {
-    "cspp_auto_sort": {
-      "class": "CSPPAutoSortTable",
+  "Cache": {
+    "block_cache": {
+      "class": "LRUCache",
       "params": {
-        "fileWriteBufferSize": "64K",
-        "enableIndexRank": false,
-        "forceNeedCompact": true
+        "capacity": "1G",
+        "num_shard_bits": -1,
+        "strict_capacity_limit": false,
+        "high_pri_pool_ratio": 0.75,
+        "use_adaptive_mutex": false,
+        "metadata_charge_policy": "kFullChargeCacheMetadata"
       }
-    },
+    }
+  },
+  "TableFactory": {
     "auto_sort": {
       "class": "VecAutoSortTable",
       "params": {
@@ -88,12 +93,13 @@
     },
     "bb": {
       "class": "BlockBasedTable",
-      "params": {}
+      "params": {
+        "block_cache": "${block_cache}",
+        "index_type": "kTwoLevelIndexSearch",
+        "block_size": "8K"
+      }
     },
-    "sng": {
-      "class": "SingleFastTable",
-      "params": {}
-    },
+    "sng": "SingleFastTable",
     "dzip": {
       "class": "ToplingZipTable",
       "params": {
@@ -198,12 +204,9 @@
     "default": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
-      "//level0_slowdown_writes_trigger": 200,
-      "//level0_stop_writes_trigger": 300,
       "level0_file_num_compaction_trigger": 4,
       "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
-      "//max_bytes_for_level_base": "400M",
       "compaction_options_level": {"L1_score_boost": 5},
       "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
@@ -225,26 +228,8 @@
       "compaction_options_level": {"L1_score_boost": 5},
       "target_file_size_base": "16M", "target_file_size_multiplier": 2,
       "table_factory": "${dispatch}",
-      "//paranoid_file_checks": true,
-      "//html_user_key_coder": "${sys_cf_key_coder}",
-      "//compaction_executor_factory": "dcompact",
-      "//compaction_filter_factory": "${NotNeeded}",
+      "paranoid_file_checks": true,
       "merge_operator": "${system_merge_op}"
-    },
-    "default_sk": {
-      "num_levels": 7, "max_bytes_for_level_multiplier": 10,
-      "disable_auto_compactions": true,
-      "level0_file_num_compaction_trigger": 4,
-      "memtable_factory": "${cspp}",
-      "max_write_buffer_number": 4, "write_buffer_size": "1G",
-      "//max_bytes_for_level_base": "400M",
-      "compaction_options_level": {"L1_score_boost": 5},
-      "target_file_size_base": "16M", "target_file_size_multiplier": 2,
-      "table_factory": "${dispatch}",
-      "//html_user_key_coder": "${html_text_key_coder}",
-      "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
-      "compaction_executor_factory": "dcompact",
-      "compaction_filter_factory": "${compact_filter}"
     }
   },
   "DBOptions": {
@@ -266,7 +251,7 @@
         "/path/to/nfs/filesystem/for/level/1",
         "/path/to/nfs/filesystem/for/level/2/to/level/n"
       ],
-      "db_log_dir": "/nvme-shared/mytopling/log",
+      "db_log_dir": "/nvme-shared/mytopling/log/.rocksdb",
       "wbwi_factory": "${cspp}",
       "statistics": "${stat}",
       "allow_mmap_reads": false
@@ -315,79 +300,24 @@
           "//password": "topling@123",
           "load_balancer": "round_robin"
         },
-        "//etcd": {
-          "url": "https://dell2.topling.cn:2379",
-          "ca": "/node-shared/certs/ca.pem",
-          "cert": "/node-shared/certs/topling-client-chain.pem",
-          "key": "/node-shared/certs/topling-client-key.pem",
-          "load_balancer": "round_robin"
-        },
         "etcd_root": "/dcompact-worker-cluster-1",
-
-        "//hoster_root": "/nvmepool/shared/db1",
         "hoster_root": "/nvme-shared/mytopling/datadir/.rocksdb",
         "instance_name": "mytopling-test-instance",
-        "nfs_mnt_flags": "",
         "nfs_mnt_src": "192.168.100.10:/srv/nvme/mytopling/datadir/.rocksdb",
         "nfs_mnt_opt": "vers=3,noatime",
         "web_domain": "topling.in",
+        "overall_timeout": 3,
         "http_max_retry": 3,
-        "http_timeout": 10,
+        "http_timeout": 1,
         "http_workers": [
           "http://192.168.100.10:8080",
           "//http://192.168.100.10:8081",
           "//http://192.168.100.2:8080",
           "//http://192.168.100.2:8081",
-          { "url": "//http://192.168.100.3:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.3:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.101:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.101:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.102:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.102:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.103:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.103:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.104:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.104:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.105:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.105:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.106:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.106:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.107:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.107:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.108:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "http://192.168.100.108:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.109:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.109:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.110:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.110:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.111:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.111:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.112:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.112:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.113:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.113:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.114:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.114:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.115:8080", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.115:8081", "web_url": "http://dell3.topling.in:2011" },
-          { "url": "//http://192.168.100.116:8080", "web_url": "http://dell3.topling.in:2011" },
           { "url": "//http://192.168.100.116:8081", "web_url": "http://dell3.topling.in:2011" },
           { "url": "//http://192.168.100.117:8081", "base_url": "http://192.168.31.3:55071", "web_url": "http://dell3.topling.in:2011" },
           "//http://192.168.100.102:8080",
           "//http://192.168.100.102:8081",
-          "//http://192.168.100.103:8080",
-          "//http://192.168.100.103:8081",
-          "//http://192.168.100.104:8080",
-          "//http://192.168.100.104:8081",
-          "//http://192.168.100.105:8080",
-          "//http://192.168.100.105:8081",
-          "//http://192.168.100.106:8080",
-          "//http://192.168.100.106:8081",
-          "//http://192.168.100.107:8080",
-          "//http://192.168.100.107:8081",
-          "//http://192.168.100.108:8080",
-          "//http://192.168.100.108:8081",
-          "//http://active-host:8080",
           "//http://commented-host:8080",
           "//end_http_workers"
         ],

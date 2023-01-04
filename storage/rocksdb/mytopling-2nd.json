@@ -1,6 +1,6 @@
 {
   "http": {
-    "document_root": "/nvme-shared/mytopling/datadir/data",
+    "document_root": "/nvme-shared/mytopling/log-2nd",
     "hide_files_patterns": "*.sst|*.dbtmp",
     "num_threads": "50",
     "listening_ports": "2014"
@@ -68,15 +68,20 @@
       "params": {}
     }
   },
-  "TableFactory": {
-    "cspp_auto_sort": {
-      "class": "CSPPAutoSortTable",
+  "Cache": {
+    "block_cache": {
+      "class": "LRUCache",
       "params": {
-        "fileWriteBufferSize": "64K",
-        "enableIndexRank": false,
-        "forceNeedCompact": true
+        "capacity": "1G",
+        "num_shard_bits": -1,
+        "strict_capacity_limit": false,
+        "high_pri_pool_ratio": 0.75,
+        "use_adaptive_mutex": false,
+        "metadata_charge_policy": "kFullChargeCacheMetadata"
       }
-    },
+    }
+  },
+  "TableFactory": {
     "auto_sort": {
       "class": "VecAutoSortTable",
       "params": {
@@ -88,12 +93,11 @@
     },
     "bb": {
       "class": "BlockBasedTable",
-      "params": {}
+      "params": {
+        "block_cache": "${block_cache}"
+      }
     },
-    "sng": {
-      "class": "SingleFastTable",
-      "params": {}
-    },
+    "sng": "SingleFastTable",
     "dzip": {
       "class": "ToplingZipTable",
       "params": {
@@ -198,8 +202,6 @@
     "default": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
-      "//level0_slowdown_writes_trigger": 200,
-      "//level0_stop_writes_trigger": 300,
       "level0_file_num_compaction_trigger": 4,
       "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
@@ -224,24 +226,8 @@
       "compaction_options_level": {"L1_score_boost": 5},
       "target_file_size_base": "16M", "target_file_size_multiplier": 2,
       "table_factory": "${dispatch}",
-      "//paranoid_file_checks": true,
-      "//html_user_key_coder": "${sys_cf_key_coder}",
-      "//compaction_filter_factory": "${NotNeeded}",
+      "paranoid_file_checks": true,
       "merge_operator": "${system_merge_op}"
-    },
-    "default_sk": {
-      "num_levels": 7, "max_bytes_for_level_multiplier": 10,
-      "disable_auto_compactions": true,
-      "level0_file_num_compaction_trigger": 4,
-      "memtable_factory": "${cspp}",
-      "max_write_buffer_number": 4, "write_buffer_size": "1G",
-      "//max_bytes_for_level_base": "400M",
-      "compaction_options_level": {"L1_score_boost": 5},
-      "target_file_size_base": "16M", "target_file_size_multiplier": 2,
-      "table_factory": "${dispatch}",
-      "//html_user_key_coder": "${html_text_key_coder}",
-      "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
-      "compaction_filter_factory": "${compact_filter}"
     }
   },
   "DBOptions": {
@@ -263,7 +249,7 @@
         "/path/to/nfs/filesystem/for/level/1",
         "/path/to/nfs/filesystem/for/level/2/to/level/n"
       ],
-      "db_log_dir": "/nvme-shared/mytopling/log-2nd",
+      "db_log_dir": "/nvme-shared/mytopling/log-2nd/.rocksdb",
       "wbwi_factory": "${cspp}",
       "statistics": "${stat}",
       "allow_mmap_reads": false
