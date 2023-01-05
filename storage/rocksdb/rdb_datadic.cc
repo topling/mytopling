@@ -5902,13 +5902,10 @@ static bool decode_index_info(const rocksdb::Slice& value, Rdb_index_info* index
     switch (index_info->m_index_dict_version) {
       case Rdb_key_def::INDEX_INFO_VERSION_FIELD_FLAGS:
         /* Sanity check to prevent reading bogus TTL record. */
-        if (value.size() != RDB_SIZEOF_INDEX_INFO_VERSION +
+        ROCKSDB_VERIFY_EQ(value.size(), RDB_SIZEOF_INDEX_INFO_VERSION +
                                 RDB_SIZEOF_INDEX_TYPE + RDB_SIZEOF_KV_VERSION +
                                 RDB_SIZEOF_INDEX_FLAGS +
-                                ROCKSDB_SIZEOF_TTL_RECORD) {
-          error = true;
-          break;
-        }
+                                ROCKSDB_SIZEOF_TTL_RECORD);
         index_info->m_index_type = rdb_netbuf_to_byte(ptr);
         ptr += RDB_SIZEOF_INDEX_TYPE;
         index_info->m_kv_version = rdb_netbuf_to_uint16(ptr);
