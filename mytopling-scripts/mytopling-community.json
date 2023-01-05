@@ -200,6 +200,7 @@
       "max_subcompactions": 1,
       "max_level1_subcompactions": 7,
       "max_log_file_size": "256M",
+      "keep_log_file_num": 100,
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
       "wal_dir": "/mnt/mynfs/wal/mytopling-instance-1",

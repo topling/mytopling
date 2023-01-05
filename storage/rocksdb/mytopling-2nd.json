@@ -241,6 +241,7 @@
       "max_subcompactions": 1,
       "max_level1_subcompactions": 17,
       "max_log_file_size": "256M",
+      "keep_log_file_num": 100,
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
