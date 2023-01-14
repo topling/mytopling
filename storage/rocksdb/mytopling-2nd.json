@@ -242,6 +242,7 @@
       "max_level1_subcompactions": 17,
       "max_log_file_size": "256M",
       "keep_log_file_num": 100,
+      "verify_sst_unique_id_in_manifest": false,
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
@@ -279,6 +280,7 @@
           "default": "${default}",
           "__system__": "${__system__}"
         },
+        "secondary_path": "/nvme-shared/mytopling/log-2nd/.rocksdb",
         "auto_catch_up_delay_ms": 100
       }
     }

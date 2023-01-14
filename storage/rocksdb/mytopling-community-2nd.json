@@ -1,6 +1,6 @@
 {
   "http": {
-    "document_root": "/nvme-shared/mytopling/datadir/data",
+    "document_root": "/nvme-shared/mytopling/log-2nd/.rocksdb",
     "hide_files_patterns": "*.sst|*.dbtmp",
     "num_threads": "50",
     "listening_ports": "2013"
@@ -193,6 +193,7 @@
       "max_level1_subcompactions": 17,
       "max_log_file_size": "256M",
       "keep_log_file_num": 100,
+      "verify_sst_unique_id_in_manifest": false,
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
@@ -202,7 +203,7 @@
         "/path/to/nfs/filesystem/for/level/1",
         "/path/to/nfs/filesystem/for/level/2/to/level/n"
       ],
-      "db_log_dir": "/nvme-shared/mytopling/log",
+      "db_log_dir": "/nvme-shared/mytopling/log-2nd/.rocksdb",
       "wbwi_factory": "${cspp}",
       "statistics": "${stat}",
       "allow_mmap_reads": false
@@ -230,6 +231,7 @@
           "default": "${default}",
           "__system__": "${__system__}"
         },
+        "secondary_path": "/nvme-shared/mytopling/log-2nd/.rocksdb",
         "auto_catch_up_delay_ms": 100
       }
     }
