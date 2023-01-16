@@ -3455,7 +3455,7 @@ class Rdb_transaction {
             s.ToString().c_str(),
             user_host_buff, thd->query());
       }
-      m_detailed_error = String((" (snapshot conflict : " + s.ToString() + ")").c_str(), system_charset_info);
+      m_detailed_error = String(" (snapshot conflict)", system_charset_info);
       /* TODO(yzha) - row stats are gone in 8.0
       table_handler->m_deadlock_counter.inc(); */
       return HA_ERR_ROCKSDB_STATUS_BUSY;
