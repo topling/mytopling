@@ -247,7 +247,7 @@
         "instance_name": "mytopling-instance-1",
         "nfs_mnt_src": "nfs-host-name:/",
         "nfs_mnt_opt": "vers=3,nolock,noatime",
-        "web_domain": "topocloud.cn",
+        "web_domain": "mytopling.in",
         "http_max_retry": 3,
         "http_timeout": 10,
         "http_workers": [
