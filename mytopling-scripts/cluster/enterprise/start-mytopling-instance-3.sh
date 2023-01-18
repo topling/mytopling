@@ -2,7 +2,7 @@
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
-export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/cluster/mytopling-instance-3.json
+export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/cluster/enterprise/mytopling-instance-3.json
 
 #export JsonOptionsRepo_DebugLevel=2
 #export csppDebugLevel=0

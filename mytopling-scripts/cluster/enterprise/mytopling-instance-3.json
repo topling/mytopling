@@ -63,6 +63,7 @@
       }
     },
     "bb": {
+      "comment": "this TableFactory is for migrating existing MyRocks data to MyTopling",
       "class": "BlockBasedTable",
       "params": {
         "block_cache": "${block_cache}",
@@ -75,6 +76,27 @@
       "params": {
       }
     },
+    "dzip": {
+      "class": "ToplingZipTable",
+      "params": {
+        "localTempDir": "/tmp",
+        "indexMemAsResident": false,
+        "builderMinLevel": 6,
+        "acceptCompressionRatio": 0.8,
+        "enableStatistics": false,
+        "warmupLevel": "kIndex",
+        "optimizeCpuL3Cache": true,
+        "offsetArrayBlockUnits": 128,
+        "sampleRatio": 0.01,
+        "keyRankCacheRatio": 0.001,
+        "checksumLevel": 0,
+        "entropyAlgo": "kNoEntropy",
+        "debugLevel": 0,
+        "minDictZipValueSize": "30",
+        "keyPrefixLen": 4,
+        "minPreadLen": 64
+      }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
@@ -82,11 +104,12 @@
         "readers": {
           "VecAutoSortTable": "auto_sort",
           "BlockBasedTable": "bb",
+          "ToplingZipTable": "dzip",
           "SingleFastTable": "sng"
         },
         "level_writers": [
           "sng", "sng",
-          "bb", "bb", "bb", "bb", "bb"
+          "dzip", "dzip", "dzip", "dzip", "dzip"
         ]
       }
     }
