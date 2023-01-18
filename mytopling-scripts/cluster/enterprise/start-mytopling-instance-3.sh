@@ -2,15 +2,15 @@
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
-export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/cluster/mytopling-instance-2.json
+export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/cluster/enterprise/mytopling-instance-3.json
 
 #export JsonOptionsRepo_DebugLevel=2
 #export csppDebugLevel=0
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
 export BULK_LOAD_DEL_TMP=1
 
-MYTOPLING_DATA_DIR=/mnt/mynfs/datadir/mytopling-instance-2
-MYTOPLING_LOG_DIR=/mnt/mynfs/infolog/mytopling-instance-2
+MYTOPLING_DATA_DIR=/mnt/mynfs/datadir/mytopling-instance-3
+MYTOPLING_LOG_DIR=/mnt/mynfs/infolog/mytopling-instance-3
 MYTOPLING_ROCKSDB_DIR=/mnt/mynfs/datadir/mytopling-instance-1/.rocksdb
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job-*
 ulimit -n 100000
@@ -70,7 +70,7 @@ binlog_args=(
 )
 # 修复引擎监控日志链接
 sudo ln -sf $MYTOPLING_LOG_DIR $MYTOPLING_LOG_DIR/.rocksdb
-sudo ln -sf $MYTOPLING_LOG_DIR/mnt_mynfs_datadir_mytopling-instance-2_.rocksdb_LOG \
+sudo ln -sf $MYTOPLING_LOG_DIR/mnt_mynfs_datadir_mytopling-instance-3_.rocksdb_LOG \
            $MYTOPLING_LOG_DIR/LOG
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job*
 /mnt/mynfs/opt/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${rocksdb_args[@]} $@ \
