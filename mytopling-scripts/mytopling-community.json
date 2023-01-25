@@ -66,7 +66,7 @@
       "class": "BlockBasedTable",
       "params": {
         "block_cache": "${block_cache}",
-        "//index_type": "Dont set as kTwoLevelIndexSearch in Distributed Compaction, it triggerred BlockBasedTable bug, we did not find this bug, so just use default",
+        "index_type": "kTwoLevelIndexSearch",
         "block_size": "8K"
       }
     },
