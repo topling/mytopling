@@ -1,6 +1,6 @@
 ## MyTopling Document
-* [Wiki Home](https://github.com/topling/mytopling/wiki) describe how to build and run MyTopling
-* [Wiki Compatibility To MyRocks](https://github.com/topling/mytopling/wiki/Compatibility-To-MyRocks)
+* Wiki: [Home](https://github.com/topling/mytopling/wiki) describe how to build and run MyTopling
+* Wiki: [Compatibility To MyRocks](https://github.com/topling/mytopling/wiki/Compatibility-To-MyRocks)
 * [MyTopling README(中文版)](README.mytopling-zh_cn.md)
 
 ## MyTopling 与其它 MySQL 的性能对比（sysbench）
