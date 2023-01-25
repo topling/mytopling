@@ -18329,6 +18329,9 @@ Rdb_compaction_stats::get_recent_history() {
 }
 
 void Rdb_compaction_stats::record_start(rocksdb::CompactionJobInfo info) {
+  for (auto& fpath : info.input_files) {
+    fpath = std::filesystem::path(std::move(fpath)).stem();
+  }
   std::lock_guard<std::mutex> guard(m_mutex);
   time_t start_timestamp = time(nullptr /* tloc */);
   assert(start_timestamp != static_cast<time_t>(-1));
@@ -18340,6 +18343,12 @@ void Rdb_compaction_stats::record_start(rocksdb::CompactionJobInfo info) {
 }
 
 void Rdb_compaction_stats::record_end(rocksdb::CompactionJobInfo info) {
+  for (auto& fpath : info.input_files) {
+    fpath = std::filesystem::path(std::move(fpath)).stem();
+  }
+  for (auto& fpath : info.output_files) {
+    fpath = std::filesystem::path(std::move(fpath)).stem();
+  }
   std::lock_guard<std::mutex> guard(m_mutex);
   auto tid_to_pending_compaction_iter =
       m_tid_to_pending_compaction.find(info.thread_id);
