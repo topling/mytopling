@@ -1,3 +1,5 @@
+### [中文版 (Chinese)](./README.mytopling-zh_cn.md)
+
 # MyTopling
 MyTopling is a MySQL compatible database developed by Topling([topling.cn](https://topling.cn)).
 
