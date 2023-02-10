@@ -11,7 +11,7 @@ export PATH=/node-shared/mytopling-${type}/bin:${PATH}
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling.json
 #export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling-community.json
-export JsonOptionsRepo_DebugLevel=2
+export SidePluginRepo_DebugLevel=2
 export csppDebugLevel=0
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
 #export TOPLINGDB_WARMUP_PROVIDER=mlock
@@ -19,10 +19,12 @@ export TOPLINGDB_CACHE_SST_FILE_ITER=1
 #export ZipServer_nltBuildThreads=5
 #export ZIP_SERVER_OPTIONS=listening_ports=8090:num_threads=32
 export BULK_LOAD_DEL_TMP=1
+#export OutputValidator_full_check=1
 
 datadir=/nvme-shared/mytopling/datadir
 #datadir=/nvme-shared/mytopling/lifuzhou-data/test_data
 rm -rf ${datadir}/.rocksdb/job-*
+rm -f /tmp/Topling-*
 ulimit -n 100000
 
 common_args=(

@@ -19,6 +19,10 @@
       "class": "HexUserKeyCoder",
       "params": { "prefix_len": 4 }
     },
+    "pretty": {
+      "class": "PrettyHexUserKeyCoder",
+      "params": { "prefix_len": 4}
+    },
     "sys_cf_key_coder": "HtmlTextUserKeyCoder",
     "html_text_key_coder": "HtmlTextUserKeyCoder"
   },
@@ -86,6 +90,7 @@
       "class": "VecAutoSortTable",
       "params": {
         "debugLevel": 0,
+        "minUserKeyLen": 4,
         "fileWriteBufferSize": "64K",
         "collectProperties": false,
         "forceNeedCompact": true
@@ -114,7 +119,8 @@
         "sampleRatio": 0.01,
         "keyRankCacheRatio": 0.001,
         "checksumLevel": 0,
-        "entropyAlgo": "kNoEntropy",
+        "//entropyAlgo": "kNoEntropy",
+        "entropyAlgo": "kFSE",
         "debugLevel": 0,
         "minDictZipValueSize": "30",
         "keyPrefixLen": 4,
@@ -197,7 +203,7 @@
   "SstPartitionerFactory": {
     "by_prefix": {
       "class": "FixedPrefix",
-      "params": { "prefix_len": 4 }
+      "params": { "prefix_len": 4, "min_file_size": 0 }
     }
   },
   "CFOptions": {
@@ -205,14 +211,18 @@
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
+      "max_bytes_for_level_base": "512M",
+      "//level_compaction_dynamic_level_bytes": true,
+      "compaction_pri": "kMinOverlappingRatio",
       "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
-      "compaction_options_level": {"L1_score_boost": 5},
+      "compaction_options_level": {"L1_score_boost": 1},
       "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
       "table_factory": "${dispatch}",
       "html_user_key_coder": "${hex_key_coder}",
+      "//html_user_key_coder": "${pretty}",
       "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
       "paranoid_file_checks": false,
       "sst_partitioner_factory": "by_prefix",
@@ -299,11 +309,11 @@
         "nfs_mnt_src": "static-mounted",
         "nfs_mnt_opt": "",
         "web_domain": "topling.in",
-        "overall_timeout": 10,
+        "overall_timeout": 60,
         "http_max_retry": 3,
         "http_timeout": 1,
         "http_workers": [
-          "http://192.168.100.10:8080",
+          "http://127.0.0.1:8080",
           "//http://192.168.100.10:8081",
           "//http://192.168.100.2:8080",
           "//http://192.168.100.2:8081",

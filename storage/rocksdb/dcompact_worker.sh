@@ -10,7 +10,7 @@ mkdir  -p ${NFS_MOUNT_ROOT}/${INSTANCE_NAME}
 umount -l ${NFS_MOUNT_ROOT}/${INSTANCE_NAME}
 
 export LOG_LEVEL=2 # dcompact main binary debug level
-export JsonOptionsRepo_DebugLevel=2
+export SidePluginRepo_DebugLevel=2
 
 export NFS_DYNAMIC_MOUNT=1
 export MAX_PARALLEL_COMPACTIONS=32

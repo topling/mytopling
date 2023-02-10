@@ -138,8 +138,7 @@ bool Rdb_cf_options::find_column_family(const std::string &input,
 
   if (end_pos == beg_pos - 1) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "No column family found (options: %s)", input.c_str());
+    sql_print_warning("No column family found (options: %s)", input.c_str());
     return false;
   }
 
@@ -158,9 +157,8 @@ bool Rdb_cf_options::find_options(const std::string &input, size_t *const pos,
   // Make sure we have an open curly brace at the current position.
   if (*pos < input.size() && input[*pos] != '{') {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Invalid cf options, '{' expected (options: %s)",
-                    input.c_str());
+    sql_print_warning("Invalid cf options, '{' expected (options: %s)",
+                      input.c_str());
     return false;
   }
 
@@ -203,9 +201,8 @@ bool Rdb_cf_options::find_options(const std::string &input, size_t *const pos,
   // We never found the correct number of closing curly braces.
   // Generate an error.
   // NO_LINT_DEBUG
-  LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                  "Mismatched cf options, '}' expected (options: %s)",
-                  input.c_str());
+  sql_print_warning("Mismatched cf options, '}' expected (options: %s)",
+                    input.c_str());
   return false;
 }
 
@@ -226,9 +223,8 @@ bool Rdb_cf_options::find_cf_options_pair(const std::string &input,
   // If we are at the end of the input then we generate an error.
   if (*pos == input.size()) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Invalid cf options, '=' expected (options: %s)",
-                    input.c_str());
+    sql_print_warning("Invalid cf options, '=' expected (options: %s)",
+                      input.c_str());
     return false;
   }
 
@@ -247,9 +243,8 @@ bool Rdb_cf_options::find_cf_options_pair(const std::string &input,
   if (*pos < input.size()) {
     if (input[*pos] != ';') {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                      "Invalid cf options, ';' expected (options: %s)",
-                      input.c_str());
+      sql_print_warning("Invalid cf options, ';' expected (options: %s)",
+                        input.c_str());
       return false;
     }
 
@@ -286,8 +281,7 @@ bool Rdb_cf_options::parse_cf_options(const std::string &cf_options,
                 << cf_options.c_str() << ")";
       if (print_warnings) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "%s",
-                        output->str().c_str());
+        sql_print_warning(output->str().c_str());
       }
       return false;
     }
@@ -299,8 +293,7 @@ bool Rdb_cf_options::parse_cf_options(const std::string &cf_options,
                 << ")";
       if (print_warnings) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "%s",
-                        output->str().c_str());
+        sql_print_warning(output->str().c_str());
       }
       return false;
     }
@@ -314,8 +307,7 @@ bool Rdb_cf_options::parse_cf_options(const std::string &cf_options,
                 << " (options: " << cf_options.c_str() << ")";
       if (print_warnings) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "%s",
-                        output->str().c_str());
+        sql_print_warning(output->str().c_str());
       }
       return false;
     }

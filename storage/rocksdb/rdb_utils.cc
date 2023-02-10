@@ -286,22 +286,20 @@ bool rdb_database_exists(const std::string &db_name) {
 
 void rdb_fatal_error(const char *msg) {
   // NO_LINT_DEBUG
-  LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "%s", msg);
+  sql_print_error("%s", msg);
   abort();
 }
 
 void rdb_log_status_error(const rocksdb::Status &s, const char *msg) {
   if (msg == nullptr) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "RocksDB: status error, code: %d, error message: %s",
+    sql_print_error("RocksDB: status error, code: %d, error message: %s",
                     s.code(), s.ToString().c_str());
     return;
   }
 
   // NO_LINT_DEBUG
-  LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                  "RocksDB: %s, Status Code: %d, Status: %s", msg, s.code(),
+  sql_print_error("RocksDB: %s, Status Code: %d, Status: %s", msg, s.code(),
                   s.ToString().c_str());
 }
 
@@ -329,24 +327,23 @@ void rdb_persist_corruption_marker() {
 
   if (!io_s.ok()) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "RocksDB: Can't create file %s to mark rocksdb as "
-                    "corrupted.",
-                    fileName.c_str());
+    sql_print_error(
+        "RocksDB: Can't create file %s to mark rocksdb as "
+        "corrupted.",
+        fileName.c_str());
   } else {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "RocksDB: Creating the file %s to abort mysqld "
-                    "restarts. Remove this file from the data directory "
-                    "after fixing the corruption to recover. ",
-                    fileName.c_str());
+    sql_print_information(
+        "RocksDB: Creating the file %s to abort mysqld "
+        "restarts. Remove this file from the data directory "
+        "after fixing the corruption to recover. ",
+        fileName.c_str());
   }
 
   io_s = file->Close(rocksdb::IOOptions(), nullptr);
   if (!io_s.ok()) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "RocksDB: Error (%s) closing the file %s",
+    sql_print_error("RocksDB: Error (%s) closing the file %s",
                     io_s.ToString().c_str(), fileName.c_str());
   }
 }
