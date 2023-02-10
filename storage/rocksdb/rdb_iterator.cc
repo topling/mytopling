@@ -41,6 +41,7 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
       m_scan_it_snapshot(nullptr),
       m_scan_it_lower_bound(nullptr),
       m_scan_it_upper_bound(nullptr),
+      m_packed_buf_len(0),
       m_prefix_buf(nullptr),
       m_table_type(tbl_def->get_table_type()) {
   if (tbl_def->get_table_type() == INTRINSIC_TMP) {
@@ -62,6 +63,28 @@ Rdb_iterator_base::~Rdb_iterator_base() {
     if (m_rocksdb_handler) {
       remove_tmp_table_handler(m_thd, m_rocksdb_handler);
     }
+  }
+}
+
+void Rdb_iterator_base::init(THD *thd,
+                             const std::shared_ptr<Rdb_key_def>& kd,
+                             const std::shared_ptr<Rdb_key_def>& pkd,
+                             const Rdb_tbl_def *tbl_def) {
+  m_thd = thd;
+  m_kd = kd;
+  m_pkd = pkd;
+  m_tbl_def = tbl_def;
+  m_table_type = tbl_def->get_table_type();
+
+  const size_t packed_len = m_kd->max_storage_fmt_length();
+  if (m_prefix_buf && m_packed_buf_len != packed_len) {
+    my_free(m_scan_it_lower_bound);
+    m_scan_it_lower_bound = nullptr;
+    my_free(m_scan_it_upper_bound);
+    m_scan_it_upper_bound = nullptr;
+    my_free(m_prefix_buf);
+    m_prefix_buf = nullptr;
+    m_packed_buf_len = 0;
   }
 }
 
@@ -117,12 +140,16 @@ int Rdb_iterator_base::read_after_key(const rocksdb::Slice &key_slice) {
 void Rdb_iterator_base::release_scan_iterator() {
   delete m_scan_it;
   m_scan_it = nullptr;
+  release_snapshot();
+}
 
+void Rdb_iterator_base::release_snapshot() {
   if (m_scan_it_snapshot) {
     auto rdb = rdb_get_rocksdb_db();
     rdb->ReleaseSnapshot(m_scan_it_snapshot);
     m_scan_it_snapshot = nullptr;
   }
+  m_has_been_setup = false;
 }
 
 void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
@@ -181,7 +208,33 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
         m_scan_it_upper_bound_slice, &m_scan_it_snapshot, m_table_type,
         read_current, !read_current);
     m_scan_it_skips_bloom = skip_bloom;
+    m_has_been_setup = true;
   }
+  else if (!m_has_been_setup) {
+    // same logic as rdb_tx_get_iterator, but just do Refresh
+    extern const rocksdb::Snapshot* rdb_snapshot_commit_in_the_middle(THD*);
+    const rocksdb::Snapshot* snap = rdb_snapshot_commit_in_the_middle(m_thd);
+    if (snap) {
+      m_scan_it_snapshot = snap;
+    } else  if (!read_current) {
+      Rdb_transaction *const tx = get_tx_from_thd(m_thd);
+      auto ro = rdb_tx_acquire_snapshot(tx);
+      snap = ro.snapshot;
+    }
+    auto s = m_scan_it->Refresh(snap, false/*keep_iter_pos*/);
+    ROCKSDB_VERIFY_F(s.ok(), "%s: %s", typeid(*m_scan_it).name(), s.ToString().c_str());
+    m_has_been_setup = true;
+  }
+}
+
+// This function is intented for releasing MemTable and SST objects held by
+// rocksdb::Version object which referenced by old rocksdb::Iterator, newly
+// created Iterator may reference a newer rocksdb::Version object, The data
+// view of these 2 iterators are identical.
+void Rdb_iterator_base::refresh_iter() {
+  bool valid = m_scan_it->Valid();
+  m_scan_it->RefreshKeepSnapshot();
+  SHIP_ASSERT(m_scan_it->Valid() == valid);
 }
 
 int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
@@ -225,6 +278,12 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   int rc = 0;
   const auto &kd = *m_kd;
   Rdb_transaction *const tx = get_tx_from_thd(m_thd);
+
+  const uint32_t refresh_interval = 10000;
+  if (unlikely(++m_call_cnt >= refresh_interval)) {
+    refresh_iter();
+    m_call_cnt = 0;
+  }
 
   for (;;) {
     DEBUG_SYNC(m_thd, "rocksdb.check_flags_nwd");
@@ -289,6 +348,7 @@ int Rdb_iterator_base::seek(enum ha_rkey_function find_flag,
         my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
     m_prefix_buf = reinterpret_cast<uchar *>(
         my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
+    m_packed_buf_len = packed_len;
   }
 
   if (find_flag == HA_READ_KEY_EXACT || find_flag == HA_READ_PREFIX_LAST) {

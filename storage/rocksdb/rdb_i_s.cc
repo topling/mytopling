@@ -1006,6 +1006,8 @@ static int rdb_i_s_active_compact_stats_fill_table(
         GetCompactionReasonString(it.info.compaction_reason);
     field[4]->store(compaction_reason, strlen(compaction_reason),
                     system_charset_info);
+    field[5]->store(it.info.base_input_level, false /* unsigned_val */);
+    field[6]->store(it.info.output_level, false /* unsigned_val */);
 
     int ret = static_cast<int>(
         my_core::schema_table_store_record(thd, tables->table));
@@ -1348,6 +1350,8 @@ static ST_FIELD_INFO rdb_i_s_active_compact_stats_fields_info[] = {
     ROCKSDB_FIELD_INFO("OUTPUT_FILES", FN_REFLEN + 1, MYSQL_TYPE_STRING, 0),
     ROCKSDB_FIELD_INFO("COMPACTION_REASON", FN_REFLEN + 1, MYSQL_TYPE_STRING,
                        0),
+    ROCKSDB_FIELD_INFO("INPUT_LEVEL", sizeof(uint32), MYSQL_TYPE_LONG, 0),
+    ROCKSDB_FIELD_INFO("OUTPUT_LEVEL", sizeof(uint32), MYSQL_TYPE_LONG, 0),
     ROCKSDB_FIELD_INFO_END};
 
 static ST_FIELD_INFO rdb_i_s_compact_history_fields_info[] = {
@@ -1689,16 +1693,18 @@ static ST_FIELD_INFO rdb_i_s_sst_props_fields_info[] = {
                        MYSQL_TYPE_LONGLONG, 0),
     ROCKSDB_FIELD_INFO("FILTER_BLOCK_SIZE", sizeof(int64_t),
                        MYSQL_TYPE_LONGLONG, 0),
-    ROCKSDB_FIELD_INFO("COMPRESSION_ALGO", NAME_LEN + 1, MYSQL_TYPE_STRING, 0),
+    ROCKSDB_FIELD_INFO("COMPRESSION_ALGO", NAME_LEN + 1, MYSQL_TYPE_STRING,
+                       MY_I_S_MAYBE_NULL),
     ROCKSDB_FIELD_INFO("CREATION_TIME", sizeof(int64_t), MYSQL_TYPE_LONGLONG,
                        0),
     ROCKSDB_FIELD_INFO("FILE_CREATION_TIME", sizeof(int64_t),
                        MYSQL_TYPE_LONGLONG, 0),
     ROCKSDB_FIELD_INFO("OLDEST_KEY_TIME", sizeof(int64_t), MYSQL_TYPE_LONGLONG,
                        0),
-    ROCKSDB_FIELD_INFO("FILTER_POLICY", NAME_LEN + 1, MYSQL_TYPE_STRING, 0),
+    ROCKSDB_FIELD_INFO("FILTER_POLICY", NAME_LEN + 1, MYSQL_TYPE_STRING,
+                       MY_I_S_MAYBE_NULL),
     ROCKSDB_FIELD_INFO("COMPRESSION_OPTIONS", NAME_LEN + 1, MYSQL_TYPE_STRING,
-                       0),
+                       MY_I_S_MAYBE_NULL),
     ROCKSDB_FIELD_INFO_END};
 
 static int rdb_i_s_sst_props_fill_table(
@@ -1767,6 +1773,7 @@ static int rdb_i_s_sst_props_fill_table(
       if (props.second->compression_name.empty()) {
         field[RDB_SST_PROPS_FIELD::COMPRESSION_ALGO]->set_null();
       } else {
+        field[RDB_SST_PROPS_FIELD::COMPRESSION_ALGO]->set_notnull();
         field[RDB_SST_PROPS_FIELD::COMPRESSION_ALGO]->store(
             props.second->compression_name.c_str(),
             props.second->compression_name.size(), system_charset_info);
@@ -1780,6 +1787,7 @@ static int rdb_i_s_sst_props_fill_table(
       if (props.second->filter_policy_name.empty()) {
         field[RDB_SST_PROPS_FIELD::FILTER_POLICY]->set_null();
       } else {
+        field[RDB_SST_PROPS_FIELD::FILTER_POLICY]->set_notnull();
         field[RDB_SST_PROPS_FIELD::FILTER_POLICY]->store(
             props.second->filter_policy_name.c_str(),
             props.second->filter_policy_name.size(), system_charset_info);
@@ -1787,6 +1795,7 @@ static int rdb_i_s_sst_props_fill_table(
       if (props.second->compression_options.empty()) {
         field[RDB_SST_PROPS_FIELD::COMPRESSION_OPTIONS]->set_null();
       } else {
+        field[RDB_SST_PROPS_FIELD::COMPRESSION_OPTIONS]->set_notnull();
         field[RDB_SST_PROPS_FIELD::COMPRESSION_OPTIONS]->store(
             props.second->compression_options.c_str(),
             props.second->compression_options.size(), system_charset_info);

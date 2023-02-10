@@ -42,15 +42,19 @@
 
 namespace myrocks {
 
+extern std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
+
 Rdb_sst_file_ordered::Rdb_sst_file::Rdb_sst_file(
     rocksdb::DB *const db, rocksdb::ColumnFamilyHandle *const cf,
     const rocksdb::DBOptions &db_options, const std::string &name,
+    const bool use_auto_sort_sst,
     const bool tracing)
     : m_db(db),
       m_cf(cf),
       m_db_options(db_options),
       m_sst_file_writer(nullptr),
       m_name(name),
+      m_use_auto_sort_sst(use_auto_sort_sst),
       m_tracing(tracing),
       m_comparator(cf->GetComparator()) {
   assert(db != nullptr);
@@ -71,6 +75,11 @@ rocksdb::Status Rdb_sst_file_ordered::Rdb_sst_file::open() {
   rocksdb::Status s = m_cf->GetDescriptor(&cf_descr);
   if (!s.ok()) {
     return s;
+  }
+
+  if (m_use_auto_sort_sst) {
+    ROCKSDB_VERIFY(rocksdb_auto_sort_sst_factory != nullptr);
+    cf_descr.options.table_factory = rocksdb_auto_sort_sst_factory;
   }
 
   // Create an sst file writer with the current options and comparator
@@ -197,11 +206,12 @@ Rdb_sst_file_ordered::Rdb_sst_stack::top() {
 Rdb_sst_file_ordered::Rdb_sst_file_ordered(
     rocksdb::DB *const db, rocksdb::ColumnFamilyHandle *const cf,
     const rocksdb::DBOptions &db_options, const std::string &name,
+    const bool use_auto_sort_sst,
     const bool tracing, size_t max_size)
     : m_use_stack(false),
       m_first(true),
       m_stack(max_size),
-      m_file(db, cf, db_options, name, tracing) {
+      m_file(db, cf, db_options, name, use_auto_sort_sst, tracing) {
   m_stack.reset();
 }
 
@@ -230,6 +240,10 @@ rocksdb::Status Rdb_sst_file_ordered::apply_first() {
 
 rocksdb::Status Rdb_sst_file_ordered::put(const rocksdb::Slice &key,
                                           const rocksdb::Slice &value) {
+  if (m_file.use_auto_sort_sst()) {
+    return m_file.put(key, value);
+  }
+
   rocksdb::Status s;
 
   // If this is the first key, just store a copy of the key and value
@@ -266,6 +280,10 @@ rocksdb::Status Rdb_sst_file_ordered::put(const rocksdb::Slice &key,
 }
 
 rocksdb::Status Rdb_sst_file_ordered::commit() {
+  if (m_file.use_auto_sort_sst()) {
+    return m_file.commit();
+  }
+
   rocksdb::Status s;
 
   // Make sure we get the first key if it was the only key given to us.
@@ -307,6 +325,7 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
                            const std::string &indexname,
                            rocksdb::ColumnFamilyHandle *const cf,
                            const rocksdb::DBOptions &db_options,
+                           const bool use_auto_sort_sst,
                            const bool tracing)
     : m_db(db),
       m_cf(cf),
@@ -316,6 +335,7 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
       m_background_error(HA_EXIT_SUCCESS),
       m_done(false),
       m_sst_file(nullptr),
+      m_use_auto_sort_sst(use_auto_sort_sst),
       m_tracing(tracing),
       m_print_client_error(true) {
   m_prefix = db->GetName() + '/';
@@ -375,6 +395,7 @@ int Rdb_sst_info::open_new_sst_file() {
 
   // Create the new sst file object
   m_sst_file = new Rdb_sst_file_ordered(m_db, m_cf, m_db_options, name,
+                                        m_use_auto_sort_sst,
                                         m_tracing, m_max_size);
 
   // Open the sst file
@@ -517,9 +538,10 @@ void Rdb_sst_info::report_error_msg(const rocksdb::Status &s,
              strcmp(s.getState(), "Global seqno is required, but disabled") ==
                  0) {
     my_printf_error(ER_OVERLAPPING_KEYS,
+                    "rocksdb = %s, myrocks = "
                     "Rows inserted during bulk load "
                     "must not overlap existing rows",
-                    MYF(0));
+                    MYF(0), s.ToString().c_str());
   } else {
     my_printf_error(ER_UNKNOWN_ERROR, "[%s] bulk load error: %s", MYF(0),
                     sst_file_name, s.ToString().c_str());

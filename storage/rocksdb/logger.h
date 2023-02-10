@@ -83,6 +83,10 @@ class Rdb_logger : public rocksdb::Logger {
   }
 
  private:
+  rocksdb::Status CloseImpl() override {
+    if (m_logger) return m_logger->Close();
+    else return rocksdb::Status::OK();
+  }
   std::shared_ptr<rocksdb::Logger> m_logger;
   rocksdb::InfoLogLevel m_mysql_log_level;
 };

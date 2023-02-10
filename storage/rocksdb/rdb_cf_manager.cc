@@ -39,7 +39,16 @@ namespace myrocks {
 bool Rdb_cf_manager::is_cf_name_reverse(const char *const name) {
   /* nullptr means the default CF is used.. (TODO: can the default CF be
    * reverse?) */
+#if 0
   return (name && !strncmp(name, "rev:", 4));
+#else
+  // MyTopling: reverse bytewise comparator makes things complicated,
+  // and the gain is very little, keep it simple stupid!
+  // topling memtab and sst are fast on iterator backward scan, thus
+  // it is not needed to use reverse bytewise comparator
+  (void)name; // use
+  return false; // MyTopling: Never use reverse bytewise comparator
+#endif
 }
 
 bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
@@ -121,7 +130,7 @@ bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
 
   // Step4 : Reset the handlers passed.
   handles->clear();
-  for (auto &it : m_cf_name_map) {
+  for (const auto &it : m_cf_name_map) {
     handles->push_back(it.second.get());
   }
 
@@ -250,7 +259,7 @@ std::vector<std::string> Rdb_cf_manager::get_cf_names(void) const {
 
   RDB_MUTEX_LOCK_CHECK(m_mutex);
   for (const auto &it : m_cf_name_map) {
-    names.push_back(it.first);
+    names.push_back({it.first.data(), it.first.size()}); // ok for hash_strmap
   }
   RDB_MUTEX_UNLOCK_CHECK(m_mutex);
 

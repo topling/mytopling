@@ -149,55 +149,76 @@ IF(FB_WITH_WSENV)
   )
 ENDIF()
 
+IF(EXISTS ${ROCKSDB_ROOT}/sideplugin/topling-core/src/terark/gold_hash_map.hpp)
+  SET(TOPLING_CORE_NAME topling-core)
+ELSEIF(EXISTS ${ROCKSDB_ROOT}/sideplugin/topling-zip/src/terark/gold_hash_map.hpp)
+  SET(TOPLING_CORE_NAME topling-zip)
+ELSE()
+  MESSAGE(SEND_ERROR
+    "Missing ${ROCKSDB_ROOT}/sideplugin/topling-core/src/terark/gold_hash_map.hpp")
+ENDIF()
+
 INCLUDE_DIRECTORIES(
   ${ROCKSDB_ROOT}
   ${ROCKSDB_ROOT}/include
+  ${ROCKSDB_ROOT}/sideplugin/rockside/src
+  ${ROCKSDB_ROOT}/sideplugin/${TOPLING_CORE_NAME}/src
   ${ROCKSDB_ROOT}/third-party/gtest-1.8.1/fused-src
 )
 
 SET(ROCKSDB_SOURCES
   ${ROCKSDB_SOURCES}
-  ha_rocksdb.cc ha_rocksdb.h ha_rocksdb_proto.h
-  logger.h
-  rdb_datadic.cc rdb_datadic.h
-  rdb_iterator.cc rdb_iterator.h
-  rdb_cf_options.cc rdb_cf_options.h
-  rdb_cf_manager.cc rdb_cf_manager.h
-  rdb_converter.cc rdb_converter.h
-  properties_collector.cc properties_collector.h
-  event_listener.cc event_listener.h
-  rdb_i_s.cc rdb_i_s.h
-  rdb_index_merge.cc rdb_index_merge.h
-  rdb_io_watchdog.cc rdb_io_watchdog.h
-  rdb_perf_context.cc rdb_perf_context.h
-  rdb_mutex_wrapper.cc rdb_mutex_wrapper.h
+  rdb_show_git_info.cc
+  ha_rocksdb.cc
+  rdb_datadic.cc
+  rdb_iterator.cc
+  rdb_cf_options.cc
+  rdb_cf_manager.cc
+  rdb_compact_filter.cc
+  rdb_converter.cc
+  properties_collector.cc
+  event_listener.cc
+  rdb_i_s.cc
+  rdb_index_merge.cc
+  rdb_io_watchdog.cc
+  rdb_perf_context.cc
+  rdb_mutex_wrapper.cc
   rdb_psi.h rdb_psi.cc
-  rdb_sst_info.cc rdb_sst_info.h
-  rdb_utils.cc rdb_utils.h rdb_buff.h
-  rdb_threads.cc rdb_threads.h
-  ha_rockspart.cc ha_rockspart.h
-  nosql_access.cc nosql_access.h
-  sql_dd.cc sql_dd.h
+  rdb_sst_info.cc
+  rdb_utils.cc
+  rdb_threads.cc
+  ha_rockspart.cc
+  nosql_access.cc
+  sql_dd.cc
   ${ROCKSDB_LIB_SOURCES}
 )
 
-IF(WITH_FB_TSAN OR ROCKSDB_DYNAMIC_PLUGIN)
+IF(WITH_FB_TSAN)
   SET(PIC_EXT "_pic")
 ELSE()
   SET(PIC_EXT "")
 ENDIF()
 
 IF(HAVE_EXTERNAL_ROCKSDB)
-  SET(rocksdb_static_libs ${rocksdb_static_libs} "${ROCKSDB_LIB_PATH}/${ROCKSDB_LIB_NAME}")
+  #SET(rocksdb_static_libs ${rocksdb_static_libs} "${ROCKSDB_LIB_PATH}/${ROCKSDB_LIB_NAME}")
+  # topling specific: use shared lib, specified in build.sh
+  IF(CMAKE_BUILD_TYPE STREQUAL "Release")
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb
+       -lterark-zbs-r -lterark-fsa-r -lterark-core-r)
+  ELSEIF(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug
+       -lterark-zbs-d -lterark-fsa-d -lterark-core-d)
+  ELSEIF(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug
+       -lterark-zbs-a -lterark-fsa-a -lterark-core-a)
+  ELSE()
+    message(ERROR "Unsupported CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
+  ENDIF()
 ENDIF()
 
 IF (WITH_JEMALLOC)
-  # Not static linking jemalloc with a dynamic plugin to avoid
-  # "cannot allocate memory in static TLS block" error
-  IF(NOT ROCKSDB_DYNAMIC_PLUGIN)
-    SET(rocksdb_static_libs ${rocksdb_static_libs} -Wl,-rpath=$ORIGIN
-      ${JEMALLOC_LIBRARY})
-  ENDIF()
+  SET(rocksdb_static_libs ${rocksdb_static_libs} -Wl,-rpath=$ORIGIN
+    ${JEMALLOC_LIBRARY})
   ADD_DEFINITIONS(-DROCKSDB_JEMALLOC)
   ADD_DEFINITIONS(-DROCKSDB_MALLOC_USABLE_SIZE)
 ENDIF()
@@ -255,26 +276,31 @@ IF (HAVE_ZLIB_H)
   SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY})
 ENDIF()
 
+SET(rocksdb_static_libs ${rocksdb_static_libs} "-lstdc++fs")
 SET(rocksdb_static_libs ${rocksdb_static_libs} "-ldl" "-lpthread")
 IF(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
   SET(rocksdb_static_libs ${rocksdb_static_libs} "-lrt")
 ENDIF()
 
-IF (ROCKSDB_DYNAMIC_PLUGIN)
-  MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT
-    MODULE_ONLY LINK_LIBRARIES ${rocksdb_static_libs})
-ELSE()
-  MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT
-    STATIC_ONLY LINK_LIBRARIES ${rocksdb_static_libs})
-    # to fix linkage error on partition_base
-    TARGET_LINK_LIBRARIES(rocksdb_se sql_main)
-ENDIF()
+MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
+  LINK_LIBRARIES ${rocksdb_static_libs}
+)
+
+# MYSQL_ADD_PLUGIN will add C macro MYSQL_DYNAMIC_PLUGIN which makes
+# things much complex, so we use ADD_LIBRARY
+#MYSQL_ADD_PLUGIN(mytopling_dc ${ROCKSDB_SOURCES} DEFAULT MODULE_ONLY
+#  LINK_LIBRARIES ${rocksdb_static_libs} sql_main minchassis
+#)
+ADD_LIBRARY(mytopling_dc MODULE ${ROCKSDB_SOURCES})
+TARGET_LINK_LIBRARIES(mytopling_dc ${rocksdb_static_libs} sql_main minchassis)
+SET_TARGET_PROPERTIES(mytopling_dc PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugin_output_directory)
+MYSQL_INSTALL_TARGET(mytopling_dc DESTINATION ${INSTALL_PLUGINDIR} COMPONENT Server)
 
 IF(WITH_EMBEDDED_SERVER)
   ADD_SUBDIRECTORY(unittest)
 ENDIF()
 
-IF (NOT HAVE_EXTERNAL_ROCKSDB)
+IF (WITH_ROCKSDB_SE_STORAGE_ENGINE AND (NOT HAVE_EXTERNAL_ROCKSDB))
   # TODO: read this file list from src.mk:TOOL_SOURCES
   SET(ROCKSDB_TOOL_SOURCES
     ${CMAKE_SOURCE_DIR}/rocksdb/tools/ldb_tool.cc
@@ -282,15 +308,10 @@ IF (NOT HAVE_EXTERNAL_ROCKSDB)
     ${CMAKE_SOURCE_DIR}/rocksdb/tools/sst_dump_tool.cc
     ${CMAKE_SOURCE_DIR}/rocksdb/utilities/blob_db/blob_dump_tool.cc
   )
+  MYSQL_ADD_EXECUTABLE(sst_dump ${CMAKE_SOURCE_DIR}/rocksdb/tools/sst_dump.cc ${ROCKSDB_TOOL_SOURCES})
+  TARGET_LINK_LIBRARIES(sst_dump rocksdb_se)
 
-  SET(ROCKSDB_TOOL_SOURCES ${ROCKSDB_TOOL_SOURCES} ${ROCKSDB_LIB_SOURCES})
-
-  MYSQL_ADD_EXECUTABLE(sst_dump ${CMAKE_SOURCE_DIR}/rocksdb/tools/sst_dump.cc
-                       ${ROCKSDB_TOOL_SOURCES})
-  MYSQL_ADD_EXECUTABLE(ldb ${CMAKE_SOURCE_DIR}/rocksdb/tools/ldb.cc
-                       ${ROCKSDB_TOOL_SOURCES})
-
-  TARGET_LINK_LIBRARIES(sst_dump ${rocksdb_static_libs})
-  TARGET_LINK_LIBRARIES(ldb ${rocksdb_static_libs})
+  MYSQL_ADD_EXECUTABLE(ldb ${CMAKE_SOURCE_DIR}/rocksdb/tools/ldb.cc ${ROCKSDB_TOOL_SOURCES})
+  TARGET_LINK_LIBRARIES(ldb rocksdb_se)
 
 ENDIF()

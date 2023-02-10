@@ -22,6 +22,9 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <terark/valvec.hpp>
+#include <terark/io/FileStream.hpp>
+#include <terark/io/DataIO.hpp>
 
 /* MySQL header files */
 #include "./my_stacktrace.h"
@@ -30,8 +33,38 @@
 /* MyRocks header files */
 #include "./rdb_datadic.h"
 #include "./rdb_utils.h"
+#include "ha_rocksdb_proto.h"
+
+#include <topling/side_plugin_factory.h>
+#include <db/compaction/compaction_executor.h>
+#include <logging/logging.h>
+
+#if 0
+#define DoPrintLog(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define DoPrintLog(...) \
+    info_log ? ROCKS_LOG_INFO(info_log, __VA_ARGS__) \
+             : (void)fprintf(stderr, __VA_ARGS__)
+#endif
+
+#define PrintLog(level, fmt, ...) \
+  do { if (SidePluginRepo::DebugLevel() >= level) \
+    DoPrintLog("%s: " fmt "\n", \
+            TERARK_PP_SmartForPrintf(rocksdb::StrDateTimeNow(), ## __VA_ARGS__)); \
+  } while (0)
+#define TRAC(...) PrintLog(4, "TRAC: " __VA_ARGS__)
+#define DEBG(...) PrintLog(3, "DEBG: " __VA_ARGS__)
+#define INFO(...) PrintLog(2, "INFO: " __VA_ARGS__)
+#define WARN(...) PrintLog(1, "WARN: " __VA_ARGS__)
+#define ERR(...)  PrintLog(1, "ERROR: " __VA_ARGS__)
+
+namespace std {
+  DATA_IO_DUMP_RAW_MEM_E(atomic<uint64_t>)
+}
 
 namespace myrocks {
+
+using namespace terark;
 
 std::atomic<uint64_t> rocksdb_num_sst_entry_put(0);
 std::atomic<uint64_t> rocksdb_num_sst_entry_delete(0);
@@ -41,12 +74,12 @@ std::atomic<uint64_t> rocksdb_num_sst_entry_other(0);
 std::atomic<uint64_t> rocksdb_additional_compaction_triggers(0);
 bool rocksdb_compaction_sequential_deletes_count_sd = false;
 
-Rdb_tbl_prop_coll::Rdb_tbl_prop_coll(Rdb_ddl_manager *const ddl_manager,
+Rdb_tbl_prop_coll::Rdb_tbl_prop_coll(find_key_def_func_t find_key_def,
                                      const Rdb_compact_params &params,
                                      const uint32_t cf_id,
                                      const uint8_t table_stats_sampling_pct)
     : m_cf_id(cf_id),
-      m_ddl_manager(ddl_manager),
+      m_find_key_def(find_key_def),
       m_last_stats(nullptr),
       m_window_pos(0l),
       m_deleted_rows(0l),
@@ -60,7 +93,7 @@ Rdb_tbl_prop_coll::Rdb_tbl_prop_coll(Rdb_ddl_manager *const ddl_manager,
       m_params(params),
       m_cardinality_collector(table_stats_sampling_pct),
       m_recorded(false) {
-  assert(ddl_manager != nullptr);
+  assert(find_key_def != nullptr);
 
   m_deleted_rows_window.resize(m_params.m_window, false);
 }
@@ -113,8 +146,8 @@ void Rdb_tbl_prop_coll::AdjustDeletedRows(rocksdb::EntryType type) {
 }
 
 Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
-  GL_INDEX_ID gl_index_id = {.cf_id = m_cf_id,
-                             .index_id = rdb_netbuf_to_uint32(
+  GL_INDEX_ID gl_index_id{m_cf_id,
+                          rdb_netbuf_to_uint32(
                                  reinterpret_cast<const uchar *>(key.data()))};
 
   if (m_last_stats == nullptr || m_last_stats->m_gl_index_id != gl_index_id) {
@@ -125,7 +158,7 @@ Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
     m_stats.emplace_back(gl_index_id);
     m_last_stats = &m_stats.back();
 
-    if (m_ddl_manager) {
+    if (m_find_key_def) {
       // safe_find() returns a std::shared_ptr<Rdb_key_def> with the count
       // incremented (so it can't be deleted out from under us) and with
       // the mutex locked (if setup has not occurred yet).  We must make
@@ -133,7 +166,7 @@ Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
       // with this object.  Currently this happens earlier in this function
       // when we are switching to a new Rdb_key_def and when this object
       // is destructed.
-      m_keydef = m_ddl_manager->safe_find(gl_index_id);
+      m_keydef = m_find_key_def(gl_index_id);
       if (m_keydef != nullptr) {
         // resize the array to the number of columns.
         // It will be initialized with zeroes
@@ -141,6 +174,17 @@ Rdb_index_stats *Rdb_tbl_prop_coll::AccessStats(const rocksdb::Slice &key) {
             m_keydef->get_key_parts());
         m_last_stats->m_name = m_keydef->get_name();
       }
+      else {
+        using namespace rocksdb;
+        rocksdb::Logger* info_log = nullptr;
+        DEBG("not found gl_index_id{%d,%d}",
+          gl_index_id.cf_id, gl_index_id.index_id);
+      }
+    }
+    else {
+      using namespace rocksdb;
+      rocksdb::Logger* info_log = nullptr;
+      ERR("m_find_key_def is null");
     }
     m_cardinality_collector.Reset();
   }
@@ -182,8 +226,14 @@ void Rdb_tbl_prop_coll::CollectStatsForRow(const rocksdb::Slice &key,
       break;
   }
 
-  stats->m_actual_disk_size += file_size - m_file_size;
-  m_file_size = file_size;
+  if (file_size > m_file_size) {
+    stats->m_actual_disk_size += file_size - m_file_size;
+    m_file_size = file_size;
+  }
+  else if (file_size < m_file_size) {
+    sql_print_warning("Rdb_tbl_prop_coll::CollectStatsForRow: file_size decr: old = %zd, new = %zd",
+      m_file_size, file_size);
+  }
 
   if (m_keydef != nullptr && type == rocksdb::kEntryPut) {
     m_cardinality_collector.ProcessKey(key, m_keydef.get(), stats);
@@ -338,6 +388,48 @@ std::string Rdb_tbl_prop_coll::GetReadableStats(const Rdb_index_stats &it) {
   return s;
 }
 
+std::string Rdb_tbl_prop_coll_factory::UserPropToString
+(const rocksdb::UserCollectedProperties& user_properties) const {
+  std::vector<Rdb_index_stats> stats;
+  using namespace rocksdb;
+  json djs;
+  const auto it2 = user_properties.find(std::string(Rdb_tbl_prop_coll::INDEXSTATS_KEY));
+  json& statsjs = djs[Rdb_tbl_prop_coll::INDEXSTATS_KEY];
+  if (it2 != user_properties.end()) {
+    auto result = Rdb_index_stats::unmaterialize(it2->second, &stats);
+    ROCKSDB_VERIFY_EQ(result, HA_EXIT_SUCCESS);
+    for (auto& it : stats) {
+      json one;
+      one["index_id"] = it.m_gl_index_id.index_id;
+      one["name"] = it.m_name;
+      one["size"] = it.m_data_size;
+      one["rows"] = it.m_rows;
+      one["actual_disk_size"] = it.m_actual_disk_size;
+      one["deletes"] = it.m_entry_deletes;
+      one["single_deletes"] = it.m_entry_single_deletes;
+      one["merges"] = it.m_entry_merges;
+      one["others"] = it.m_entry_others;
+      std::string distincts;
+      if (it.m_distinct_keys_per_prefix.empty()) {
+        distincts = "[ ]";
+      }
+      else {
+        distincts = "[ ";
+        for (auto num : it.m_distinct_keys_per_prefix) {
+          distincts.append(std::to_string(num));
+          distincts.append(", ");
+        }
+        distincts.replace(distincts.end() - 2, distincts.end(), " ]");
+      }
+      one["distincts per prefix"] = std::move(distincts);
+      statsjs.push_back(std::move(one));
+    }
+  } else {
+    statsjs = "EMPTY";
+  }
+  return JsonToString(djs, json{{"html", 1}});
+}
+
 /*
   Given the properties of an SST file, reads the stats from it and returns it.
 */
@@ -361,11 +453,10 @@ void Rdb_tbl_prop_coll::read_stats_from_tbl_props(
 std::string Rdb_index_stats::materialize(
     const std::vector<Rdb_index_stats> &stats) {
   String ret;
-  rdb_netstr_append_uint16(&ret, INDEX_STATS_VERSION_ENTRY_TYPES);
+  rdb_netstr_append_uint16(&ret, INDEX_STATS_VERSION_WITH_NAME);
   for (const auto &i : stats) {
     rdb_netstr_append_uint32(&ret, i.m_gl_index_id.cf_id);
     rdb_netstr_append_uint32(&ret, i.m_gl_index_id.index_id);
-    assert(sizeof i.m_data_size <= 8);
     rdb_netstr_append_uint64(&ret, i.m_data_size);
     rdb_netstr_append_uint64(&ret, i.m_rows);
     rdb_netstr_append_uint64(&ret, i.m_actual_disk_size);
@@ -377,6 +468,8 @@ std::string Rdb_index_stats::materialize(
     for (const auto &num_keys : i.m_distinct_keys_per_prefix) {
       rdb_netstr_append_uint64(&ret, num_keys);
     }
+    rdb_netstr_append_uint16(&ret, i.m_name.size());
+    ret.append(i.m_name.data(), i.m_name.size());
   }
 
   return std::string((char *)ret.ptr(), ret.length());
@@ -403,7 +496,7 @@ int Rdb_index_stats::unmaterialize(const std::string &s,
   Rdb_index_stats stats;
   // Make sure version is within supported range.
   if (version < INDEX_STATS_VERSION_INITIAL ||
-      version > INDEX_STATS_VERSION_ENTRY_TYPES) {
+      version > INDEX_STATS_VERSION_WITH_NAME) {
     rdb_fatal_error(
         "Index stats version %d was outside of supported range. "
         "This should not happen so aborting the system.",
@@ -442,6 +535,11 @@ int Rdb_index_stats::unmaterialize(const std::string &s,
     }
     for (std::size_t i = 0; i < stats.m_distinct_keys_per_prefix.size(); i++) {
       stats.m_distinct_keys_per_prefix[i] = rdb_netbuf_read_uint64(&p);
+    }
+    if (version >= INDEX_STATS_VERSION_WITH_NAME) {
+      size_t namelen = rdb_netbuf_read_uint16(&p);
+      stats.m_name.assign((const char*)p, namelen);
+      p += namelen;
     }
     ret->push_back(stats);
   }
@@ -584,4 +682,145 @@ void Rdb_tbl_card_coll::SetCardinality(Rdb_index_stats *stats) {
   }
 }
 
+Rdb_tbl_prop_coll_factory::Rdb_tbl_prop_coll_factory(Rdb_ddl_manager* dm) {
+  m_find_key_def = [dm](GL_INDEX_ID iid) { return dm->safe_find(iid); };
+}
+
+DATA_IO_DUMP_RAW_MEM_E(Rdb_compact_params)
+
+
+namespace detail {
+using namespace rocksdb;
+struct Rdb_tbl_prop_coll_factory_SerDe : SerDeFunc<TablePropertiesCollectorFactory> {
+  const CompactionParams* m_cp;
+  rocksdb::Logger* info_log;
+  int job_id;
+  size_t rawzip[2];
+
+  Rdb_tbl_prop_coll_factory_SerDe(const json& js, const SidePluginRepo&) {
+    auto cp = m_cp = JS_CompactionParamsDecodePtr(js);
+    info_log = cp->info_log;
+
+    // we requires 1==max_subcompactions, this makes all things simpler
+    //
+    // 1==max_subcompactions is not required for Dcompact, but it is too
+    // complicated to gracefully support multi sub compact in Dcompact,
+    // such as this use case, it requires DB side and Worker side has same
+    // sub compact boundary to reading keys by streaming.
+    TERARK_VERIFY_EQ(cp->max_subcompactions, 1);
+
+    const auto& smallest_user_key = cp->smallest_user_key;
+    const auto& largest_user_key = cp->largest_user_key;
+    job_id = cp->job_id;
+    cp->InputBytes(rawzip);
+    TRAC("Rdb_tbl_prop_coll_factory_SerDe cons: job_id = %d, smallest_user_key = %s, largest_user_key = %s, job raw = %.3f GB, zip = %.3f GB",
+        cp->job_id, smallest_user_key.c_str(), largest_user_key.c_str(), rawzip[0]/1e9, rawzip[1]/1e9);
+  }
+  void Serialize(FILE* output, const TablePropertiesCollectorFactory& base)
+  const override {
+    auto& fac = dynamic_cast<const Rdb_tbl_prop_coll_factory&>(base);
+    LittleEndianDataOutput<NonOwnerFileStream> dio(output);
+    if (IsCompactionWorker()) {
+      dio << rocksdb_num_sst_entry_put;
+      dio << rocksdb_num_sst_entry_delete;
+      dio << rocksdb_num_sst_entry_singledelete;
+      dio << rocksdb_num_sst_entry_merge;
+      dio << rocksdb_num_sst_entry_other;
+      dio << rocksdb_additional_compaction_triggers;
+    }
+    else {
+      dio << rocksdb_compaction_sequential_deletes_count_sd;
+      dio << fac.m_params;
+      dio << fac.m_table_stats_sampling_pct;
+      rdb_get_ddl_manager()->write_key_def_rng(dio, m_cp->cf_id,
+                        m_cp->smallest_user_key, m_cp->largest_user_key);
+      DEBG("job-%05d: Rdb_tbl_prop_coll_factory_SerDe::Serialize: job raw = %.3f GB, zip = %.3f GB, smallest_seqno = %lld",
+            job_id, rawzip[0]/1e9, rawzip[1]/1e9, (llong)m_cp->smallest_seqno);
+    }
+  }
+  void DeSerialize(FILE* reader, TablePropertiesCollectorFactory* base)
+  const override {
+    auto fac = dynamic_cast<Rdb_tbl_prop_coll_factory*>(base);
+    LittleEndianDataInput<NonOwnerFileStream> dio(reader);
+    if (IsCompactionWorker()) {
+      //ROCKSDB_VERIFY(terark::getEnvBool("MULTI_PROCESS"));
+      dio >> rocksdb_compaction_sequential_deletes_count_sd;
+      dio >> fac->m_params;
+      dio >> fac->m_table_stats_sampling_pct;
+      auto pvec = std::make_shared<std::vector<std::shared_ptr<Rdb_key_def> > >();
+      rocksdb::Status s = rdb_get_ddl_manager()->read_key_def_all(dio, pvec.get());
+      if (s.ok()) {
+        // m_find_key_def shared own pvec
+        fac->m_find_key_def = [pvec](GL_INDEX_ID x) {
+          auto iter = lower_bound_ex_r(*pvec, x, TERARK_FIELD_P(get_gl_index_id()));
+          std::shared_ptr<Rdb_key_def> ret;
+          if (pvec->end() != iter && (*iter)->get_gl_index_id() == x) {
+            ret = *iter;
+          }
+          return ret;
+        };
+      }
+      else {
+        ERR("read_key_def_all = %s\n", s.ToString());
+      }
+      DEBG("job-%05d: Rdb_tbl_prop_coll_factory_SerDe::DeSerialize: job raw = %.3f GB, zip = %.3f GB, smallest_seqno = %lld",
+            job_id, rawzip[0]/1e9, rawzip[1]/1e9, (llong)m_cp->smallest_seqno);
+    }
+    else { // MySQL side
+      uint64_t num_sst_entry_put(0);
+      uint64_t num_sst_entry_delete(0);
+      uint64_t num_sst_entry_singledelete(0);
+      uint64_t num_sst_entry_merge(0);
+      uint64_t num_sst_entry_other(0);
+      uint64_t additional_compaction_triggers(0);
+      dio >> num_sst_entry_put;
+      dio >> num_sst_entry_delete;
+      dio >> num_sst_entry_singledelete;
+      dio >> num_sst_entry_merge;
+      dio >> num_sst_entry_other;
+      dio >> additional_compaction_triggers;
+      #define UpdateNum(val) \
+        if (val) rocksdb_##val.fetch_add(val, std::memory_order_relaxed)
+      UpdateNum(num_sst_entry_put);
+      UpdateNum(num_sst_entry_delete);
+      UpdateNum(num_sst_entry_singledelete);
+      UpdateNum(num_sst_entry_merge);
+      UpdateNum(num_sst_entry_other);
+      UpdateNum(additional_compaction_triggers);
+    }
+  }
+};
+
+ROCKSDB_REG_PluginSerDe(Rdb_tbl_prop_coll_factory);
+
+struct PropertiesCollector_Stat_Manip : PluginManipFunc<TablePropertiesCollectorFactory> {
+  void Update(TablePropertiesCollectorFactory*, const json&, const json&,
+              const SidePluginRepo &) const override {}
+  std::string ToString(const TablePropertiesCollectorFactory &fac,
+                       const json &dump_options,
+                       const SidePluginRepo &) const override {
+    if (auto f = dynamic_cast<const Rdb_tbl_prop_coll_factory *>(&fac)) {
+      json js;
+      js["Class"] = f->Name();
+      js["CompactParams"]["deletes"] = f->m_params.m_deletes;
+      js["CompactParams"]["window"] = f->m_params.m_window;
+      js["CompactParams"]["file_size"] = f->m_params.m_file_size;
+      js["table_stats_sampling_pct"] = f->m_table_stats_sampling_pct;
+      js["num_sst_entry_put"] = rocksdb_num_sst_entry_put.load();
+      js["num_sst_entry_delete"] = rocksdb_num_sst_entry_delete.load();
+      js["num_sst_entry_singledelete"] = rocksdb_num_sst_entry_singledelete.load();
+      js["num_sst_entry_merge"] = rocksdb_num_sst_entry_merge.load();
+      js["num_sst_entry_other"] = rocksdb_num_sst_entry_other.load();
+      js["additional_compaction_triggers"] = rocksdb_additional_compaction_triggers.load();
+      js["compaction_sequential_deletes_count_sd"] = rocksdb_compaction_sequential_deletes_count_sd;
+
+      return JsonToString(js, dump_options);
+    }
+    THROW_InvalidArgument("Unknow TablePropertiesCollectorFactory");
+  }
+};
+
+ROCKSDB_REG_PluginManip("Rdb_tbl_prop_coll_factory", PropertiesCollector_Stat_Manip);
+
+} // namespace detail
 }  // namespace myrocks
