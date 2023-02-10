@@ -267,7 +267,8 @@
         "info_log_level": "INFO_LEVEL",
         "hoster_root": "/mnt/mynfs/datadir/mytopling-instance-1",
         "instance_name": "mytopling-instance-1",
-        "nfs_mnt_src": "nfs-host-name:/",
+        "nfs_type": "glusterfs",
+        "nfs_mnt_src": "mytopling-instance-1.mytopling.in:/mytopling-volume",
         "nfs_mnt_opt": "vers=3,nolock,noatime",
         "web_domain": "mytopling.in",
         "http_workers": [
