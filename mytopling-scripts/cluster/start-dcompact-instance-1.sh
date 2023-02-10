@@ -12,6 +12,7 @@ rm -f /tmp/Terark-* # 清理上次运行结束时的遗留垃圾文件
 
 #export LOG_LEVEL=3
 #export JsonOptionsRepo_DebugLevel=3
+export NFS_DYNAMIC_MOUNT=1
 export CPU_CORE_COUNT=`nproc`
 export MAX_PARALLEL_COMPACTIONS=$[$CPU_CORE_COUNT * 1]
 export MAX_WAITING_COMPACTIONS=$[$CPU_CORE_COUNT * 2]
