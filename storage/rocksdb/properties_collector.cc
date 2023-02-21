@@ -684,6 +684,7 @@ void Rdb_tbl_card_coll::SetCardinality(Rdb_index_stats *stats) {
 
 Rdb_tbl_prop_coll_factory::Rdb_tbl_prop_coll_factory(Rdb_ddl_manager* dm) {
   m_find_key_def = [dm](GL_INDEX_ID iid) { return dm->safe_find(iid); };
+  memset(&m_params, 0, sizeof(m_params));
 }
 
 DATA_IO_DUMP_RAW_MEM_E(Rdb_compact_params)
