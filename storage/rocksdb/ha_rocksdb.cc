@@ -3317,6 +3317,25 @@ static bool rdb_is_ttl_read_filtering_enabled();
 static int rdb_dbug_set_ttl_read_filter_ts();
 #endif
 
+static rocksdb::DBOptions MergeTableDBOptions() {
+  rocksdb::DBOptions dbo = rdb->GetDBOptions();
+  dbo.db_log_dir.clear();
+  dbo.db_paths.clear();
+  dbo.wal_dir.clear();
+  dbo.create_if_missing = true;
+  dbo.create_missing_column_families = true;
+  dbo.info_log = nullptr;
+  dbo.max_subcompactions = rocksdb_index_subcompactions;
+  return dbo;
+}
+
+static void FixMergeTableCFO(rocksdb::ColumnFamilyOptions* cfo) {
+  cfo->cf_paths.clear();
+  cfo->target_file_size_base *= 3;
+  cfo->target_file_size_multiplier = 1;
+  for (auto& x : cfo->max_bytes_for_level_multiplier_additional) x = 1;
+}
+
 /* This is the base class for transactions when interacting with rocksdb.
  */
 class Rdb_transaction {
@@ -4131,14 +4150,7 @@ class Rdb_transaction {
         }
       }
     });
-    auto dbo = rdb->GetDBOptions();
-    dbo.db_log_dir.clear();
-    dbo.db_paths.clear();
-    dbo.wal_dir.clear();
-    dbo.create_if_missing = true;
-    dbo.create_missing_column_families = true;
-    dbo.info_log = nullptr;
-    dbo.max_subcompactions = rocksdb_index_subcompactions;
+    auto dbo = MergeTableDBOptions();
     for (auto& [cf, files] : arg_map) {
       std::string tmp_dbname = rocksdb_datadir;
       tmp_dbname += "/";
@@ -4148,7 +4160,7 @@ class Rdb_transaction {
       std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
       auto s = cf->GetDescriptor(&cfo[0]);
       ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
-      cfo[0].options.cf_paths.clear();
+      FixMergeTableCFO(&cfo[0].options);
       std::vector<std::string> outputs;
       s = rocksdb::MergeTables(files.external_files, tmp_dbname, dbo, cfo, &outputs);
       ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
@@ -12278,18 +12290,12 @@ int ha_rocksdb::finalize_bulk_load(bool print_client_error) {
         });
         auto files = commit_info.get_committed_files();
         auto cf = commit_info.get_cf();
-        auto dbo = rdb->GetDBOptions();
-        dbo.db_log_dir.clear();
-        dbo.db_paths.clear();
-        dbo.wal_dir.clear();
-        dbo.create_if_missing = true;
-        dbo.create_missing_column_families = true;
-        dbo.info_log = nullptr;
+        auto dbo = MergeTableDBOptions();
         {
           std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
           auto s = cf->GetDescriptor(&cfo[0]);
           ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
-          cfo[0].options.cf_paths.clear();
+          FixMergeTableCFO(&cfo[0].options);
           std::vector<std::string> outputs;
           s = rocksdb::MergeTables(files, tmp_dbname, dbo, cfo, &outputs);
           ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
