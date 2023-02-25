@@ -918,6 +918,7 @@ bool rocksdb_enable_auto_sort_sst = true;
 bool rocksdb_reuse_iter = false;
 std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
 static uint32_t rocksdb_async_queue_depth = 32;
+static uint32_t rocksdb_index_subcompactions = 7;
 
 static std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 static std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -2757,6 +2758,13 @@ static MYSQL_SYSVAR_UINT(
     nullptr, nullptr, rocksdb_async_queue_depth,
     /* min */ 0, /* max */ 256, 0);
 
+static MYSQL_SYSVAR_UINT(
+    index_subcompactions, rocksdb_index_subcompactions,
+    PLUGIN_VAR_RQCMDARG,
+    "subcompactions for index creation",
+    nullptr, nullptr, rocksdb_index_subcompactions,
+    /* min */ 0, /* max */ 256, 0);
+
 static MYSQL_SYSVAR_ULONGLONG(
     select_bypass_multiget_min, rocksdb_select_bypass_multiget_min,
     PLUGIN_VAR_RQCMDARG,
@@ -3056,6 +3064,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(bypass_rpc_on),
     MYSQL_SYSVAR(bypass_rpc_log_rejected),
     MYSQL_SYSVAR(async_queue_depth),
+    MYSQL_SYSVAR(index_subcompactions),
     MYSQL_SYSVAR(skip_locks_if_skip_unique_check),
     MYSQL_SYSVAR(alter_column_default_inplace),
     MYSQL_SYSVAR(partial_index_sort_max_mem),
@@ -4129,6 +4138,7 @@ class Rdb_transaction {
     dbo.create_if_missing = true;
     dbo.create_missing_column_families = true;
     dbo.info_log = nullptr;
+    dbo.max_subcompactions = rocksdb_index_subcompactions;
     for (auto& [cf, files] : arg_map) {
       std::string tmp_dbname = rocksdb_datadir;
       tmp_dbname += "/";
