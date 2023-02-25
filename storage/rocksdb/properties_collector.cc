@@ -708,7 +708,7 @@ struct Rdb_tbl_prop_coll_factory_SerDe : SerDeFunc<TablePropertiesCollectorFacto
     // complicated to gracefully support multi sub compact in Dcompact,
     // such as this use case, it requires DB side and Worker side has same
     // sub compact boundary to reading keys by streaming.
-    TERARK_VERIFY_EQ(cp->max_subcompactions, 1);
+    //TERARK_VERIFY_EQ(cp->max_subcompactions, 1);
 
     const auto& smallest_user_key = cp->smallest_user_key;
     const auto& largest_user_key = cp->largest_user_key;
