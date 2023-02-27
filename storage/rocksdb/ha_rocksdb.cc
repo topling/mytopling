@@ -2761,7 +2761,7 @@ static MYSQL_SYSVAR_UINT(
 static MYSQL_SYSVAR_UINT(
     bulk_load_subcompactions, rocksdb_bulk_load_subcompactions,
     PLUGIN_VAR_RQCMDARG,
-    "subcompactions for index creation",
+    "subcompactions for bulk load / index creation",
     nullptr, nullptr, rocksdb_bulk_load_subcompactions,
     /* min */ 0, /* max */ 256, 0);
 
