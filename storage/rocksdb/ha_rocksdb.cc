@@ -918,7 +918,7 @@ bool rocksdb_enable_auto_sort_sst = true;
 bool rocksdb_reuse_iter = false;
 std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
 static uint32_t rocksdb_async_queue_depth = 32;
-static uint32_t rocksdb_index_subcompactions = 7;
+static uint32_t rocksdb_bulk_load_subcompactions = 7;
 
 static std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 static std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -2759,10 +2759,10 @@ static MYSQL_SYSVAR_UINT(
     /* min */ 0, /* max */ 256, 0);
 
 static MYSQL_SYSVAR_UINT(
-    index_subcompactions, rocksdb_index_subcompactions,
+    bulk_load_subcompactions, rocksdb_bulk_load_subcompactions,
     PLUGIN_VAR_RQCMDARG,
     "subcompactions for index creation",
-    nullptr, nullptr, rocksdb_index_subcompactions,
+    nullptr, nullptr, rocksdb_bulk_load_subcompactions,
     /* min */ 0, /* max */ 256, 0);
 
 static MYSQL_SYSVAR_ULONGLONG(
@@ -3064,7 +3064,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(bypass_rpc_on),
     MYSQL_SYSVAR(bypass_rpc_log_rejected),
     MYSQL_SYSVAR(async_queue_depth),
-    MYSQL_SYSVAR(index_subcompactions),
+    MYSQL_SYSVAR(bulk_load_subcompactions),
     MYSQL_SYSVAR(skip_locks_if_skip_unique_check),
     MYSQL_SYSVAR(alter_column_default_inplace),
     MYSQL_SYSVAR(partial_index_sort_max_mem),
@@ -3325,7 +3325,7 @@ static rocksdb::DBOptions MergeTableDBOptions() {
   dbo.create_if_missing = true;
   dbo.create_missing_column_families = true;
   dbo.info_log = nullptr;
-  dbo.max_subcompactions = rocksdb_index_subcompactions;
+  dbo.max_subcompactions = rocksdb_bulk_load_subcompactions;
   return dbo;
 }
 
