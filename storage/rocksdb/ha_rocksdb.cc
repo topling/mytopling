@@ -4245,8 +4245,7 @@ class Rdb_transaction {
     uint sk_memcmp_size =
         key_def.get_memcmp_sk_parts(table_arg, *key, sk_buf, &n_null_fields);
 
-    sk_info->sk_memcmp_key =
-        rocksdb::Slice(reinterpret_cast<char *>(sk_buf), sk_memcmp_size);
+    sk_info->sk_memcmp_key = rocksdb::Slice(sk_buf, sk_memcmp_size);
 
     if (sk_info->sk_memcmp_key_old.size() > 0 && n_null_fields == 0 &&
         index_comp->Compare(sk_info->sk_memcmp_key,
@@ -10612,8 +10611,7 @@ int ha_rocksdb::index_read_intern(uchar *const buf, const uchar *const key,
                                       key, keypart_map);
   }
 
-  rocksdb::Slice slice(reinterpret_cast<const char *>(m_sk_packed_tuple),
-                       packed_size);
+  rocksdb::Slice slice(m_sk_packed_tuple, packed_size);
 
   rocksdb::Slice end_slice;
   if (end_range && find_flag != HA_READ_KEY_EXACT &&
@@ -10622,8 +10620,7 @@ int ha_rocksdb::index_read_intern(uchar *const buf, const uchar *const key,
     end_key_packed_size =
         kd.pack_index_tuple(table, m_pack_buffer, m_end_key_packed_tuple,
                             end_range->key, end_range->keypart_map);
-    end_slice =
-        rocksdb::Slice((char *)m_end_key_packed_tuple, end_key_packed_size);
+    end_slice = rocksdb::Slice(m_end_key_packed_tuple, end_key_packed_size);
   }
 
   Rdb_transaction *const tx =
@@ -12493,8 +12490,8 @@ int ha_rocksdb::update_write_sk(const TABLE *const table_arg,
                                 const Rdb_key_def &kd,
                                 const struct update_row_info &row_info,
                                 const bool bulk_load_sk) {
-  int new_packed_size;
-  int old_packed_size;
+  size_t new_packed_size;
+  size_t old_packed_size;
   int rc = HA_EXIT_SUCCESS;
 
   rocksdb::Slice new_key_slice;
@@ -12557,8 +12554,7 @@ int ha_rocksdb::update_write_sk(const TABLE *const table_arg,
       (also note that DDL statements do not delete rows, so this is not a DDL
        statement)
     */
-    old_key_slice = rocksdb::Slice(
-        reinterpret_cast<const char *>(m_sk_packed_tuple_old), old_packed_size);
+    old_key_slice = {m_sk_packed_tuple_old, old_packed_size};
 
     // TODO(mung) - If the new_data and old_data below to the same partial index
     // group (ie. have the same prefix), we can make use of the read below to
@@ -12609,11 +12605,8 @@ int ha_rocksdb::update_write_sk(const TABLE *const table_arg,
     }
   }
 
-  new_key_slice = rocksdb::Slice(
-      reinterpret_cast<const char *>(m_sk_packed_tuple), new_packed_size);
-  new_value_slice =
-      rocksdb::Slice(reinterpret_cast<const char *>(m_sk_tails.ptr()),
-                     m_sk_tails.get_current_pos());
+  new_key_slice = {m_sk_packed_tuple, new_packed_size};
+  new_value_slice = {m_sk_tails.ptr(), m_sk_tails.get_current_pos()};
 
   // Check and update the tmp table usage
   if (m_tbl_def->is_intrinsic_tmp_table()) {
@@ -13946,8 +13939,7 @@ static bool is_myrocks_index_empty(rocksdb::ColumnFamilyHandle *cfh,
   bool index_removed = false;
   uchar key_buf[Rdb_key_def::INDEX_NUMBER_SIZE] = {0};
   rdb_netbuf_store_uint32(key_buf, index_id);
-  const rocksdb::Slice key =
-      rocksdb::Slice(reinterpret_cast<char *>(key_buf), sizeof(key_buf));
+  const rocksdb::Slice key(key_buf, sizeof(key_buf));
   std::unique_ptr<rocksdb::Iterator> it(rdb->NewIterator(read_opts, cfh));
   rocksdb_smart_seek(is_reverse_cf, it.get(), key);
   if (!it->Valid()) {
@@ -15892,11 +15884,8 @@ int ha_rocksdb::inplace_populate_sk(
           &m_sk_tails, should_store_row_debug_checksums(), hidden_pk_id, 0,
           nullptr, m_ttl_bytes);
 
-      const rocksdb::Slice key = rocksdb::Slice(
-          reinterpret_cast<const char *>(m_sk_packed_tuple), new_packed_size);
-      const rocksdb::Slice val =
-          rocksdb::Slice(reinterpret_cast<const char *>(m_sk_tails.ptr()),
-                         m_sk_tails.get_current_pos());
+      const rocksdb::Slice key(m_sk_packed_tuple, new_packed_size);
+      const rocksdb::Slice val(m_sk_tails.ptr(), m_sk_tails.get_current_pos());
 
       /*
         Add record to offset tree in preparation for writing out to
