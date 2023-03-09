@@ -76,6 +76,29 @@
       "params": {
       }
     },
+    "light_dzip": {
+      "comment1": "Disable value zip for faster compression speed",
+      "comment2": "Index and Tag(Seq+ValueType) will still be compressed",
+      "class": "ToplingZipTable",
+      "params": {
+        "localTempDir": "/tmp",
+        "builderMinLevel": 0,
+        "acceptCompressionRatio": 0.8,
+        "enableStatistics": false,
+        "warmupLevel": "kIndex",
+        "optimizeCpuL3Cache": true,
+        "offsetArrayBlockUnits": 128,
+        "sampleRatio": 0.01,
+        "keyRankCacheRatio": 0.001,
+        "checksumLevel": 0,
+        "entropyAlgo": "kNoEntropy",
+        "debugLevel": 0,
+        "large minDictZipValueSize will disable value zip": "10M",
+        "minDictZipValueSize": "10M",
+        "keyPrefixLen": 4,
+        "minPreadLen": 64
+      }
+    },
     "dzip": {
       "class": "ToplingZipTable",
       "params": {
@@ -107,6 +130,11 @@
           "ToplingZipTable": "dzip",
           "SingleFastTable": "sng"
         },
+        "level_writers if without distributed compaction": [
+          "sng", "sng",
+          "light_dzip", "light_dzip", "light_dzip",
+          "dzip", "dzip", "dzip", "dzip", "dzip"
+        ],
         "level_writers": [
           "sng", "sng",
           "dzip", "dzip", "dzip", "dzip", "dzip"
