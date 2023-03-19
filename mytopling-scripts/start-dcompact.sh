@@ -9,6 +9,8 @@ export MULTI_PROCESS=1
 
 # MyTopling 企业版(包含 topling-rocks 模块) 必须配置该变量
 export ZIP_SERVER_OPTIONS="listening_ports=8090:num_threads=32"
+export DictZipBlobStore_zipThreads=32
+
 rm -f /tmp/Topling-* # 清理上次运行结束时的遗留垃圾文件
 
 DOCUMENT_ROOT=/mnt/mynfs/infolog/dcompact-worker-1

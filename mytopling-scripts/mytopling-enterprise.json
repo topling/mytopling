@@ -21,12 +21,34 @@
       "class": "default",
       "params": {
         "discard_tickers": [
+          "# comment",
+          "// comment: 可以仅指定前缀，必须是以 . 为边界的前缀，例如下面两个必须分别指定",
+          "rocksdb.block.cache",
+          "rocksdb.block.cachecompressed",
+          "# comment: 上面两个也可以用下面这一个概括",
+          "rocksdb.block",
+          "# 精确指定",
           "rocksdb.memtable.payload.bytes.at.flush",
           "rocksdb.memtable.garbage.bytes.at.flush",
+          "rocksdb.blobdb",
           "rocksdb.row.cache",
+          "rocksdb.number.block",
+          "rocksdb.bloom.filter",
+          "rocksdb.persistent",
+          "rocksdb.sim.block.cache",
           "rocksdb.persistent"
         ],
         "discard_histograms": [
+          "# comment: ....",
+          "rocksdb.blobdb",
+          "rocksdb.bytes.compressed",
+          "rocksdb.bytes.decompressed",
+          "rocksdb.num.index.and.filter.blocks.read.per.level",
+          "rocksdb.num.data.blocks.read.per.level",
+          "rocksdb.compression.times.nanos",
+          "rocksdb.decompression.times.nanos",
+          "rocksdb.read.block.get.micros",
+          "rocksdb.write.raw.block.micros",
           "# comment end of array"
         ],
         "stats_level": "kExceptDetailedTimers"
@@ -43,7 +65,7 @@
     "block_cache": {
       "class": "LRUCache",
       "params": {
-        "capacity": "1G",
+        "capacity": "4G",
         "num_shard_bits": -1,
         "strict_capacity_limit": false,
         "high_pri_pool_ratio": 0.75,
@@ -74,6 +96,7 @@
     "sng": {
       "class": "SingleFastTable",
       "params": {
+        "debugLevel": 0
       }
     },
     "light_dzip": {
@@ -87,7 +110,7 @@
         "enableStatistics": false,
         "warmupLevel": "kIndex",
         "optimizeCpuL3Cache": true,
-        "offsetArrayBlockUnits": 128,
+        "offsetArrayBlockUnits": 0,
         "sampleRatio": 0.01,
         "keyRankCacheRatio": 0.001,
         "checksumLevel": 0,
@@ -96,7 +119,7 @@
         "large minDictZipValueSize will disable value zip": "10M",
         "minDictZipValueSize": "10M",
         "keyPrefixLen": 4,
-        "minPreadLen": 64
+        "minPreadLen": -1
       }
     },
     "dzip": {
@@ -104,7 +127,7 @@
       "params": {
         "localTempDir": "/tmp",
         "indexMemAsResident": false,
-        "builderMinLevel": 6,
+        "builderMinLevel": 0,
         "acceptCompressionRatio": 0.8,
         "enableStatistics": false,
         "warmupLevel": "kIndex",
@@ -136,7 +159,7 @@
           "dzip", "dzip", "dzip", "dzip", "dzip"
         ],
         "level_writers": [
-          "sng", "sng",
+          "sng", "sng", "light_dzip", "light_dzip",
           "dzip", "dzip", "dzip", "dzip", "dzip"
         ]
       }
@@ -150,7 +173,7 @@
     "cspp": {
       "class": "cspp",
       "params": {
-        "mem_cap": "2G",
+        "mem_cap": "16G",
         "use_vm": true,
         "use_hugepage": false,
         "read_by_writer_token": true,
@@ -160,7 +183,7 @@
     "cspp_small": {
       "class": "cspp",
       "params": {
-        "mem_cap": "32M",
+        "mem_cap": "128M",
         "chunk_size": "32K",
         "use_vm": true,
         "use_hugepage": false,
@@ -177,6 +200,7 @@
     "cspp": {
       "class": "CSPP_WBWI",
       "params": {
+        "//data_max_cap": "4G",
         "trie_reserve_cap": "128K",
         "data_reserve_cap": "512K"
       }
@@ -207,11 +231,12 @@
   "CFOptions": {
     "default": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
+      "//max_bytes_for_level_base": "1G",
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
       "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
-      "compaction_options_level": {"L1_score_boost": 5},
+      "compaction_options_level": {"L1_score_boost": 1},
       "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
@@ -302,7 +327,7 @@
           "//这里修改为dcompact-worker服务器的地址",
           "http://10.0.0.1:8000"
         ],
-        "dcompact_min_level": 2
+        "dcompact_min_level": 20
       }
     }
   }
