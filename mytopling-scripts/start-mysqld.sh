@@ -6,9 +6,17 @@ if [ $? -eq 0 ] ; then
 	exit 1
 fi
 
-export LD_LIBRARY_PATH=/mnt/mynfs/opt/gcc_12_lib64:/mnt/mynfs/opt/lib:$LD_LIBRARY_PATH
+MY_HOME=`dirname $0`
+MY_HOME=`realpath $MY_HOME/..`
+
+if [ ! -f $MY_HOME/bin/mysqld ]; then
+  echo $0 must be in MyToplingHome/mytopling-scripts, file $MY_HOME/bin/mysqld must exits >&2
+  exit 1
+fi
+
+export LD_LIBRARY_PATH=$MY_HOME/gcc_12_lib64:$MY_HOME/lib:$LD_LIBRARY_PATH
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
-export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/mytopling-enterprise.json
+export TOPLING_SIDEPLUGIN_CONF=$MY_HOME/mytopling-scripts/mytopling-enterprise.json
 
 #export JsonOptionsRepo_DebugLevel=2
 #export csppDebugLevel=0
@@ -43,16 +51,16 @@ if [ ! -e /mnt/mynfs/datadir/mytopling-instance-1/.rocksdb/IDENTITY ]; then
   echo Initializing mysql datadir...
   mkdir -p /mnt/mynfs/{datadir,log-bin,wal}/mytopling-instance-1
   mkdir -p /mnt/mynfs/infolog/mytopling-instance-1/stdlog
-  cp /mnt/mynfs/opt/mytopling-scripts/{index.html,style.css} /mnt/mynfs/infolog/mytopling-instance-1
+  cp $MY_HOME/mytopling-scripts/{index.html,style.css} /mnt/mynfs/infolog/mytopling-instance-1
   if [ "${MY_USER}" = "root" ]; then
-    /mnt/mynfs/opt/bin/mysqld --initialize-insecure --skip-grant-tables --datadir=/mnt/mynfs/datadir/mytopling-instance-1
+    $MY_HOME/bin/mysqld --initialize-insecure --skip-grant-tables --datadir=/mnt/mynfs/datadir/mytopling-instance-1
   else
     groupadd -g 27 ${MY_USER}
     useradd ${MY_USER} -u 27 -g 27 --no-create-home -s /sbin/nologin
     chown ${MY_USER}:${MY_USER} -R /mnt/mynfs/infolog
 
     chown ${MY_USER}:${MY_USER} -R /mnt/mynfs/{datadir,log-bin,wal}/mytopling-instance-1
-    /mnt/mynfs/opt/bin/mysqld --initialize-insecure --skip-grant-tables --datadir=/mnt/mynfs/datadir/mytopling-instance-1
+    $MY_HOME/bin/mysqld --initialize-insecure --skip-grant-tables --datadir=/mnt/mynfs/datadir/mytopling-instance-1
     chown ${MY_USER}:${MY_USER} -R /mnt/mynfs/{datadir,log-bin,wal}/mytopling-instance-1 # must
   fi
 fi
@@ -107,7 +115,7 @@ sudo ln -sf $MYTOPLING_LOG_DIR $MYTOPLING_LOG_DIR/.rocksdb
 sudo ln -sf $MYTOPLING_LOG_DIR/mnt_mynfs_datadir_mytopling-instance-1_.rocksdb_LOG \
            $MYTOPLING_LOG_DIR/LOG
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job*
-/mnt/mynfs/opt/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${rocksdb_args[@]} $@ \
+$MY_HOME/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${rocksdb_args[@]} $@ \
   1> $MYTOPLING_LOG_DIR/stdlog/stdout \
   2> $MYTOPLING_LOG_DIR/stdlog/stderr &
 sleep 1
