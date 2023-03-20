@@ -1,8 +1,9 @@
 #!/bin/bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib/plugin
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/mynfs/opt/lib/private
 
+MY_HOME=`dirname $0`
+MY_HOME=`realpath $MY_HOME/..`
+
+export LD_LIBRARY_PATH=$MY_HOME/lib:$MY_HOME/lib/plugin:$MY_HOME/lib/private:$MY_HOME/gcc_12_lib64:$LD_LIBRARY_PATH
 
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export MULTI_PROCESS=1
@@ -29,6 +30,6 @@ mkdir -p $DOCUMENT_ROOT
 mkdir -p $WORKER_DB_ROOT
 mkdir -p $STD_ROOT
 
-env LD_PRELOAD=libmytopling_dc.so /mnt/mynfs/opt/bin/dcompact_worker.exe \
+env LD_PRELOAD=libmytopling_dc.so $MY_HOME/bin/dcompact_worker.exe \
     -D listening_ports=8000 -D num_threads=50 \
     -D document_root=$DOCUMENT_ROOT >> $STD_ROOT/stdout 2>> $STD_ROOT/stderr
