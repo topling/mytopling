@@ -9,6 +9,8 @@ export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/cluster/mytoplin
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
 export BULK_LOAD_DEL_TMP=1
 
+export DictZipBlobStore_zipThreads=$((`nproc`/2))
+
 MYTOPLING_DATA_DIR=/mnt/mynfs/datadir/mytopling-instance-2
 MYTOPLING_LOG_DIR=/mnt/mynfs/infolog/mytopling-instance-2
 MYTOPLING_ROCKSDB_DIR=/mnt/mynfs/datadir/mytopling-instance-1/.rocksdb

@@ -18,6 +18,8 @@ export LD_LIBRARY_PATH=$MY_HOME/gcc_12_lib64:$MY_HOME/lib:$LD_LIBRARY_PATH
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=$MY_HOME/mytopling-scripts/mytopling-enterprise.json
 
+export DictZipBlobStore_zipThreads=$((`nproc`/2))
+
 #export JsonOptionsRepo_DebugLevel=2
 #export csppDebugLevel=0
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
