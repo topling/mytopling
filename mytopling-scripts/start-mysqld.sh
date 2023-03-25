@@ -29,6 +29,7 @@ MYTOPLING_DATA_DIR=/mnt/mynfs/datadir/mytopling-instance-1
 MYTOPLING_LOG_DIR=/mnt/mynfs/infolog/mytopling-instance-1
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job-*
 ulimit -n 100000
+sudo sysctl -w vm.max_map_count=8388608
 
 if [ -z "${MY_USER}" ]; then
   if [ -z "${USER}" ]; then

@@ -16,6 +16,7 @@ MYTOPLING_LOG_DIR=/mnt/mynfs/infolog/mytopling-instance-3
 MYTOPLING_ROCKSDB_DIR=/mnt/mynfs/datadir/mytopling-instance-1/.rocksdb
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job-*
 ulimit -n 100000
+sudo sysctl -w vm.max_map_count=8388608
 
 common_args=(
   --server-id=2
