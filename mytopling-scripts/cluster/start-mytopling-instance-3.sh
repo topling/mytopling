@@ -74,6 +74,7 @@ sudo ln -sf $MYTOPLING_LOG_DIR $MYTOPLING_LOG_DIR/.rocksdb
 sudo ln -sf $MYTOPLING_LOG_DIR/mnt_mynfs_datadir_mytopling-instance-3_.rocksdb_LOG \
            $MYTOPLING_LOG_DIR/LOG
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job*
+rm -f /tmp/Topling-*
 
 sudo sysctl -w fs.file-max=33554432
 sudo sysctl -w fs.nr_open=2097152
