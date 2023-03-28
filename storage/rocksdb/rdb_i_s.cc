@@ -1672,6 +1672,8 @@ enum {
   OLDEST_KEY_TIME,
   FILTER_POLICY,
   COMPRESSION_OPTIONS,
+  TAG_SIZE,
+  GDIC_SIZE,
 };
 }  // namespace RDB_SST_PROPS_FIELD
 
@@ -1705,6 +1707,8 @@ static ST_FIELD_INFO rdb_i_s_sst_props_fields_info[] = {
                        MY_I_S_MAYBE_NULL),
     ROCKSDB_FIELD_INFO("COMPRESSION_OPTIONS", NAME_LEN + 1, MYSQL_TYPE_STRING,
                        MY_I_S_MAYBE_NULL),
+    ROCKSDB_FIELD_INFO("TAG_SIZE", sizeof(int64_t), MYSQL_TYPE_LONGLONG, 0),
+    ROCKSDB_FIELD_INFO("GDIC_SIZE", sizeof(int64_t), MYSQL_TYPE_LONGLONG, 0),
     ROCKSDB_FIELD_INFO_END};
 
 static int rdb_i_s_sst_props_fill_table(
@@ -1800,6 +1804,11 @@ static int rdb_i_s_sst_props_fill_table(
             props.second->compression_options.c_str(),
             props.second->compression_options.size(), system_charset_info);
       }
+
+      field[RDB_SST_PROPS_FIELD::TAG_SIZE]->store(
+          props.second->tag_size, true);
+      field[RDB_SST_PROPS_FIELD::GDIC_SIZE]->store(
+          props.second->gdic_size, true);
 
       /* Tell MySQL about this row in the virtual table */
       ret = static_cast<int>(
