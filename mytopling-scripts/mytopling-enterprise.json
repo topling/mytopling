@@ -159,7 +159,7 @@
           "dzip", "dzip", "dzip", "dzip", "dzip"
         ],
         "level_writers": [
-          "sng", "sng", "light_dzip", "light_dzip",
+          "sng", "sng", "sng", "sng",
           "dzip", "dzip", "dzip", "dzip", "dzip"
         ]
       }
