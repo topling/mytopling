@@ -272,7 +272,7 @@
       "create_if_missing": true,
       "create_missing_column_families": true,
       "max_background_flushes": 2,
-      "max_background_compactions": 8,
+      "max_background_compactions": 20,
       "max_subcompactions": 1,
       "max_level1_subcompactions": 5,
       "max_log_file_size": "256M",
