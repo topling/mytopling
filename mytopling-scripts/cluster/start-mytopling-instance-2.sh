@@ -9,11 +9,12 @@ export TOPLING_SIDEPLUGIN_CONF=/mnt/mynfs/opt/mytopling-scripts/cluster/mytoplin
 export TOPLINGDB_CACHE_SST_FILE_ITER=1
 export BULK_LOAD_DEL_TMP=1
 
+export DictZipBlobStore_zipThreads=$((`nproc`/2))
+
 MYTOPLING_DATA_DIR=/mnt/mynfs/datadir/mytopling-instance-2
 MYTOPLING_LOG_DIR=/mnt/mynfs/infolog/mytopling-instance-2
 MYTOPLING_ROCKSDB_DIR=/mnt/mynfs/datadir/mytopling-instance-1/.rocksdb
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job-*
-ulimit -n 100000
 
 common_args=(
   --server-id=2
@@ -73,6 +74,14 @@ sudo ln -sf $MYTOPLING_LOG_DIR $MYTOPLING_LOG_DIR/.rocksdb
 sudo ln -sf $MYTOPLING_LOG_DIR/mnt_mynfs_datadir_mytopling-instance-2_.rocksdb_LOG \
            $MYTOPLING_LOG_DIR/LOG
 rm -rf ${MYTOPLING_DATA_DIR}/.rocksdb/job*
+rm -f /tmp/Topling-*
+
+sudo sysctl -w fs.file-max=33554432
+sudo sysctl -w fs.nr_open=2097152
+sudo sysctl -w vm.max_map_count=8388608
+ulimit -n 100000  # normal user
+ulimit -n 1000000 # root user
+
 /mnt/mynfs/opt/bin/mysqld ${common_args[@]} ${binlog_args[@]} ${rocksdb_args[@]} $@ \
   1> $MYTOPLING_LOG_DIR/stdlog/stdout \
   2> $MYTOPLING_LOG_DIR/stdlog/stderr
