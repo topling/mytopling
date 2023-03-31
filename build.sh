@@ -34,6 +34,8 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DCMAKE_CXX_COMPILER=${CXX_HOME}/bin/${CXX:-g++} \
       -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations -Wno-attributes" \
       -DCOMPILATION_COMMENT="MyTopling Enterprise" \
+      -DROCKSDB_DISABLE_MARCH_NATIVE=on \
+      -DROCKSDB_X86_HASWELL=on \
       -DWITH_ZLIB=system \
       -DWITH_ZSTD=bundled \
       -DCMAKE_BUILD_TYPE=Release \
