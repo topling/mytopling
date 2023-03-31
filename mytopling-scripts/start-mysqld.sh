@@ -60,7 +60,8 @@ binlog_args=(
   # 使用 binlog-ddl-only 时 MyTopling 可配置为基于共享存储的多副本集群，
   # 但此配置下 MyTopling 不能做为传统 MySQL 主从中的上游数据库，因为此
   # 配置下 binlog 只会记录 DDL 操作
-  --binlog-ddl-only=ON --binlog-order-commits=ON
+  # --binlog-ddl-only=ON
+  --binlog-order-commits=ON
 )
 
 # 修复引擎监控日志链接
