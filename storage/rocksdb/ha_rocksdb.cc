@@ -18567,6 +18567,10 @@ void rdb_tx_multi_get(Rdb_transaction *tx,
                 sorted_input);
 }
 
+void rdb_tx_finish_pin(Rdb_transaction *tx, TABLE_TYPE table_type) {
+  tx->zero_copy_finish_pin(table_type);
+}
+
 int rdb_tx_set_status_error(Rdb_transaction *tx, const rocksdb::Status &s,
                             const Rdb_key_def &kd,
                             const Rdb_tbl_def *const tbl_def) {

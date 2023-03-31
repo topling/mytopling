@@ -1199,6 +1199,7 @@ void rdb_tx_multi_get(Rdb_transaction *tx,
                       const size_t num_keys, const rocksdb::Slice *keys,
                       rocksdb::PinnableSlice *values, TABLE_TYPE table_type,
                       rocksdb::Status *statuses, const bool sorted_input);
+void rdb_tx_finish_pin(Rdb_transaction *tx, TABLE_TYPE);
 
 inline void rocksdb_smart_seek(bool seek_backward,
                                rocksdb::Iterator *const iter,

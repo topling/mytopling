@@ -1420,6 +1420,10 @@ class select_exec {
                        statuses, sorted_input);
     }
 
+    void finish_pin() {
+      rdb_tx_finish_pin(m_tx, m_table_type);
+    }
+
     void report_error(rocksdb::Status s) {
       if (s.IsIOError() || s.IsCorruption()) {
         rdb_handle_io_error(s, RDB_IO_ERROR_GENERAL);
@@ -2179,6 +2183,7 @@ bool INLINE_ATTR select_exec::run_pk_point_query(txn_wrapper *txn) {
 
     txn->multi_get(m_key_def->get_cf(), size, sorted_input, key_slices.data(),
                    value_slices.data(), statuses.data());
+    ROCKSDB_SCOPE_EXIT(txn->finish_pin());
 
     for (size_t i = 0; i < size; ++i) {
       if (unlikely(handle_killed())) {
