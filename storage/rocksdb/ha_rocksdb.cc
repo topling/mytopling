@@ -4393,6 +4393,11 @@ class Rdb_transaction {
                          rocksdb::Status *statuses,
                          const bool sorted_input) const = 0;
 
+  void zero_copy_finish_pin(TABLE_TYPE table_type) const {
+    auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
+    ro.FinishPin(); // for zero copy
+  }
+
   rocksdb::Iterator *get_iterator(
       rocksdb::ColumnFamilyHandle *const column_family, bool skip_bloom_filter,
       const rocksdb::Slice &eq_cond_lower_bound,
@@ -4993,6 +4998,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
                  rocksdb::Status *statuses,
                  const bool sorted_input) const override {
     auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
+    ro.StartPin(); // for zero copy
     ro.async_io = rocksdb_async_queue_depth > 1;
     ro.async_queue_depth = rocksdb_async_queue_depth;
     m_rocksdb_tx[table_type]->MultiGet(m_read_opts[table_type], column_family,
@@ -5438,6 +5444,7 @@ class Rdb_writebatch_impl : public Rdb_transaction {
       return;
     }
     auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
+    ro.StartPin();
     ro.async_io = rocksdb_async_queue_depth > 1;
     ro.async_queue_depth = rocksdb_async_queue_depth;
     m_batch->MultiGetFromBatchAndDB(rdb, m_read_opts[table_type], column_family,
@@ -19017,6 +19024,13 @@ void ha_rocksdb::mrr_free() {
 }
 
 void ha_rocksdb::mrr_free_rows() {
+  if (mrr_n_elements) {
+    auto table_type = m_tbl_def->get_table_type();
+    Rdb_transaction *const tx = get_tx_from_thd(table->in_use);
+    ROCKSDB_VERIFY(nullptr != tx);
+    ROCKSDB_VERIFY(tx->is_tx_started(table_type));
+    tx->zero_copy_finish_pin(table_type);
+  }
   for (ssize_t i = 0; i < mrr_n_elements; i++) {
     mrr_values[i].~PinnableSlice();
     mrr_statuses[i].~Status();
