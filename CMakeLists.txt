@@ -219,6 +219,9 @@ IF(UNIX)
       RESULT_VARIABLE MY_RPM_RESULT
       )
   ENDIF()
+  IF (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND CPU_X86_HASWELL)
+    add_compile_options(-march=haswell)
+  ENDIF()
 ENDIF()
 
 # See comments above, about CMAKE_MINIMUM_REQUIRED VERSION and macOS 11.
