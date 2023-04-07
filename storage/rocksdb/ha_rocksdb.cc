@@ -7908,6 +7908,7 @@ else {
 
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: Opening TransactionDB...");
+  auto t0 = rocksdb::Env::Default()->NowMicros();
   if (side_conf) {
     using namespace rocksdb;
     json& method = g_repo.m_impl->db_js[".rocksdb"]["method"];
@@ -7939,6 +7940,8 @@ else {
     status = rocksdb::TransactionDB::Open(
       main_opts, tx_db_options, rocksdb_datadir, cf_descr, &cf_handles, &rdb);
   }
+  auto t1 = rocksdb::Env::Default()->NowMicros();
+  sql_print_information("RocksDB: Opening TransactionDB... success, %.3f sec", (t1-t0)/1e6);
 
   DBUG_EXECUTE_IF("rocksdb_init_failure_open_db", {
     // Simulate opening TransactionDB failure
