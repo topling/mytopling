@@ -319,3 +319,7 @@ IF (WITH_ROCKSDB_SE_STORAGE_ENGINE AND (NOT HAVE_EXTERNAL_ROCKSDB))
   TARGET_LINK_LIBRARIES(ldb rocksdb_se)
 
 ENDIF()
+# for web files
+install(FILES ${PROJECT_SOURCE_DIR}/../toplingdb/sideplugin/rockside/src/topling/web/index.html
+              ${PROJECT_SOURCE_DIR}/../toplingdb/sideplugin/rockside/src/topling/web/style.css
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/share/web)
