@@ -5060,6 +5060,8 @@ class Rdb_transaction_impl : public Rdb_transaction {
       m_read_opts[table_type].snapshot = saved_snapshot;
     }
 
+    m_read_opts[table_type].just_check_key_exists = false; // restore
+
     // row_lock_count is to track per row instead of per key
     if (key_descr.is_primary_key()) incr_row_lock_count(table_type);
     return s;
