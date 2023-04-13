@@ -4977,10 +4977,13 @@ class Rdb_transaction_impl : public Rdb_transaction {
       // Sample Query which hits this condition:
       // with recursive qn as (select 1 from dual union select 1 from qn)
       // select * from qn;
+      using rocksdb::ReadOptions;
+      const_cast<ReadOptions&>(m_read_opts[table_type]).just_check_key_exists = true;
       rocksdb::PinnableSlice pin_val;
       rocksdb::Status s = m_rocksdb_tx[table_type]->Get(
           m_read_opts[table_type], column_family, key, &pin_val);
       pin_val.Reset();
+      const_cast<ReadOptions&>(m_read_opts[table_type]).just_check_key_exists = false;
       return s;
     } else {
       value->Reset();
@@ -5432,6 +5435,13 @@ class Rdb_writebatch_impl : public Rdb_transaction {
           "Not supported for intrinsic tmp tables");
     }
     value->Reset();
+    using rocksdb::ReadOptions;
+    if (nullptr == value) {
+      const_cast<ReadOptions&>(m_read_opts[table_type]).just_check_key_exists = true;
+    }
+    ROCKSDB_SCOPE_EXIT(
+      const_cast<ReadOptions&>(m_read_opts[table_type]).just_check_key_exists = false;
+    );
     return m_batch->GetFromBatchAndDB(rdb, m_read_opts[table_type],
                                       column_family, key, value);
   }
@@ -5468,9 +5478,11 @@ class Rdb_writebatch_impl : public Rdb_transaction {
     }
     rocksdb::ColumnFamilyHandle *const column_family = key_descr.get_cf();
     if (value == nullptr) {
+      m_read_opts[table_type].just_check_key_exists = true;
       rocksdb::PinnableSlice pin_val;
       rocksdb::Status s = get(column_family, key, &pin_val, table_type);
       pin_val.Reset();
+      m_read_opts[table_type].just_check_key_exists = false;
       return s;
     }
 
