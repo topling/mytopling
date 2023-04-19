@@ -917,7 +917,7 @@ static std::time_t last_binlog_ttl_compaction_ts = std::time(nullptr);
 bool rocksdb_enable_auto_sort_sst = true;
 bool rocksdb_reuse_iter = false;
 std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
-static uint32_t rocksdb_async_queue_depth = 32;
+static uint32_t rocksdb_async_queue_depth = 256;
 static uint32_t rocksdb_bulk_load_subcompactions = 7;
 
 static std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
@@ -2756,7 +2756,7 @@ static MYSQL_SYSVAR_UINT(
     "rocksdb::ReadOptions::async_queue_depth for MultiGet, if > 1, "
     "async_io will be set to true",
     nullptr, nullptr, rocksdb_async_queue_depth,
-    /* min */ 0, /* max */ 256, 0);
+    /* min */ 0, /* max */ 8192, 0);
 
 static MYSQL_SYSVAR_UINT(
     bulk_load_subcompactions, rocksdb_bulk_load_subcompactions,
