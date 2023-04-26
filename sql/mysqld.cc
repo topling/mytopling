@@ -1037,6 +1037,7 @@ static bool opt_autocommit;  ///< for --autocommit command-line option
 static get_opt_arg_source source_autocommit;
 
 bool opt_binlog_ddl_only = false;
+bool opt_binlog_ddl_only_follower = false;
 
 /*
   Used with --help for detailed option
@@ -9809,6 +9810,12 @@ struct my_option my_long_options[] = {
     {"binlog-ddl-only", OPT_BINLOG_DDL_ONLY,
      "Include only updates to ddl, ignore all non-ddl updates",
      &opt_binlog_ddl_only, &opt_binlog_ddl_only, nullptr, GET_BOOL,
+     OPT_ARG, false, 0, 0, nullptr, 0, nullptr},
+    {"binlog-ddl-only-follower", 0,
+     "on shared storage secondary instance, to indicate ddl create index do "
+     "not scan table and create index data",
+     &opt_binlog_ddl_only_follower, &opt_binlog_ddl_only_follower,
+     nullptr, GET_BOOL,
      OPT_ARG, false, 0, 0, nullptr, 0, nullptr},
     {"character-set-client-handshake", 0,
      "Don't ignore client side character set value sent during handshake.",

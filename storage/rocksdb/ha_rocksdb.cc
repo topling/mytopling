@@ -121,6 +121,8 @@ extern "C" {
 void thd_mark_transaction_to_rollback(MYSQL_THD thd, int all);
 }
 
+extern bool opt_binlog_ddl_only_follower; // defined in mysqld.cc
+
 /**
  *   Get the user thread's binary logging format
  *   @param thd  user thread
@@ -15821,6 +15823,10 @@ int ha_rocksdb::inplace_populate_sk(
       is still in the creation process.
     */
     ddl_manager.add_uncommitted_keydefs(indexes);
+  }
+
+  if (opt_binlog_ddl_only_follower) {
+      DBUG_RETURN(HA_EXIT_SUCCESS);
   }
 
   const bool hidden_pk_exists = has_hidden_pk(table);
