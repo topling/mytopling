@@ -225,7 +225,11 @@
   "SstPartitionerFactory": {
     "by_prefix": {
       "class": "FixedPrefix",
-      "params": { "prefix_len": 4 }
+      "params": {
+        "min_level": 1,
+        "max_level": 6,
+        "prefix_len": 4
+      }
     }
   },
   "CFOptions": {
@@ -237,7 +241,7 @@
       "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "1G",
       "compaction_options_level": {"L1_score_boost": 1},
-      "target_file_size_base": "32M", "target_file_size_multiplier": 2,
+      "target_file_size_base": "32M", "target_file_size_multiplier": 3,
       "//soft_pending_compaction_bytes_limit": "1T",
       "//hard_pending_compaction_bytes_limit": "2T",
       "table_factory": "${dispatch}",
@@ -327,7 +331,7 @@
           "//这里修改为dcompact-worker服务器的地址",
           "http://10.0.0.1:8000"
         ],
-        "dcompact_min_level": 2
+        "dcompact_min_level": 20
       }
     }
   }
