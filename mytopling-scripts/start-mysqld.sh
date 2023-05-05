@@ -52,6 +52,7 @@ if [ ! -e /mnt/mynfs/datadir/mytopling-instance-1/.rocksdb/IDENTITY ]; then
   echo Initializing mysql datadir...
   mkdir -p /mnt/mynfs/{datadir,log-bin,wal}/mytopling-instance-1
   mkdir -p /mnt/mynfs/infolog/mytopling-instance-1/stdlog
+  mkdir -p /mnt/mynfs/tmp
   cp $MY_HOME/mytopling-scripts/{index.html,style.css} /mnt/mynfs/infolog/mytopling-instance-1
   if [ "${MY_USER}" = "root" ]; then
     $MY_HOME/bin/mysqld --initialize-insecure --skip-grant-tables --datadir=/mnt/mynfs/datadir/mytopling-instance-1
