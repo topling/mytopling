@@ -138,7 +138,7 @@
         "checksumLevel": 0,
         "entropyAlgo": "kNoEntropy",
         "debugLevel": 0,
-        "minDictZipValueSize": "30",
+        "minDictZipValueSize": "15",
         "keyPrefixLen": 4,
         "minPreadLen": 64
       }
@@ -227,7 +227,7 @@
       "class": "FixedPrefix",
       "params": {
         "min_level": 1,
-        "max_level": 6,
+        "max_level": 5,
         "prefix_len": 4
       }
     }
