@@ -13132,12 +13132,12 @@ static void setup_iterator_bounds(const Rdb_key_def &kd,
 int ha_rocksdb::rnd_init(bool scan MY_ATTRIBUTE((__unused__))) {
   DBUG_ENTER_FUNC();
 
-/*
-  if (scan && rocksdb::TopTableSetSeqScan) {
+  if (rocksdb::TopTableSetSeqScan) {
     m_iter_is_scan = true;
-    rocksdb::TopTableSetSeqScan(scan);
+    rocksdb::TopTableSetSeqScan(true);
+  } else {
+    m_iter_is_scan = false;
   }
-*/
   m_need_build_decoder = true;
   m_rnd_scan_started = false;
   DBUG_RETURN(
@@ -13179,12 +13179,13 @@ int ha_rocksdb::rnd_next(uchar *const buf) {
 
 int ha_rocksdb::rnd_end() {
   DBUG_ENTER_FUNC();
-/*
+
   if (m_iter_is_scan) {
     ROCKSDB_VERIFY(nullptr != rocksdb::TopTableSetSeqScan);
     rocksdb::TopTableSetSeqScan(false);
+    m_iter_is_scan = false;
   }
-*/
+
   DBUG_RETURN(index_end());
 }
 
@@ -16137,11 +16138,6 @@ int ha_rocksdb::inplace_populate_sk(
 
   Rdb_transaction *tx =
       get_or_create_tx(table->in_use, m_tbl_def->get_table_type());
-
-  if (rocksdb::TopTableSetSeqScan) rocksdb::TopTableSetSeqScan(true);
-  Ensure_cleanup seqscan_cleanup([]{
-    if (rocksdb::TopTableSetSeqScan) rocksdb::TopTableSetSeqScan(false);
-  });
 
   /*
     There is one specific scenario where m_sst_info may not be nullptr. This
