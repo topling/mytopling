@@ -186,9 +186,20 @@ ELSE()
   SET(ROCKSDB_ROOT ${CMAKE_SOURCE_DIR}/rocksdb)
 ENDIF()
 
+IF(EXISTS ${ROCKSDB_ROOT}/sideplugin/topling-core/src/terark/gold_hash_map.hpp)
+  SET(TOPLING_CORE_NAME topling-core)
+ELSEIF(EXISTS ${ROCKSDB_ROOT}/sideplugin/topling-zip/src/terark/gold_hash_map.hpp)
+  SET(TOPLING_CORE_NAME topling-zip)
+ELSE()
+  MESSAGE(SEND_ERROR
+    "Missing ${ROCKSDB_ROOT}/sideplugin/topling-core/src/terark/gold_hash_map.hpp")
+ENDIF()
+
 INCLUDE_DIRECTORIES(
     ${ROCKSDB_ROOT}
     ${ROCKSDB_ROOT}/include
+    ${ROCKSDB_ROOT}/sideplugin/rockside/src
+    ${ROCKSDB_ROOT}/sideplugin/${TOPLING_CORE_NAME}/src
 )
 LIST(APPEND MYSYS_SOURCES
   my_wsenv.cc

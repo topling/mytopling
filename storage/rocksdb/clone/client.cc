@@ -48,7 +48,7 @@ namespace {
 [[nodiscard]] int remove_in_place_temp_dir(const std::string &path) {
   struct stat stat_info;
   if (my_stat(path.c_str(), &stat_info, MYF(0)) != nullptr) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "Found in-place clone temp directory %s", path.c_str());
     if (!S_ISDIR(stat_info.st_mode)) {
       // Should never happen: something at the in-place clone dir path found but
@@ -339,7 +339,7 @@ int client::init(const uchar *&loc, uint &loc_len, const char *data_dir) {
                                         "Received invalid clone locator");
   }
 
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "MyRocks clone apply task_id = 0 received locator %" PRIu64,
                   m_client_loc.get_id());
 
@@ -357,7 +357,7 @@ int client::init(const uchar *&loc, uint &loc_len, const char *data_dir) {
 
   // In the case of non-inplace clone, the parent directories should have been
   // created by innodb_clone_apply_begin
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   inplace_clone ? "Creating %s for in-place clone client"
                                 : "Creating %s for clone client",
                   m_rdb_data_dir.c_str());
@@ -368,7 +368,7 @@ int client::init(const uchar *&loc, uint &loc_len, const char *data_dir) {
                              m_rdb_data_dir);
   }
 
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   inplace_clone ? "Creating %s for in-place clone client"
                                 : "Creating %s for clone client",
                   m_rdb_wal_dir.c_str());
@@ -416,7 +416,7 @@ int client::restart(const uchar *&loc, uint &loc_len) {
                                         "Received invalid clone locator");
   }
 
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "MyRocks clone apply task_id = 0 for locator %" PRIu64
                   " restarting",
                   passed_locator.get_id());
@@ -694,7 +694,7 @@ int rocksdb_clone_apply_begin(handlerton *, THD *, const uchar *&loc,
       }
 
       task_id = client::instance().register_new_task_id();
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks clone application for locator %" PRIu64
                       " begin task ID %u\n",
                       passed_locator.get_id(), task_id);
@@ -752,7 +752,7 @@ int rocksdb_clone_apply(handlerton *, THD *thd, const uchar *loc, uint loc_len,
 
   if (in_err != 0) {
     assert(cbk == nullptr);
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks clone apply set error code %d: %s", in_err,
                     clone::get_da_error_message(*thd));
     return HA_EXIT_SUCCESS;
@@ -863,12 +863,12 @@ int rocksdb_clone_apply_end(handlerton *, THD *thd, const uchar *loc,
   client::instance().unregister_task_id(task_id);
 
   if (clone_successful) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks clone application locator %" PRIu64
                     " end task ID %u, success\n",
                     passed_locator.get_id(), task_id);
   } else {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks clone application locator %" PRIu64
                     " end: task ID: %u, failed with code %d: %s",
                     passed_locator.get_id(), task_id, in_err,

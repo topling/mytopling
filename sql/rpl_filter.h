@@ -222,6 +222,8 @@ class Rpl_filter {
   bool tables_ok(const char *db, TABLE_LIST *tables);
   bool db_ok(const char *db, bool need_increase_counter = true);
   bool db_ok_with_wild_table(const char *db);
+  bool ddl_only() const { return m_ddl_only; }
+  void set_ddl_only(bool b) { m_ddl_only = b; }
 
   bool is_on();
   /**
@@ -513,6 +515,7 @@ class Rpl_filter {
   bool ignore_table_array_inited;
   bool wild_do_table_inited;
   bool wild_ignore_table_inited;
+  bool m_ddl_only{false};
 
   I_List<i_string> do_db;
   I_List<i_string> ignore_db;

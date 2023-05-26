@@ -79,7 +79,7 @@ void move_temp_dir_to_destination(const std::string &temp,
                                   const std::string &old,
                                   const std::string &dest, bool empty_allowed) {
   if (!temp_dir_exists_abort_if_not_dir(temp)) return;
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "Found in-place clone temp dir %s", temp.c_str());
 
   if (path_exists(old)) {
@@ -120,7 +120,7 @@ void move_temp_dir_contents_to_dest(const std::string &temp,
   if (temp_exists) {
     const auto dest_existed = path_exists(dest);
     if (!dest_existed) {
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "Directory %s not found, creating", dest.c_str());
       mkdir_or_abort(dest);
     }
@@ -177,7 +177,7 @@ std::atomic<uint> session::m_next_task_id{session::m_main_task_id + 1};
 std::string checkpoint_base_dir() { return std::string{rocksdb_datadir}; }
 
 [[nodiscard]] bool remove_dir(const std::string &dir, bool fatal_error) {
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "Removing %s",
+  sql_print_information( "Removing %s",
                   dir.c_str());
   const auto fatal_flag = fatal_error ? MY_FAE : 0;
   if (!for_each_in_dir(
@@ -207,8 +207,7 @@ void fixup_on_startup() {
   struct stat stat_info;
 
   if (my_stat(force_rollback_marker, &stat_info, MYF(0)) != nullptr) {
-    LogPluginErrMsg(
-        INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
         "Found %s, rolling back MyRocks clone due to InnoDB clone rollback",
         force_rollback_marker);
 
@@ -220,7 +219,7 @@ void fixup_on_startup() {
     remove_temp_dir(in_place_temp_datadir);
     remove_temp_dir(in_place_temp_wal_dir);
 
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "Removing %s",
+    sql_print_information( "Removing %s",
                     force_rollback_marker);
     myrocks::rdb_file_delete_or_abort(force_rollback_marker);
   }

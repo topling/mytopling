@@ -8022,6 +8022,11 @@ static bool check_table_binlog_row_based(THD *thd, TABLE *table) {
   assert(table->s->cached_row_logging_check == 0 ||
          table->s->cached_row_logging_check == 1);
 
+  extern bool binlog_is_ddl(const LEX*);
+  if (binlog_filter->ddl_only() && !binlog_is_ddl(thd->lex)) {
+    return false;
+  }
+
   return (thd->is_current_stmt_binlog_format_row() &&
           table->s->cached_row_logging_check &&
           (thd->variables.option_bits & OPTION_BIN_LOG) &&

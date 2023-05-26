@@ -48,6 +48,7 @@ class Rdb_sst_file_ordered {
     const rocksdb::DBOptions &m_db_options;
     rocksdb::SstFileWriter *m_sst_file_writer;
     const std::string m_name;
+    const bool m_use_auto_sort_sst;
     const bool m_tracing;
     const rocksdb::Comparator *m_comparator;
 
@@ -56,6 +57,7 @@ class Rdb_sst_file_ordered {
    public:
     Rdb_sst_file(rocksdb::DB *const db, rocksdb::ColumnFamilyHandle *const cf,
                  const rocksdb::DBOptions &db_options, const std::string &name,
+                 const bool use_auto_sort_sst,
                  const bool tracing);
     ~Rdb_sst_file();
 
@@ -67,6 +69,7 @@ class Rdb_sst_file_ordered {
     inline int compare(rocksdb::Slice key1, rocksdb::Slice key2) {
       return m_comparator->Compare(key1, key2);
     }
+    inline bool use_auto_sort_sst() const { return m_use_auto_sort_sst; }
   };
 
   class Rdb_sst_stack {
@@ -78,7 +81,7 @@ class Rdb_sst_file_ordered {
 
    public:
     explicit Rdb_sst_stack(size_t max_size)
-        : m_buffer(nullptr), m_buffer_size(max_size) {}
+        : m_buffer(nullptr), m_buffer_size(max_size), m_offset(0) {}
     ~Rdb_sst_stack() { delete[] m_buffer; }
 
     void reset() { m_offset = 0; }
@@ -103,6 +106,7 @@ class Rdb_sst_file_ordered {
                        rocksdb::ColumnFamilyHandle *const cf,
                        const rocksdb::DBOptions &db_options,
                        const std::string &name, const bool tracing,
+                       const bool use_auto_sort_sst,
                        size_t max_size);
 
   inline rocksdb::Status open() { return m_file.open(); }
@@ -132,13 +136,17 @@ class Rdb_sst_info {
 
   // List of committed SST files - we'll ingest them later in one single batch
   std::vector<std::string> m_committed_files;
+  std::vector<std::thread> m_commiting_threads;
+  std::mutex m_commiting_threads_mutex;
 
+  const bool m_use_auto_sort_sst;
   const bool m_tracing;
   bool m_print_client_error;
 
   int open_new_sst_file();
   void close_curr_sst_file();
   void commit_sst_file(Rdb_sst_file_ordered *sst_file);
+  void commit_sst_file_func(Rdb_sst_file_ordered*);
 
   void set_error_msg(const std::string &sst_file_name,
                      const rocksdb::Status &s);
@@ -147,7 +155,9 @@ class Rdb_sst_info {
   Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
                const std::string &indexname,
                rocksdb::ColumnFamilyHandle *const cf,
-               const rocksdb::DBOptions &db_options, const bool tracing);
+               const rocksdb::DBOptions &db_options,
+               const bool use_auto_sort_sst,
+               const bool tracing);
   ~Rdb_sst_info();
 
   /*

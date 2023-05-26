@@ -30,6 +30,8 @@
 #include "./properties_collector.h"
 #include "./rdb_datadic.h"
 
+#include <topling/side_plugin_factory.h>
+
 namespace myrocks {
 
 static std::vector<Rdb_index_stats> extract_index_stats(
@@ -117,11 +119,19 @@ void Rdb_event_listener::OnBackgroundError(
     rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) {
   rdb_log_status_error(*status, "Error detected in background");
   // NO_LINT_DEBUG
-  LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                  "RocksDB: BackgroundErrorReason: %d", (int)reason);
+  sql_print_error("RocksDB: BackgroundErrorReason: %d", (int)reason);
   if (status->IsCorruption()) {
     rdb_persist_corruption_marker();
     abort();
   }
 }
+
+namespace detail {
+using namespace rocksdb;
+static std::shared_ptr<EventListener> New_Rdb_event_listener() {
+  return std::make_shared<Rdb_event_listener>(rdb_get_ddl_manager());
+}
+ROCKSDB_FACTORY_REG_0("Rdb_event_listener", New_Rdb_event_listener);
+}
+
 }  // namespace myrocks

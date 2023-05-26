@@ -1416,6 +1416,10 @@ class select_exec {
                        statuses, sorted_input);
     }
 
+    void finish_pin() {
+      rdb_tx_finish_pin(m_tx, m_table_type);
+    }
+
     void report_error(rocksdb::Status s) {
       if (s.IsIOError() || s.IsCorruption()) {
         rdb_handle_io_error(s, RDB_IO_ERROR_GENERAL);
@@ -2265,6 +2269,7 @@ bool INLINE_ATTR select_exec::run_pk_point_query(txn_wrapper *txn) {
 
     txn->multi_get(m_key_def->get_cf(), size, sorted_input, key_slices.data(),
                    value_slices.data(), statuses.data());
+    ROCKSDB_SCOPE_EXIT(txn->finish_pin());
 
     for (size_t i = 0; i < size; ++i) {
       if (unlikely(handle_killed())) {
@@ -2692,9 +2697,8 @@ bool handle_unsupported_bypass(THD *thd, const char *error_msg,
     if (get_select_bypass_rejected_query_history_size() == 0) {
       if (btype == bypass_type::SQL) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                        "[REJECTED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
-                        thd->query().str, error_msg);
+        sql_print_information("[REJECTED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
+                              thd->query().str, error_msg);
       }
     } else {
       // Otherwise, record the rejected query into information_schema
@@ -2766,9 +2770,9 @@ bool rocksdb_handle_single_table_select(THD *thd, Query_block *select_lex) {
     }
     if (should_log_failed_select_bypass()) {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                      "[FAILED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
-                      thd->query().str, thd->get_stmt_da()->message_text());
+      sql_print_information("[FAILED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
+                            thd->query().str,
+                            thd->get_stmt_da()->message_text());
     }
     rocksdb_select_bypass_failed++;
   } else {

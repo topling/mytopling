@@ -266,6 +266,7 @@ thd_err:
 }
 }  // namespace
 
+
 /**
   Run bypass select query
 */

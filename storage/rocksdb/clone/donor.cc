@@ -340,7 +340,7 @@ class [[nodiscard]] donor final : public myrocks::clone::session {
     assert(m_state == donor_state::FINAL_CHECKPOINT);
     m_state = donor_state::FINAL_CHECKPOINT_WITH_LOGS;
 
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks clone state change: FINAL_CHECKPOINT -> "
                     "FINAL_CHECKPOINT_WITH_LOGS");
 
@@ -673,7 +673,7 @@ int donor::next_checkpoint_locked(bool final, std::size_t &total_new_size) {
     }
 
     m_state = donor_state::ROLLING_CHECKPOINT;
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks clone state change: INIT -> ROLLING_CHECKPOINT");
     return 0;
   }
@@ -701,7 +701,7 @@ int donor::next_checkpoint_locked(bool final, std::size_t &total_new_size) {
     return save_and_return_error(err, "RocksDB checkpoint error");
   }
 
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "MyRocks clone checkpoint roll counter now %u",
                   m_checkpoint_count);
 
@@ -715,8 +715,7 @@ int donor::next_checkpoint_locked(bool final, std::size_t &total_new_size) {
 
   if (final) {
     m_state = donor_state::FINAL_CHECKPOINT;
-    LogPluginErrMsg(
-        INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
         "MyRocks clone state change: ROLLING_CHECKPOINT -> FINAL_CHECKPOINT");
   }
   return 0;
@@ -795,7 +794,7 @@ int donor::copy(const THD *thd, uint task_id, Ha_clone_cbk &cbk) {
       const auto errn = my_errno();
       if (errn == ENOENT) {
         // Assume this was a file from an older rolling checkpoint. Drop it.
-        LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+        sql_print_information(
                         "Not found, assuming old checkpoint: %s",
                         donor_file_path.c_str());
         assert(myrocks::has_file_extension(donor_file_path, ".sst"));
@@ -900,8 +899,7 @@ int donor::copy(const THD *thd, uint task_id, Ha_clone_cbk &cbk) {
     const auto not_started_count = m_not_started_files.size();
     if (completed_count >= last_reported_file_count + 10 ||
         (not_started_count == 0 && in_progress_count == 0)) {
-      LogPluginErrMsg(
-          INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
           "MyRocks clone file totals: completed %zu, in progress %zu, not "
           "started %zu, total %zu",
           completed_count, in_progress_count, not_started_count,
@@ -965,8 +963,7 @@ bool donor::restart(const myrocks::clone::locator &restart_locator) {
         mysql_mutex_unlock(&m_donor_mutex);
         return false;
       }
-      LogPluginErrMsg(
-          INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
           "Restart locator contains file ID %" PRIu64
           ", which is not present. Assuming it belonged to an old checkpoint",
           new_file_metadata.get_id());
@@ -1085,12 +1082,11 @@ donor *manager::start_donor(const uchar *&loc, uint &loc_len) {
       std::forward_as_tuple(l, loc, loc_len));
 
   if (insert_result.second) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks clone new session for locator %" PRIu64,
                     l.get_id());
   } else {
-    LogPluginErrMsg(
-        ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
         "Failed to create MyRocks clone session for locator %" PRIu64,
         l.get_id());
   }
@@ -1223,7 +1219,7 @@ int rocksdb_clone_begin(handlerton *, THD *, const uchar *&loc, uint &loc_len,
       assert(donor_instance->get_main_task_ref_count() == 1);
       task_id = donor_instance->register_new_task_id();
 
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks clone adding task to locator %" PRIu64,
                       search_locator.get_id());
       break;
@@ -1256,7 +1252,7 @@ int rocksdb_clone_begin(handlerton *, THD *, const uchar *&loc, uint &loc_len,
       manager::instance().allow_new_tasks(*donor_instance);
 
       task_id = clone::session::m_main_task_id;
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks clone restarting session locator %" PRIu64,
                       restart_locator.get_id());
       break;
@@ -1269,7 +1265,7 @@ int rocksdb_clone_begin(handlerton *, THD *, const uchar *&loc, uint &loc_len,
       break;
   }
 
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "MyRocks clone begin task ID %u", task_id);
 
   return HA_EXIT_SUCCESS;
@@ -1414,8 +1410,7 @@ int rocksdb_clone_end(handlerton *, THD *thd, const uchar *loc, uint loc_len,
   auto *const donor_instance =
       lookup_donor_and_task_id(end_locator, loc, loc_len, task_id);
   if (donor_instance == nullptr) {
-    LogPluginErrMsg(
-        ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
         "MyRocks clone end did not find the session for locator %" PRIu64,
         end_locator.get_id());
     return clone::return_error(ER_CLONE_PROTOCOL, "Invalid clone locator");
@@ -1437,11 +1432,11 @@ int rocksdb_clone_end(handlerton *, THD *thd, const uchar *loc, uint loc_len,
   const auto clone_successful = in_err == 0;
 
   if (clone_successful) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "Clone end: locator %" PRIu64 ", task ID: %u, success",
                     end_locator.get_id(), task_id);
   } else {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "Clone end: locator %" PRIu64
                     ", task ID: %u, failed with code %d: %s",
                     end_locator.get_id(), task_id, in_err,
