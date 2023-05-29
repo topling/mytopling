@@ -373,6 +373,7 @@ Rdb_converter::Rdb_converter(const THD *thd, const Rdb_tbl_def *tbl_def,
   m_maybe_unpack_info = false;
   m_row_checksums_checked = 0;
   m_null_bytes = nullptr;
+  m_needs_kv_value = true;
   setup_field_encoders(dd_table);
 }
 
@@ -493,6 +494,9 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
     m_tbl_def->m_key_descr_arr[active_index]->get_lookup_bitmap(
         m_table, &m_lookup_bitmap);
   }
+
+  m_needs_kv_value = m_null_bytes_length_in_record || m_maybe_unpack_info
+                  || m_verify_row_debug_checksums;
 }
 
 void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {

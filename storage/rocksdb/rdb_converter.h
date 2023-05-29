@@ -177,6 +177,7 @@ class Rdb_converter {
     m_key_requested = key_requested;
   }
   bool get_maybe_unpack_info() const { return m_maybe_unpack_info; }
+  bool needs_kv_value() const { return m_needs_kv_value; }
 
   char *get_ttl_bytes_buffer() { return m_ttl_bytes; }
 
@@ -207,6 +208,18 @@ class Rdb_converter {
 
  private:
   /*
+    Number of bytes in on-disk (storage) record format that are used for
+    storing SQL NULL flags.
+  */
+  int m_null_bytes_length_in_record;
+  /*
+   true <=> Some fields in the PK may require unpack_info.
+  */
+  bool m_maybe_unpack_info;
+
+  bool m_needs_kv_value; // for optimize of omit call iter->value()
+
+  /*
     This tells if any field which is part of the key needs to be unpacked and
     decoded.
   */
@@ -223,18 +236,9 @@ class Rdb_converter {
   /* The current open table */
   TABLE *m_table;
   /*
-    Number of bytes in on-disk (storage) record format that are used for
-    storing SQL NULL flags.
-  */
-  int m_null_bytes_length_in_record;
-  /*
     Pointer to null bytes value
   */
   const char *m_null_bytes;
-  /*
-   true <=> Some fields in the PK may require unpack_info.
-  */
-  bool m_maybe_unpack_info;
   /*
     Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
   */
