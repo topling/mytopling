@@ -317,7 +317,6 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     }
 
     const rocksdb::Slice &key = m_scan_it->key();
-    const rocksdb::Slice &value = m_scan_it->value();
 
     // Outside our range, return EOF.
     if (!kd.value_matches_prefix(key, m_prefix_tuple)) {
@@ -326,8 +325,11 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     }
 
     // Record is not visible due to TTL, move to next record.
-    if (m_pkd->has_ttl() && rdb_should_hide_ttl_rec(kd, &value, tx)) {
-      continue;
+    if (m_pkd->has_ttl()) {
+      const rocksdb::Slice value = m_scan_it->value();
+      if (rdb_should_hide_ttl_rec(kd, &value, tx)) {
+        continue;
+      }
     }
 
     break;
