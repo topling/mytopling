@@ -204,6 +204,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   */
   mutable bool m_pk_can_be_decoded;
   bool m_iter_is_scan = false;
+  bool m_is_mysql_system_table = false;
 
   uchar *m_pk_packed_tuple; /* Buffer for storing PK in StorageFormat */
   // ^^ todo: change it to 'char*'? TODO: ^ can we join this with last_rowkey?

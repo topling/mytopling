@@ -283,7 +283,7 @@ std::unordered_map<ulonglong, std::weak_ptr<Rdb_explicit_snapshot>>
 void ha_rocksdb::update_row_stats(const operation_type &type, ulonglong count) {
   assert(type < ROWS_MAX);
   // Find if we are modifying system databases.
-  if (table->s && m_tbl_def->m_is_mysql_system_table) {
+  if (m_is_mysql_system_table) {
     global_stats.system_rows[type].add(count);
   } else {
     global_stats.rows[type].add(count);
@@ -9373,6 +9373,8 @@ int ha_rocksdb::open(const char *const name,
   /* Index block size in MyRocks: used by MySQL in query optimization */
   stats.block_size = rocksdb_tbl_options->block_size;
 
+  m_is_mysql_system_table = table->s && m_tbl_def->m_is_mysql_system_table;
+
   DBUG_RETURN(HA_EXIT_SUCCESS);
 }
 
@@ -10387,6 +10389,8 @@ int ha_rocksdb::create_table(const std::string &table_name,
     }
   }
 
+  m_is_mysql_system_table = m_tbl_def->m_is_mysql_system_table;
+
   DBUG_RETURN(HA_EXIT_SUCCESS);
 
 error:
@@ -10597,6 +10601,7 @@ int ha_rocksdb::truncate_table(Rdb_tbl_def *tbl_def_arg,
   m_tbl_def = ddl_manager.find(orig_tablename);
   m_converter.reset(
       new Rdb_converter(ha_thd(), m_tbl_def, table_arg, table_def));
+  m_is_mysql_system_table = table->s && m_tbl_def->m_is_mysql_system_table;
   DBUG_RETURN(err);
 }
 
@@ -16428,6 +16433,7 @@ bool ha_rocksdb::commit_inplace_alter_table(
     std::unordered_set<GL_INDEX_ID> create_index_ids;
 
     m_tbl_def = ctx0->m_new_tdef;
+    m_is_mysql_system_table = m_tbl_def->m_is_mysql_system_table;
     m_key_descr_arr = m_tbl_def->m_key_descr_arr;
     m_pk_descr = m_key_descr_arr[pk_index(altered_table, m_tbl_def)];
 
@@ -16541,6 +16547,7 @@ bool ha_rocksdb::commit_inplace_alter_table(
     rocksdb::WriteBatch *const batch = wb.get();
 
     m_tbl_def = ctx0->m_new_tdef;
+    m_is_mysql_system_table = m_tbl_def->m_is_mysql_system_table;
     m_key_descr_arr = m_tbl_def->m_key_descr_arr;
     m_pk_descr = m_key_descr_arr[pk_index(altered_table, m_tbl_def)];
 
