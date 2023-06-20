@@ -634,9 +634,11 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
+#ifdef NDEBUG
 #pragma GCC push_options
 #pragma GCC optimize ("-Ofast")
 ROCKSDB_FLATTEN
+#endif
 int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
                           uchar *dst,  // address to fill data
                           const rocksdb::Slice *key_slice,
@@ -647,16 +649,15 @@ int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
   assert(key_def->m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY ||
          key_def->m_index_type == Rdb_key_def::INDEX_TYPE_HIDDEN_PRIMARY);
 
-  const rocksdb::Slice *updated_key_slice = key_slice;
 #ifndef NDEBUG
   String last_rowkey;
   last_rowkey.copy(key_slice->data(), key_slice->size(), &my_charset_bin);
   DBUG_EXECUTE_IF("myrocks_simulate_bad_pk_read1",
                   { dbug_modify_key_varchar8(&last_rowkey); });
   rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
-  updated_key_slice = &rowkey_slice;
+  key_slice = &rowkey_slice;
 #endif
-  return convert_record_from_storage_format(key_def, updated_key_slice,
+  return convert_record_from_storage_format(key_def, key_slice,
                                             value_slice, dst, decode_value);
 }
 
@@ -716,22 +717,20 @@ int Rdb_converter::decode_value_header_for_pk(
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
+inline
 int Rdb_converter::convert_record_from_storage_format(
     const std::shared_ptr<Rdb_key_def> &pk_def,
     const rocksdb::Slice *const key_slice,
     const rocksdb::Slice *const value_slice, uchar *const dst,
     bool decode_value) {
   bool skip_value = !decode_value || get_decode_fields()->size() == 0;
-  if (!m_key_requested && skip_value) {
+  if (unlikely(!m_key_requested && skip_value)) {
     return HA_EXIT_SUCCESS;
   }
 
-  int err = HA_EXIT_SUCCESS;
-
   Rdb_string_reader value_slice_reader(value_slice);
   rocksdb::Slice unpack_slice;
-  err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice);
-  if (err != HA_EXIT_SUCCESS) {
+  if (int err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice)) {
     return err;
   }
 
@@ -739,7 +738,7 @@ int Rdb_converter::convert_record_from_storage_format(
     Decode PK fields from the key
   */
   if (m_key_requested) {
-    err = pk_def->unpack_record(m_table, dst, key_slice,
+    int err = pk_def->unpack_record(m_table, dst, key_slice,
                                 !unpack_slice.empty() ? &unpack_slice : nullptr,
                                 false /* verify_checksum */);
     if (err != HA_EXIT_SUCCESS) {
@@ -752,6 +751,7 @@ int Rdb_converter::convert_record_from_storage_format(
     return HA_EXIT_SUCCESS;
   }
 
+#if 0
   Rdb_value_field_iterator<Rdb_convert_to_record_value_decoder, uchar *>
       value_field_iterator(m_table, &value_slice_reader, this, dst);
 
@@ -763,6 +763,50 @@ int Rdb_converter::convert_record_from_storage_format(
       return err;
     }
   }
+#else // manually inline
+{
+  auto null_bytes = m_null_bytes;
+  // get_decode_fields() returns m_decoders_vect
+  for (auto& field : m_decoders_vect) {
+    auto field_dec = field.m_field_enc;
+    bool decode = field.m_decode;
+    bool is_instant_field = field_dec->m_is_instant_field;
+
+    // For non-instant cols, Skip the bytes we need to skip
+    if (int skip = field.m_skip) {
+      if (unlikely(!is_instant_field)) {
+        if (!value_slice_reader.read(skip)) {
+          assert(false);
+          return HA_ERR_ROCKSDB_CORRUPT_DATA;
+        }
+      }
+      else {
+        // For instant cols, skip the bytes if record contains that cols data
+        value_slice_reader.read(
+            std::min<int32_t>(skip, value_slice_reader.remaining_bytes()));
+      }
+    }
+
+    // If a row is inserted after instant ddl, value_slice will contain instant
+    // column data
+    if (!is_instant_field || value_slice_reader.remaining_bytes() > 0) {
+      // This is_null value is bind to how stroage format store its value
+      bool is_null = field_dec->maybe_null() &&
+             (null_bytes[field_dec->m_null_offset] & field_dec->m_null_mask);
+
+      // Decode each field
+      int err = Rdb_convert_to_record_value_decoder::decode(
+          dst, m_table, field_dec, &value_slice_reader, decode, is_null);
+      if (unlikely(err))
+        return err;
+    } else if (is_instant_field && decode) {
+      int err = Rdb_convert_to_record_value_decoder::decode_instant(dst, field_dec);
+      if (unlikely(err))
+        return err;
+    }
+  }
+}
+#endif
 
   if (m_verify_row_debug_checksums) {
     return verify_row_debug_checksum(pk_def, &value_slice_reader, key_slice,
@@ -1012,6 +1056,8 @@ int Rdb_converter::encode_value_slice(
 template class Rdb_value_field_iterator<Rdb_convert_to_record_value_decoder,
                                         uchar *>;
 
+#ifdef NDEBUG
 #pragma GCC pop_options
+#endif
 
 }  // namespace myrocks
