@@ -11510,8 +11510,6 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
       break;
     }
 
-    const rocksdb::Slice &key = m_iterator->key();
-
     if (m_iteration_only) {
       table->m_status = 0;
       rc = 0;
@@ -11522,6 +11520,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
               my_core::thd_tx_isolation(thd) <= ISO_READ_COMMITTED) {
           /* We need to put a lock and re-read */
           bool skip_row = false;
+          const rocksdb::Slice key = m_iterator->key();
           rc = get_row_by_rowid(buf, key.data(), key.size(), &skip_row, false,
                                 !rdb_is_binlog_ttl_enabled());
           if (rc != HA_EXIT_SUCCESS && skip_row) {
@@ -11529,6 +11528,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
             continue;
           }
         } else {
+          const rocksdb::Slice key = m_iterator->key();
           const rocksdb::Slice value = m_iterator->value();
           tx->acquire_snapshot(false, m_tbl_def->get_table_type());
           // We need to put a lock, no need to re-read
@@ -11542,12 +11542,14 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
           rc = convert_record_from_storage_format(&key, &value, buf);
         }
       } else {
+        const rocksdb::Slice key = m_iterator->key();
         const rocksdb::Slice value = m_iterator->value();
         /* Unpack from the row we've read */
         m_last_rowkey.copy(key.data(), key.size(), &my_charset_bin);
         rc = convert_record_from_storage_format(&key, &value, buf);
       }
     } else {
+      const rocksdb::Slice key = m_iterator->key();
       const rocksdb::Slice value = m_iterator->value();
       rc = kd.unpack_record(table, buf, &key, &value,
                             m_converter->get_verify_row_debug_checksums());
