@@ -276,6 +276,8 @@ class Rdb_string_reader {
   Rdb_string_reader(const uchar *buf, uint buf_len) noexcept
       : m_ptr{buf}, m_end{buf + buf_len} {}
 
+  bool is_empty() const { return m_ptr == m_end; }
+
   /*
     Read the next @param size bytes. Returns pointer to the bytes read, or
     nullptr if the remaining string doesn't have that many bytes.

@@ -9139,6 +9139,7 @@ static void dbug_create_err_inplace_alter() {
 }
 #endif
 
+inline
 int ha_rocksdb::convert_record_from_storage_format(
     const rocksdb::Slice *const key, uchar *const buf) {
   DBUG_EXECUTE_IF("myrocks_simulate_bad_row_read1",
@@ -9175,6 +9176,7 @@ int ha_rocksdb::convert_record_from_storage_format(
     other  Error inpacking the data
 */
 
+inline
 int ha_rocksdb::convert_record_from_storage_format(
     const rocksdb::Slice *const key, const rocksdb::Slice *const value,
     uchar *const buf) {
@@ -10769,6 +10771,7 @@ static void reset_iter(std::unique_ptr<Rdb_iterator_base>& iter) {
     HA_EXIT_SUCCESS  OK
     other            HA_ERR error code (can be SE-specific)
 */
+ROCKSDB_FLATTEN
 int ha_rocksdb::index_read_intern(uchar *const buf, const uchar *const key,
                                   key_part_map keypart_map,
                                   enum ha_rkey_function find_flag) {
@@ -11398,6 +11401,7 @@ int ha_rocksdb::get_row_by_sk(uchar *buf, const Rdb_key_def &kd,
     HA_EXIT_SUCCESS  OK
     other            HA_ERR error code (can be SE-specific)
 */
+ROCKSDB_FLATTEN
 int ha_rocksdb::index_next(uchar *const buf) {
   DBUG_ENTER_FUNC();
 
@@ -11433,6 +11437,7 @@ int ha_rocksdb::index_next_same(uchar *const buf,
     HA_EXIT_SUCCESS  OK
     other            HA_ERR error code (can be SE-specific)
 */
+ROCKSDB_FLATTEN
 int ha_rocksdb::index_prev(uchar *const buf) {
   DBUG_ENTER_FUNC();
 
@@ -13157,6 +13162,7 @@ int ha_rocksdb::rnd_init(bool scan MY_ATTRIBUTE((__unused__))) {
     HA_EXIT_SUCCESS  OK
     other            HA_ERR error code (can be SE-specific)
 */
+ROCKSDB_FLATTEN
 int ha_rocksdb::rnd_next(uchar *const buf) {
   DBUG_ENTER_FUNC();
 

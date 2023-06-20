@@ -1971,7 +1971,9 @@ int Rdb_key_def::decode_unpack_info(Rdb_string_reader *unp_reader,
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
-
+#pragma GCC push_options
+#pragma GCC optimize ("-Ofast")
+ROCKSDB_FLATTEN
 int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
                                const rocksdb::Slice *const packed_key,
                                const rocksdb::Slice *const unpack_info,
@@ -1993,9 +1995,13 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
   const char *unpack_header;
   bool has_unpack_info;
   int err = HA_EXIT_SUCCESS;
-  err = decode_unpack_info(&unp_reader, &has_unpack_info, &unpack_header);
-  if (unlikely(err)) {
-    return err;
+  if (unp_reader.is_empty()) {
+    has_unpack_info = false;
+  } else {
+    err = decode_unpack_info(&unp_reader, &has_unpack_info, &unpack_header);
+    if (unlikely(err)) {
+      return err;
+    }
   }
 
   // Reset the blob buffer required for unpacking.
@@ -2069,6 +2075,7 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
 
   return HA_EXIT_SUCCESS;
 }
+#pragma GCC pop_options
 
 bool Rdb_key_def::table_has_hidden_pk(const TABLE *const table) {
   return table->s->primary_key == MAX_INDEXES;
