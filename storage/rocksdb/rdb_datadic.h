@@ -573,7 +573,7 @@ class Rdb_key_def {
   };
 
   // Stores if the secondary index keys are covered for index scans or not.
-  enum INDEX_KEY_TYPE {
+  enum INDEX_KEY_TYPE : unsigned char {
     KEY_COVERED = 1,
     KEY_NOT_COVERED = 2,
     KEY_MAY_BE_COVERED = 3,
@@ -1018,8 +1018,8 @@ class Rdb_field_packing {
   */
   bool m_field_is_nullable; /* true <=> NULL-byte is stored */
   bool m_field_unsigned_flag;
-  enum_field_types m_field_real_type;
   uchar m_field_null_bit_mask;
+  enum_field_types m_field_real_type;
   uint m_field_pack_length;
   uint m_field_null_offset;
   ptrdiff_t m_field_offset;
@@ -1049,6 +1049,9 @@ class Rdb_field_packing {
   */
   Rdb_key_def::INDEX_KEY_TYPE m_covered;
 
+  /* true means unpack_info stores the original field value */
+  bool m_unpack_info_stores_value;
+
   const std::vector<uchar> *space_xfrm;
   size_t space_xfrm_len;
   size_t space_mb_len;
@@ -1059,9 +1062,6 @@ class Rdb_field_packing {
     @return true: this field makes use of unpack_info.
   */
   bool uses_unpack_info() const { return (m_make_unpack_info_func != nullptr); }
-
-  /* true means unpack_info stores the original field value */
-  bool m_unpack_info_stores_value;
 
   rdb_index_field_pack_t m_pack_func;
   rdb_make_unpack_info_t m_make_unpack_info_func;
