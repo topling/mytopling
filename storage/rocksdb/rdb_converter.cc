@@ -622,45 +622,9 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
              (uint)m_null_bytes_length_in_record);
 }
 
-/*
-  EntryPoint for Decode:
-  Decode key slice(if requested) and value slice using built-in field
-  decoders
-  @param     key_def        IN          key definition to decode
-  @param     dst            OUT         Mysql buffer to fill decoded content
-  @param     key_slice      IN          RocksDB key slice to decode
-  @param     value_slice    IN          RocksDB value slice to decode
-  @return
-    0      OK
-    other  HA_ERR error code (can be SE-specific)
-*/
 #ifdef NDEBUG
 #pragma GCC push_options
 #pragma GCC optimize ("-Ofast")
-ROCKSDB_FLATTEN
-#endif
-#if 0
-int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
-                          uchar *dst,  // address to fill data
-                          const rocksdb::Slice *key_slice,
-                          const rocksdb::Slice *value_slice,
-                          bool decode_value) {
-  // Currently only support decode primary key, Will add decode secondary
-  // later
-  assert(key_def->m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY ||
-         key_def->m_index_type == Rdb_key_def::INDEX_TYPE_HIDDEN_PRIMARY);
-
-#ifndef NDEBUG
-  String last_rowkey;
-  last_rowkey.copy(key_slice->data(), key_slice->size(), &my_charset_bin);
-  DBUG_EXECUTE_IF("myrocks_simulate_bad_pk_read1",
-                  { dbug_modify_key_varchar8(&last_rowkey); });
-  rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
-  key_slice = &rowkey_slice;
-#endif
-  return convert_record_from_storage_format(key_def, dst, key_slice,
-                                            value_slice, decode_value);
-}
 #endif
 
 /*
@@ -719,7 +683,7 @@ int Rdb_converter::decode_value_header_for_pk(
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
-inline
+ROCKSDB_FLATTEN
 int Rdb_converter::decode(
     const std::shared_ptr<Rdb_key_def> &pk_def,
     uchar *const dst,
