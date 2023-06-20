@@ -2241,11 +2241,7 @@ void Rdb_key_def::pack_integer(
 
 #ifdef WORDS_BIGENDIAN
   {
-    if (fpi->m_field_unsigned_flag) {
-      to[0] = ptr[0];
-    } else {
-      to[0] = static_cast<char>(ptr[0] ^ 128);  // Reverse the sign bit.
-    }
+    to[0] = static_cast<char>(ptr[0] ^ 128);  // Reverse the sign bit.
 
     /* Parameterized length should enable loop unrolling */
     for (int i = 1; i < length; i++) to[i] = ptr[i];
@@ -2253,11 +2249,7 @@ void Rdb_key_def::pack_integer(
 #else
   {
     const int sign_byte = ptr[length - 1];
-    if (fpi->m_field_unsigned_flag) {
-      to[0] = sign_byte;
-    } else {
-      to[0] = static_cast<char>(sign_byte ^ 128);  // Reverse the sign bit.
-    }
+    to[0] = static_cast<char>(sign_byte ^ 128);  // Reverse the sign bit.
 
     /* Parameterized length should enable loop unrolling */
     for (int i = 1, j = length - 2; i < length; ++i, --j) to[i] = ptr[j];
@@ -2306,23 +2298,31 @@ int Rdb_key_def::unpack_integer(
 
 #ifdef WORDS_BIGENDIAN
   {
-    if (fpi->m_field_unsigned_flag) {
-      to[0] = from[0];
-    } else {
-      to[0] = static_cast<char>(from[0] ^ 128);  // Reverse the sign bit.
-    }
+    to[0] = static_cast<char>(from[0] ^ 128);  // Reverse the sign bit.
     /* Parameterized length should enable loop unrolling */
     for (int i = 1; i < length; i++) to[i] = from[i];
   }
 #else
+  if constexpr (length == 8) {
+    uint64_t ui = __bswap_64(unaligned_load<uint64_t>(from));
+    unaligned_save(to, ui ^ (uint64_t(1) << 63));
+  }
+  else if constexpr (length == 4) {
+    uint32_t ui = __bswap_32(unaligned_load<uint32_t>(from));
+    unaligned_save(to, ui ^ (uint32_t(1) << 31));
+  }
+  else if constexpr (length == 2) {
+    uint16_t ui = __bswap_16(unaligned_load<uint16_t>(from));
+    unaligned_save(to, ui ^ (uint16_t(1) << 15));
+  }
+  else if constexpr (length == 1) {
+    *to = *from ^ (uint8_t(1) << 7);
+  }
+  else
   {
     const int sign_byte = from[0];
-    if (fpi->m_field_unsigned_flag) {
-      to[length - 1] = sign_byte;
-    } else {
-      to[length - 1] =
-          static_cast<char>(sign_byte ^ 128);  // Reverse the sign bit.
-    }
+    to[length - 1] =
+        static_cast<char>(sign_byte ^ 128);  // Reverse the sign bit.
 
     /* Parameterized length should enable loop unrolling */
     for (int i = 0, j = length - 1; i < length - 1; ++i, --j) to[i] = from[j];
@@ -4091,32 +4091,57 @@ bool Rdb_field_packing::setup(const Rdb_key_def *const key_descr,
 
   switch (type) {
     case MYSQL_TYPE_LONGLONG:
-      m_pack_func = Rdb_key_def::pack_integer<8>;
-      m_unpack_func = Rdb_key_def::unpack_integer<8>;
+      if (m_field_unsigned_flag) {
+        m_pack_func = Rdb_key_def::pack_unsigned<8>;
+        m_unpack_func = Rdb_key_def::unpack_unsigned<8>;
+      } else {
+        m_pack_func = Rdb_key_def::pack_integer<8>;
+        m_unpack_func = Rdb_key_def::unpack_integer<8>;
+      }
       m_covered = Rdb_key_def::KEY_COVERED;
       return true;
 
     case MYSQL_TYPE_LONG:
-      m_pack_func = Rdb_key_def::pack_integer<4>;
-      m_unpack_func = Rdb_key_def::unpack_integer<4>;
+      if (m_field_unsigned_flag) {
+        m_pack_func = Rdb_key_def::pack_unsigned<4>;
+        m_unpack_func = Rdb_key_def::unpack_unsigned<4>;
+      } else {
+        m_pack_func = Rdb_key_def::pack_integer<4>;
+        m_unpack_func = Rdb_key_def::unpack_integer<4>;
+      }
       m_covered = Rdb_key_def::KEY_COVERED;
       return true;
 
     case MYSQL_TYPE_INT24:
-      m_pack_func = Rdb_key_def::pack_integer<3>;
-      m_unpack_func = Rdb_key_def::unpack_integer<3>;
+      if (m_field_unsigned_flag) {
+        m_pack_func = Rdb_key_def::pack_unsigned<3>;
+        m_unpack_func = Rdb_key_def::unpack_unsigned<3>;
+      } else {
+        m_pack_func = Rdb_key_def::pack_integer<3>;
+        m_unpack_func = Rdb_key_def::unpack_integer<3>;
+      }
       m_covered = Rdb_key_def::KEY_COVERED;
       return true;
 
     case MYSQL_TYPE_SHORT:
-      m_pack_func = Rdb_key_def::pack_integer<2>;
-      m_unpack_func = Rdb_key_def::unpack_integer<2>;
+      if (m_field_unsigned_flag) {
+        m_pack_func = Rdb_key_def::pack_unsigned<2>;
+        m_unpack_func = Rdb_key_def::unpack_unsigned<2>;
+      } else {
+        m_pack_func = Rdb_key_def::pack_integer<2>;
+        m_unpack_func = Rdb_key_def::unpack_integer<2>;
+      }
       m_covered = Rdb_key_def::KEY_COVERED;
       return true;
 
     case MYSQL_TYPE_TINY:
-      m_pack_func = Rdb_key_def::pack_integer<1>;
-      m_unpack_func = Rdb_key_def::unpack_integer<1>;
+      if (m_field_unsigned_flag) {
+        m_pack_func = Rdb_key_def::pack_unsigned<1>;
+        m_unpack_func = Rdb_key_def::unpack_unsigned<1>;
+      } else {
+        m_pack_func = Rdb_key_def::pack_integer<1>;
+        m_unpack_func = Rdb_key_def::unpack_integer<1>;
+      }
       m_covered = Rdb_key_def::KEY_COVERED;
       return true;
 
