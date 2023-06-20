@@ -2004,11 +2004,10 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
 
   const char *unpack_header;
   bool has_unpack_info;
-  int err = HA_EXIT_SUCCESS;
   if (unp_reader.is_empty()) {
     has_unpack_info = false;
   } else {
-    err = decode_unpack_info(&unp_reader, &has_unpack_info, &unpack_header);
+    int err = decode_unpack_info(&unp_reader, &has_unpack_info, &unpack_header);
     if (unlikely(err)) {
       return err;
     }
@@ -2040,7 +2039,7 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
       this, m_pack_info, &reader, &unp_reader, table, has_unpack_info,
       has_covered_bitmap ? &covered_bitmap : nullptr, buf);
   while (iter.has_next()) {
-    err = iter.next();
+    int err = iter.next();
     if (unlikely(err)) {
       return err;
     }
@@ -2069,15 +2068,17 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
       }
       if (fpi->m_unpack_func && covered_column) {
         /* It is possible to unpack this column. Do it. */
-        err = Rdb_convert_to_record_key_decoder::decode(
+        int err = Rdb_convert_to_record_key_decoder::decode(
             buf, fpi, table, has_unpack_info, &reader, &unp_reader);
+        if (unlikely(err))
+          return err;
       } else {
         auto field = fpi->get_field_in_table(table);
-        err = Rdb_convert_to_record_key_decoder::skip(
+        int err = Rdb_convert_to_record_key_decoder::skip(
             fpi, field, &reader, &unp_reader, is_secondary_key);
+        if (unlikely(err))
+          return err;
       }
-      if (unlikely(0 != err))
-        return err;
     }
   }
 }
