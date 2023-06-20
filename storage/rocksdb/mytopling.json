@@ -238,9 +238,9 @@
     "by_prefix": {
       "class": "FixedPrefix",
       "params": {
-	    "prefix_len": 4,
-	    "max_level": 2,
-	    "min_file_size": 0
+        "prefix_len": 4,
+        "max_level": 2,
+        "min_file_size": 0
       }
     }
   },
@@ -352,14 +352,14 @@
         "nfs_mnt_src": "static-mounted",
         "nfs_mnt_opt": "",
         "web_domain": "topling.in",
-        "overall_timeout": 600,
+        "overall_timeout": 30,
         "http_max_retry": 3,
         "http_timeout": 1,
         "http_workers": [
           "//http://127.0.0.1:8080",
-          "http://192.168.100.100:8080",
-          "//http://192.168.100.2:8080",
-          "//http://192.168.100.2:8081",
+          "http://192.168.31.100:8080",
+          { "url": "http://192.168.31.2:8080", "weight": 50 },
+          { "url": "http://192.168.31.3:8080", "weight": 90 },
           { "url": "//http://192.168.100.116:8081", "web_url": "http://dell3.topling.in:2011" },
           { "url": "//http://192.168.100.117:8081", "base_url": "http://192.168.31.3:55071", "web_url": "http://dell3.topling.in:2011" },
           "//http://192.168.100.102:8080",
@@ -367,6 +367,8 @@
           "//http://commented-host:8080",
           "//end_http_workers"
         ],
+        "//load_balance": "kRoundRobin",
+        "load_balance": "kWeight",
         "dcompact_min_level": 2
       }
     },
