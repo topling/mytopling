@@ -2368,6 +2368,7 @@ static void rdb_swap_double_bytes(uchar *const dst, const uchar *const src) {
   dst[6] = src[5];
   dst[7] = src[4];
 #else
+/*
   dst[0] = src[7];
   dst[1] = src[6];
   dst[2] = src[5];
@@ -2376,14 +2377,21 @@ static void rdb_swap_double_bytes(uchar *const dst, const uchar *const src) {
   dst[5] = src[2];
   dst[6] = src[1];
   dst[7] = src[0];
+*/
+  // equivalent to bswap
+  unaligned_save(dst, __bswap_64(unaligned_load<uint64_t>(src)));
 #endif
 }
 
 static void rdb_swap_float_bytes(uchar *const dst, const uchar *const src) {
+/*
   dst[0] = src[3];
   dst[1] = src[2];
   dst[2] = src[1];
   dst[3] = src[0];
+*/
+  // equivalent to bswap
+  unaligned_save(dst, __bswap_32(unaligned_load<uint32_t>(src)));
 }
 #else
 #define rdb_swap_double_bytes nullptr
