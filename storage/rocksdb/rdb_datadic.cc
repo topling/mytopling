@@ -1434,11 +1434,21 @@ int Rdb_key_def::predecessor(uchar *const packed_tuple, const uint len) {
   return changed;
 }
 
+#if 0
 static const std::map<char, size_t> UNPACK_HEADER_SIZES = {
     {RDB_UNPACK_DATA_TAG, RDB_UNPACK_HEADER_SIZE},
     {RDB_UNPACK_COVERED_DATA_TAG, RDB_UNPACK_COVERED_HEADER_SIZE},
     {RDB_UNPACK_DATA_WITHOUT_LEN_TAG, RDB_UNPACK_DATA_WITHOUT_LEN_HEADER_SIZE}};
-
+#else
+static const std::array<unsigned char, RDB_UNPACK_DATA_WITHOUT_LEN_TAG + 1>
+UNPACK_HEADER_SIZES = {
+  0, // index 0
+  0, // index 1
+  RDB_UNPACK_HEADER_SIZE, // 2, RDB_UNPACK_DATA_TAG
+  RDB_UNPACK_COVERED_HEADER_SIZE, // 3, RDB_UNPACK_COVERED_DATA_TAG
+  RDB_UNPACK_DATA_WITHOUT_LEN_HEADER_SIZE, // 4, RDB_UNPACK_DATA_WITHOUT_LEN_TAG
+};
+#endif
 /*
   @return The length in bytes of the header specified by the given tag
 */
