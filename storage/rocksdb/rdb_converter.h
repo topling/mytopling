@@ -198,8 +198,9 @@ class Rdb_converter {
 
   int convert_record_from_storage_format(
       const std::shared_ptr<Rdb_key_def> &pk_def,
+      uchar *const buf,
       const rocksdb::Slice *const key, const rocksdb::Slice *const value,
-      uchar *const buf, bool decode_value);
+      bool decode_value);
 
   int verify_row_debug_checksum(const std::shared_ptr<Rdb_key_def> &pk_def,
                                 Rdb_string_reader *reader,

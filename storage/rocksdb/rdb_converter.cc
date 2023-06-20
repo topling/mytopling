@@ -657,8 +657,8 @@ int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
   rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
   key_slice = &rowkey_slice;
 #endif
-  return convert_record_from_storage_format(key_def, key_slice,
-                                            value_slice, dst, decode_value);
+  return convert_record_from_storage_format(key_def, dst, key_slice,
+                                            value_slice, decode_value);
 }
 
 /*
@@ -720,8 +720,9 @@ int Rdb_converter::decode_value_header_for_pk(
 inline
 int Rdb_converter::convert_record_from_storage_format(
     const std::shared_ptr<Rdb_key_def> &pk_def,
-    const rocksdb::Slice *const key_slice,
-    const rocksdb::Slice *const value_slice, uchar *const dst,
+    uchar *const dst,
+    const rocksdb::Slice *key_slice,
+    const rocksdb::Slice *value_slice,
     bool decode_value) {
   bool skip_value = !decode_value || get_decode_fields()->size() == 0;
   if (unlikely(!m_key_requested && skip_value)) {
