@@ -639,6 +639,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
 #pragma GCC optimize ("-Ofast")
 ROCKSDB_FLATTEN
 #endif
+#if 0
 int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
                           uchar *dst,  // address to fill data
                           const rocksdb::Slice *key_slice,
@@ -660,6 +661,7 @@ int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
   return convert_record_from_storage_format(key_def, dst, key_slice,
                                             value_slice, decode_value);
 }
+#endif
 
 /*
   Decode value slice header for pk
@@ -718,12 +720,23 @@ int Rdb_converter::decode_value_header_for_pk(
     other  HA_ERR error code (can be SE-specific)
 */
 inline
-int Rdb_converter::convert_record_from_storage_format(
+int Rdb_converter::decode(
     const std::shared_ptr<Rdb_key_def> &pk_def,
     uchar *const dst,
     const rocksdb::Slice *key_slice,
     const rocksdb::Slice *value_slice,
     bool decode_value) {
+  assert(pk_def->m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY ||
+         pk_def->m_index_type == Rdb_key_def::INDEX_TYPE_HIDDEN_PRIMARY);
+
+#ifndef NDEBUG
+  String last_rowkey;
+  last_rowkey.copy(key_slice->data(), key_slice->size(), &my_charset_bin);
+  DBUG_EXECUTE_IF("myrocks_simulate_bad_pk_read1",
+                  { dbug_modify_key_varchar8(&last_rowkey); });
+  rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
+  key_slice = &rowkey_slice;
+#endif
   bool skip_value = !decode_value || get_decode_fields()->size() == 0;
   if (unlikely(!m_key_requested && skip_value)) {
     return HA_EXIT_SUCCESS;
