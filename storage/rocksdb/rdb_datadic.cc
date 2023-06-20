@@ -2034,6 +2034,8 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
                                         sizeof(RDB_UNPACK_COVERED_DATA_TAG));
   }
 
+#if 0
+  // slow, compiler can not optimize this code gracefully
   Rdb_key_field_iterator iter(
       this, m_pack_info, &reader, &unp_reader, table, has_unpack_info,
       has_covered_bitmap ? &covered_bitmap : nullptr, buf);
@@ -2043,7 +2045,43 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
       return err;
     }
   }
-
+#else // manually inline Rdb_key_field_iterator::has_next/next
+{
+  bool hidden_pk_exists = table_has_hidden_pk(table);
+  bool is_secondary_key = m_index_type == INDEX_TYPE_SECONDARY;
+  bool is_hidden_pk = m_index_type == INDEX_TYPE_HIDDEN_PRIMARY;
+  uint curr_bitmap_pos = 0;
+  Rdb_field_packing* fpi = m_pack_info;
+  Rdb_field_packing* fpi_end = m_pack_info + get_key_parts();
+  for (; fpi < fpi_end; fpi++) {
+    if ((is_secondary_key && hidden_pk_exists && fpi + 1 == fpi_end) || is_hidden_pk) {
+      assert(fpi->m_unpack_func);
+      if ((fpi->m_skip_func)(fpi, &reader))
+        return HA_ERR_ROCKSDB_CORRUPT_DATA;
+    }
+    else {
+      bool covered_column = (fpi->m_covered == KEY_COVERED);
+      if (has_covered_bitmap &&
+          is_variable_length_field(fpi->m_field_real_type) &&
+          fpi->m_covered == KEY_MAY_BE_COVERED) {
+        covered_column = curr_bitmap_pos < MAX_REF_PARTS &&
+                        bitmap_is_set(&covered_bitmap, curr_bitmap_pos++);
+      }
+      if (fpi->m_unpack_func && covered_column) {
+        /* It is possible to unpack this column. Do it. */
+        err = Rdb_convert_to_record_key_decoder::decode(
+            buf, fpi, table, has_unpack_info, &reader, &unp_reader);
+      } else {
+        auto field = fpi->get_field_in_table(table);
+        err = Rdb_convert_to_record_key_decoder::skip(
+            fpi, field, &reader, &unp_reader, is_secondary_key);
+      }
+      if (unlikely(0 != err))
+        return err;
+    }
+  }
+}
+#endif
   /*
     Check checksum values if present
   */
