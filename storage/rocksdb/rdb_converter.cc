@@ -634,6 +634,9 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
+#pragma GCC push_options
+#pragma GCC optimize ("-Ofast")
+ROCKSDB_FLATTEN
 int Rdb_converter::decode(const std::shared_ptr<Rdb_key_def> &key_def,
                           uchar *dst,  // address to fill data
                           const rocksdb::Slice *key_slice,
@@ -670,7 +673,7 @@ int Rdb_converter::decode_value_header_for_pk(
     Rdb_string_reader *reader, const std::shared_ptr<Rdb_key_def> &pk_def,
     rocksdb::Slice *unpack_slice) {
   /* If it's a TTL record, skip the 8 byte TTL value */
-  if (pk_def->has_ttl()) {
+  if (unlikely(pk_def->has_ttl())) {
     const char *ttl_bytes;
     if ((ttl_bytes = reader->read(ROCKSDB_SIZEOF_TTL_RECORD))) {
       memcpy(m_ttl_bytes, ttl_bytes, ROCKSDB_SIZEOF_TTL_RECORD);
@@ -713,14 +716,11 @@ int Rdb_converter::decode_value_header_for_pk(
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
-#pragma GCC push_options
-#pragma GCC optimize ("-Ofast")
-ROCKSDB_FLATTEN
 int Rdb_converter::convert_record_from_storage_format(
     const std::shared_ptr<Rdb_key_def> &pk_def,
     const rocksdb::Slice *const key_slice,
     const rocksdb::Slice *const value_slice, uchar *const dst,
-    bool decode_value = true) {
+    bool decode_value) {
   bool skip_value = !decode_value || get_decode_fields()->size() == 0;
   if (!m_key_requested && skip_value) {
     return HA_EXIT_SUCCESS;
@@ -770,7 +770,6 @@ int Rdb_converter::convert_record_from_storage_format(
   }
   return HA_EXIT_SUCCESS;
 }
-#pragma GCC pop_options
 
 /*
   Verify checksum for row
@@ -1012,4 +1011,7 @@ int Rdb_converter::encode_value_slice(
 
 template class Rdb_value_field_iterator<Rdb_convert_to_record_value_decoder,
                                         uchar *>;
+
+#pragma GCC pop_options
+
 }  // namespace myrocks
