@@ -10603,7 +10603,7 @@ int ha_rocksdb::truncate_table(Rdb_tbl_def *tbl_def_arg,
   m_tbl_def = ddl_manager.find(orig_tablename);
   m_converter.reset(
       new Rdb_converter(ha_thd(), m_tbl_def, table_arg, table_def));
-  m_is_mysql_system_table = table->s && m_tbl_def->m_is_mysql_system_table;
+  m_is_mysql_system_table = table_arg->s && m_tbl_def->m_is_mysql_system_table;
   DBUG_RETURN(err);
 }
 
