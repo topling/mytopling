@@ -278,7 +278,6 @@ int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
 int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   int rc = 0;
   const auto &kd = *m_kd;
-  Rdb_transaction *const tx = get_tx_from_thd(m_thd);
 
   if (!m_valid) return HA_ERR_END_OF_FILE;
 
@@ -327,6 +326,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     // Record is not visible due to TTL, move to next record.
     if (m_pkd->has_ttl()) {
       const rocksdb::Slice value = m_scan_it->value();
+      Rdb_transaction *const tx = get_tx_from_thd(m_thd);
       if (rdb_should_hide_ttl_rec(kd, &value, tx)) {
         continue;
       }
