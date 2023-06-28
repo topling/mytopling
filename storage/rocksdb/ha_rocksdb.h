@@ -798,7 +798,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
                        const bool skip_unique_check)
       MY_ATTRIBUTE((__warn_unused_result__));
   int get_pk_for_update(struct update_row_info *const row_info);
-  int check_and_lock_unique_pk(const struct update_row_info &row_info,
+  int check_and_lock_unique_pk(const struct update_row_info &row_info, THD*,
                                bool *const found, const bool skip_unique_check)
       MY_ATTRIBUTE((__warn_unused_result__));
   int acquire_prefix_lock(const Rdb_key_def &kd, Rdb_transaction *tx,
@@ -857,6 +857,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   void dec_table_n_rows();
 
   bool should_skip_invalidated_record(const int rc);
+  bool should_skip_invalidated_record(const int rc, THD*);
   bool should_skip_locked_record(const int rc);
   bool should_recreate_snapshot(const int rc, const bool is_new_snapshot);
   bool can_assume_tracked(THD *thd);

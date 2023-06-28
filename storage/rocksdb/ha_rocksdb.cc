@@ -11483,6 +11483,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
                                                  bool skip_next) {
   DBUG_ENTER_FUNC();
 
+  assert(ha_thd() == table->in_use);
 //THD *thd = ha_thd();
   THD* thd = table->in_use;
   Rdb_transaction* tx = get_tx_from_thd(thd);
@@ -11597,7 +11598,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
       }
     }
 
-    if (!should_skip_invalidated_record(rc)) {
+    if (!should_skip_invalidated_record(rc, thd)) {
       break;
     }
   }
@@ -12208,7 +12209,7 @@ int ha_rocksdb::get_pk_for_update(struct update_row_info *const row_info) {
     other            HA_ERR error code (can be SE-specific)
 */
 int ha_rocksdb::check_and_lock_unique_pk(const struct update_row_info &row_info,
-                                         bool *const found,
+                                         THD* thd, bool *const found,
                                          const bool skip_unique_check) {
   assert(found != nullptr);
 
@@ -12217,7 +12218,7 @@ int ha_rocksdb::check_and_lock_unique_pk(const struct update_row_info &row_info,
 
   /* Ignore PK violations if this is a optimized 'replace into' */
   const bool ignore_pk_unique_check =
-      ha_thd()->lex->blind_replace_into || skip_unique_check;
+      thd->lex->blind_replace_into || skip_unique_check;
   rocksdb::PinnableSlice value;
   rocksdb::PinnableSlice *pslice =
       m_insert_with_update ? &m_dup_key_retrieved_record : &value;
@@ -12471,8 +12472,9 @@ int ha_rocksdb::check_and_lock_sk(
 int ha_rocksdb::check_uniqueness_and_lock(
     const struct update_row_info &row_info, bool pk_changed,
     bool skip_unique_check) {
+  THD* thd = ha_thd();
   Rdb_transaction *const tx =
-      get_or_create_tx(ha_thd(), m_tbl_def->get_table_type());
+      get_or_create_tx(thd, m_tbl_def->get_table_type());
   tx->acquire_snapshot(false, m_tbl_def->get_table_type());
 
   /*
@@ -12492,12 +12494,12 @@ int ha_rocksdb::check_uniqueness_and_lock(
         found = false;
         rc = HA_EXIT_SUCCESS;
       } else {
-        rc = check_and_lock_unique_pk(row_info, &found, skip_unique_check);
-        DEBUG_SYNC(ha_thd(), "rocksdb.after_unique_pk_check");
+        rc = check_and_lock_unique_pk(row_info, thd, &found, skip_unique_check);
+        DEBUG_SYNC(thd, "rocksdb.after_unique_pk_check");
       }
     } else {
       rc = check_and_lock_sk(key_id, row_info, &found, skip_unique_check);
-      DEBUG_SYNC(ha_thd(), "rocksdb.after_unique_sk_check");
+      DEBUG_SYNC(thd, "rocksdb.after_unique_sk_check");
     }
     DBUG_EXECUTE_IF("rocksdb_blob_crash",
                     DBUG_SET("-d,rocksdb_check_uniqueness"););
@@ -12523,7 +12525,8 @@ int ha_rocksdb::bulk_load_key(Rdb_transaction *const tx, const Rdb_key_def &kd,
                               const rocksdb::Slice &value, bool sort) {
   DBUG_ENTER_FUNC();
   int res;
-  THD *thd = ha_thd();
+  assert(tx->get_thd() == ha_thd());
+  THD *thd = tx->get_thd();
   if (unlikely(thd && thd->killed)) {
     DBUG_RETURN(HA_ERR_QUERY_INTERRUPTED);
   }
@@ -12547,7 +12550,7 @@ int ha_rocksdb::bulk_load_key(Rdb_transaction *const tx, const Rdb_key_def &kd,
     m_sst_info.reset(new Rdb_sst_info(rdb, m_table_handler->m_table_name,
                                       kd.get_name(), cf, *rocksdb_db_options,
                                       tx->use_auto_sort_sst(),
-                                      THDVAR(ha_thd(), trace_sst_api)));
+                                      THDVAR(thd, trace_sst_api)));
     res = tx->start_bulk_load(this, m_sst_info);
     if (res != HA_EXIT_SUCCESS) {
       DBUG_RETURN(res);
@@ -17682,9 +17685,14 @@ bool Rdb_manual_compaction_thread::set_client_done(const int mc_id) {
  * If so, we either just skipping the row, or re-creating a snapshot
  * and seek again. In both cases, Read Committed constraint is not broken.
  */
+__always_inline
 bool ha_rocksdb::should_skip_invalidated_record(const int rc) {
   // copy from handler::ha_thd()
   auto thd = (table && table->in_use) ? table->in_use : current_thd;
+  return should_skip_invalidated_record(rc, thd);
+}
+__always_inline
+bool ha_rocksdb::should_skip_invalidated_record(const int rc, THD* thd) {
   if ((m_lock_rows != RDB_LOCK_NONE && rc == HA_ERR_KEY_NOT_FOUND &&
        thd->tx_isolation == ISO_READ_COMMITTED)) {
     return true;
