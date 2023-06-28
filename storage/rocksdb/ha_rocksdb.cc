@@ -5286,6 +5286,15 @@ class Rdb_transaction_impl : public Rdb_transaction {
     tx_opts.write_batch_flush_threshold =
         THDVAR(m_thd, write_batch_flush_threshold);
 
+
+    // for SkipListMemTable, hint is the last insert position,
+    //     hint can speed up sequential insert
+    // for CSPPMemTab, hint is tls ptr, can reduce tls access time,
+    //     hint can speed up sequential insert and random insert, but hint
+    //     is searched from MemTableInserter::HintMap, this maybe slower
+    //     than access tls ptr.
+    // write_opts.memtable_insert_hint_per_batch = true;
+
     write_opts.protection_bytes_per_key =
         THDVAR(m_thd, protection_bytes_per_key);
     if (table_type == INTRINSIC_TMP) {
@@ -11474,7 +11483,8 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
                                                  bool skip_next) {
   DBUG_ENTER_FUNC();
 
-  THD *thd = ha_thd();
+//THD *thd = ha_thd();
+  THD* thd = table->in_use;
   Rdb_transaction* tx = get_tx_from_thd(thd);
   int rc = 0;
   const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
@@ -11485,13 +11495,13 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
 
   for (;;) {
     DEBUG_SYNC(thd, "rocksdb.check_flags_inwdi");
-    if (thd && thd->killed) {
+    if (UNLIKELY(thd && thd->killed)) {
       rc = HA_ERR_QUERY_INTERRUPTED;
       break;
     }
 
     assert(m_iterator != nullptr);
-    if (m_iterator == nullptr) {
+    if (UNLIKELY(m_iterator == nullptr)) {
       rc = HA_ERR_INTERNAL_ERROR;
       break;
     }
@@ -11506,7 +11516,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
       }
     }
 
-    if (rc) {
+    if (UNLIKELY(rc)) {
       break;
     }
 
@@ -11553,7 +11563,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
       const rocksdb::Slice value = m_iterator->value();
       rc = kd.unpack_record(table, buf, &key, &value,
                             m_converter->get_verify_row_debug_checksums());
-      if (rc != HA_EXIT_SUCCESS) {
+      if (UNLIKELY(rc != HA_EXIT_SUCCESS)) {
         break;
       }
 
@@ -11571,7 +11581,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
 
       const uint size =
           kd.get_primary_key_tuple(*m_pk_descr, &key, m_pk_packed_tuple);
-      if (size == RDB_INVALID_KEY_LEN) {
+      if (UNLIKELY(size == RDB_INVALID_KEY_LEN)) {
         rc = HA_ERR_ROCKSDB_CORRUPT_DATA;
         break;
       }
