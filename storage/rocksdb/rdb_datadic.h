@@ -328,13 +328,18 @@ class Rdb_key_def {
 
   /* Check if given mem-comparable key belongs to this index */
   bool covers_key(const rocksdb::Slice &slice) const {
-    if (slice.size() < INDEX_NUMBER_SIZE) return false;
+    if (unlikely(slice.size() < INDEX_NUMBER_SIZE)) return false;
 
+  #if 0
     if (memcmp(slice.data(), m_index_number_storage_form, INDEX_NUMBER_SIZE)) {
       return false;
     }
 
     return true;
+  #else
+    return *(const uint32_t*)slice.data() ==
+           *(const uint32_t*)m_index_number_storage_form;
+  #endif
   }
 
   void get_lookup_bitmap(const TABLE *table, MY_BITMAP *map) const;
