@@ -25,7 +25,8 @@ export BULK_LOAD_DEL_TMP=1
 datadir=/nvme-shared/mytopling/datadir
 #datadir=/nvme-shared/mytopling/lifuzhou-data/test_data
 rm -rf ${datadir}/.rocksdb/job-*
-rm -f /tmp/Topling-*
+export ToplingZipTable_localTempDir=/tmp
+rm -f ${ToplingZipTable_localTempDir}/Topling-*
 ulimit -n 100000
 #sudo sysctl -w vm.max_map_count=8388608
 

@@ -110,7 +110,7 @@
       "comment2": "Index and Tag(Seq+ValueType) will still be compressed",
       "class": "ToplingZipTable",
       "params": {
-        "localTempDir": "/tmp",
+        "//localTempDir": "/tmp",
         "builderMinLevel": 0,
         "acceptCompressionRatio": 0.8,
         "enableStatistics": false,
@@ -131,7 +131,7 @@
     "dzip": {
       "class": "ToplingZipTable",
       "params": {
-        "localTempDir": "/tmp",
+        "//localTempDir": "/tmp",
         "//indexType": "SE_512_64",
         "indexNestLevel": 3,
         "//indexNestScale": 1,
@@ -239,7 +239,7 @@
       "class": "FixedPrefix",
       "params": {
         "prefix_len": 4,
-        "max_level": 2,
+        "//max_level": 2,
         "min_file_size": 0
       }
     }
