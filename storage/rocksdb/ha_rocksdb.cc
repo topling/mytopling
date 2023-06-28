@@ -11525,7 +11525,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
       rc = 0;
     } else if (active_index == table->s->primary_key) {
       if (m_lock_rows != RDB_LOCK_NONE) {
-        DEBUG_SYNC(ha_thd(), "rocksdb_concurrent_delete");
+        DEBUG_SYNC(thd, "rocksdb_concurrent_delete");
         if (ALWAYS_LOCK_BY_GET ||
               my_core::thd_tx_isolation(thd) <= ISO_READ_COMMITTED) {
           /* We need to put a lock and re-read */
