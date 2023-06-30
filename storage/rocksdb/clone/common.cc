@@ -135,8 +135,8 @@ void move_temp_dir_contents_to_dest(const std::string &temp,
         const auto saved_old_path = old_path + old_wal_suffix;
         if (my_rename(old_path.c_str(), saved_old_path.c_str(),
                       MYF(MY_WME | MY_FAE))) {
-          rdb_fatal_error("Failed to rename %s to %s",
-                                   old_path.c_str(), saved_old_path.c_str());
+          rdb_fatal_error("Failed to rename %s to %s : %s",
+                          old_path.c_str(), saved_old_path.c_str(), strerror(errno));
         }
         return true;
       });
