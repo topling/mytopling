@@ -221,31 +221,7 @@ inline int purge_all_jemalloc_arenas() {
 #endif
 }
 
-MY_ATTRIBUTE((cold, noreturn, noinline))
-void rdb_fatal_error(const char *msg);
-
-#if defined(__clang__) && (__clang_major__ >= 15)
-#define RDB_VARIADIC_TEMPLATE_FORMAT
-#endif
-
-template <typename... Params>
-#ifdef RDB_VARIADIC_TEMPLATE_FORMAT
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wgcc-compat"
-MY_ATTRIBUTE((cold, noreturn, noinline, format(printf, 1, 2)))
-#else
-MY_ATTRIBUTE((cold, noreturn, noinline))
-#endif
-
-void rdb_fatal_error(const char *fmt, Params &&...params) {
-  // NO_LINT_DEBUG
-  sql_print_error(fmt, std::forward<Params>(params)...);
-  abort();
-}
-
-#ifdef RDB_VARIADIC_TEMPLATE_FORMAT
-#pragma clang diagnostic pop
-#endif
+#define rdb_fatal_error(...) sql_print_error(__VA_ARGS__), abort()
 
 /*
   Helper function to check the result of locking or unlocking a mutex. We'll

@@ -7539,11 +7539,11 @@ static void move_wals_to_target_dir() {
   if (is_wal_dir_separate()) {
     if ((my_mkdir(rocksdb_wal_dir, S_IRWXU, MYF(0)) == -1) &&
         (my_errno() != EEXIST))
-      rdb_fatal_error("Failed to create %s", rocksdb_wal_dir);
+      rdb_fatal_error("Failed to create %s : %s", rocksdb_wal_dir, strerror(my_errno()));
 
     if ((my_mkdir(rocksdb_datadir, S_IRWXU, MYF(0)) == -1) &&
         (my_errno() != EEXIST))
-      rdb_fatal_error("Failed to create %s", rocksdb_datadir);
+      rdb_fatal_error("Failed to create %s : %s", rocksdb_datadir, strerror(my_errno()));
 
     for_each_in_dir(
         rocksdb_datadir, MY_WANT_STAT | MY_FAE, [](const fileinfo &f_info) {
@@ -17880,22 +17880,21 @@ void rdb_handle_io_error(const rocksdb::Status status,
     if (skip_core_dump_on_error) {
       opt_core_file = false;
     }
-
     switch (err_type) {
       case RDB_IO_ERROR_TX_COMMIT:
       case RDB_IO_ERROR_DICT_COMMIT: {
         rdb_log_status_error(status, "failed to write to WAL");
-        rdb_fatal_error("MyRocks: aborting on WAL write error.");
+        rdb_fatal_error("MyRocks: aborting on WAL write error: %s", status.ToString().c_str());
         break;
       }
       case RDB_IO_ERROR_BG_THREAD: {
         rdb_log_status_error(status, "BG thread failed to write to RocksDB");
-        rdb_fatal_error("MyRocks: aborting on BG write error.");
+        rdb_fatal_error("MyRocks: aborting on BG write error: %s", status.ToString().c_str());
         break;
       }
       case RDB_IO_ERROR_GENERAL: {
         rdb_log_status_error(status, "failed on I/O");
-        rdb_fatal_error("MyRocks: aborting on I/O error.");
+        rdb_fatal_error("MyRocks: aborting on I/O error: %s", status.ToString().c_str());
         break;
       }
       default:
@@ -17905,13 +17904,13 @@ void rdb_handle_io_error(const rocksdb::Status status,
   } else if (status.IsCorruption()) {
     rdb_log_status_error(status, "data corruption detected!");
     rdb_persist_corruption_marker();
-    rdb_fatal_error("MyRocks: aborting because of data corruption.");
+    rdb_fatal_error("MyRocks: aborting because of data corruption: %s", status.ToString().c_str());
   } else if (!status.ok()) {
     switch (err_type) {
       case RDB_IO_ERROR_TX_COMMIT:
       case RDB_IO_ERROR_DICT_COMMIT: {
         rdb_log_status_error(status, "Failed to write to WAL (non kIOError)");
-        rdb_fatal_error("MyRocks: aborting on WAL write error.");
+        rdb_fatal_error("MyRocks: aborting on WAL write error: %s", status.ToString().c_str());
         break;
       }
       default:
