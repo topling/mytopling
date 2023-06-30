@@ -104,7 +104,13 @@
         "block_size": "8K"
       }
     },
-    "sng": "SingleFastTable",
+    "sng": {
+      "class": "SingleFastTable",
+      "params": {
+        "accurateKeyAnchorsSize": true,
+        "keyAnchorSizeUnit": "100K"
+      }
+    },
     "light_dzip": {
       "comment1": "Disable value zip for faster compression speed",
       "comment2": "Index and Tag(Seq+ValueType) will still be compressed",
