@@ -2908,11 +2908,13 @@ static bool yield_condition(TABLE *table) {
 
 void handler::ha_statistic_increment(
     ulonglong System_status_var::*offset) const {
-  if (table && table->in_use) {
-    (table->in_use->status_var.*offset)++;
-    table->in_use->check_limit_rows_examined();
-    table->in_use->update_sql_stats_periodic();
-    table->in_use->check_yield([t = table] { return yield_condition(t); });
+  if (table) {
+    if (auto thd = table->in_use) {
+      (thd->status_var.*offset)++;
+      thd->check_limit_rows_examined();
+      thd->update_sql_stats_periodic();
+      thd->check_yield([t = table] { return yield_condition(t); });
+    }
   }
 }
 
