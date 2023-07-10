@@ -716,8 +716,7 @@ int Rdb_converter::decode(
     Decode PK fields from the key
   */
   if (m_key_requested) {
-    int err = pk_def->unpack_record(m_table, dst, key_slice,
-                                !unpack_slice.empty() ? &unpack_slice : nullptr,
+    int err = pk_def->unpack_record(m_table, dst, key_slice, &unpack_slice,
                                 false /* verify_checksum */);
     if (err != HA_EXIT_SUCCESS) {
       return err;
@@ -753,15 +752,14 @@ int Rdb_converter::decode(
     // For non-instant cols, Skip the bytes we need to skip
     if (int skip = field.m_skip) {
       if (unlikely(!is_instant_field)) {
-        if (!value_slice_reader.read(skip)) {
+        if (unlikely(!value_slice_reader.read(skip))) {
           assert(false);
           return HA_ERR_ROCKSDB_CORRUPT_DATA;
         }
       }
       else {
         // For instant cols, skip the bytes if record contains that cols data
-        value_slice_reader.read(
-            std::min<int32_t>(skip, value_slice_reader.remaining_bytes()));
+        value_slice_reader.safe_skip(skip);
       }
     }
 

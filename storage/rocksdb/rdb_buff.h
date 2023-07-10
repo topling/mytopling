@@ -243,14 +243,16 @@ class Rdb_string_reader {
 
  public:
   Rdb_string_reader(const Rdb_string_reader &) = default;
+ #if 0
   /* named constructor */
   static Rdb_string_reader read_or_empty(const rocksdb::Slice *const slice) {
     if (!slice) {
-      return Rdb_string_reader("");
+      return Rdb_string_reader(nullptr, 0);
     } else {
       return Rdb_string_reader(slice);
     }
   }
+ #endif
 
   explicit Rdb_string_reader(const std::string &str) {
     if (!str.empty()) {
@@ -277,6 +279,14 @@ class Rdb_string_reader {
       : m_ptr{buf}, m_end{buf + buf_len} {}
 
   bool is_empty() const { return m_ptr == m_end; }
+
+  void safe_skip(size_t len) {
+    auto next = m_ptr + len;
+    if (likely(next <= m_end))
+      m_ptr = next;
+    else
+      m_ptr = m_end;
+  }
 
   /*
     Read the next @param size bytes. Returns pointer to the bytes read, or
@@ -332,7 +342,7 @@ class Rdb_string_reader {
     }
   }
 
-  uint remaining_bytes() const { return m_end - m_ptr; }
+  size_t remaining_bytes() const { return m_end - m_ptr; }
 
   /*
     Return pointer to data that will be read by next read() call (if there is

@@ -1541,7 +1541,7 @@ bool Rdb_key_def::covers_lookup(const rocksdb::Slice *const unpack_info,
     return false;
   }
 
-  Rdb_string_reader unp_reader = Rdb_string_reader::read_or_empty(unpack_info);
+  Rdb_string_reader unp_reader(unpack_info);
 
   // Check if this unpack_info has a covered_bitmap
   const char *unpack_header = unp_reader.get_current_ptr();
@@ -1989,7 +1989,7 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
                                const rocksdb::Slice *const unpack_info,
                                const bool verify_row_debug_checksums) const {
   Rdb_string_reader reader(packed_key);
-  Rdb_string_reader unp_reader = Rdb_string_reader::read_or_empty(unpack_info);
+  Rdb_string_reader unp_reader(unpack_info);
 
   // There is no checksuming data after unpack_info for primary keys, because
   // the layout there is different. The checksum is verified in
@@ -2022,6 +2022,7 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
     }
   }
 
+#if 0
   // Read the covered bitmap
   MY_BITMAP covered_bitmap;
   my_bitmap_map covered_bits;
@@ -2033,7 +2034,6 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
                                         sizeof(RDB_UNPACK_COVERED_DATA_TAG));
   }
 
-#if 0
   // slow, compiler can not optimize this code gracefully
   Rdb_key_field_iterator iter(
       this, m_pack_info, &reader, &unp_reader, table, has_unpack_info,
@@ -2046,6 +2046,16 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
   }
 #else // manually inline Rdb_key_field_iterator::has_next/next
 {
+  bool has_covered_bitmap =
+      has_unpack_info && (unpack_header[0] == RDB_UNPACK_COVERED_DATA_TAG);
+  my_bitmap_map covered_bits;
+  if (has_covered_bitmap) {
+    static_assert(sizeof(covered_bits) * 8 >= MAX_REF_PARTS);
+    covered_bits = rdb_netbuf_to_uint16((const uchar *)unpack_header +
+                                        sizeof(RDB_UNPACK_COVERED_DATA_TAG));
+  } else {
+    covered_bits = 0;
+  }
   bool hidden_pk_exists = table_has_hidden_pk(table);
   bool is_secondary_key = m_index_type == INDEX_TYPE_SECONDARY;
   bool is_hidden_pk = m_index_type == INDEX_TYPE_HIDDEN_PRIMARY;
@@ -2064,7 +2074,8 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
           is_variable_length_field(fpi->m_field_real_type) &&
           fpi->m_covered == KEY_MAY_BE_COVERED) {
         covered_column = curr_bitmap_pos < MAX_REF_PARTS &&
-                        bitmap_is_set(&covered_bitmap, curr_bitmap_pos++);
+                        (covered_bits & (1u << curr_bitmap_pos++));
+                        //< LITTLE ENDIAN only
       }
       if (fpi->m_unpack_func && covered_column) {
         /* It is possible to unpack this column. Do it. */
