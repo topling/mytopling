@@ -281,11 +281,7 @@ class Rdb_string_reader {
   bool is_empty() const { return m_ptr == m_end; }
 
   void safe_skip(size_t len) {
-    auto next = m_ptr + len;
-    if (likely(next <= m_end))
-      m_ptr = next;
-    else
-      m_ptr = m_end;
+    m_ptr = std::min(m_ptr + len, m_end);
   }
 
   /*
