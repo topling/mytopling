@@ -1951,12 +1951,11 @@ int Rdb_key_def::decode_unpack_info(Rdb_string_reader *unp_reader,
   // For secondary keys, we expect the value field to contain index flags,
   // unpack data, and checksum data in that order. One or all can be missing,
   // but they cannot be reordered.
-  if (unp_reader->remaining_bytes()) {
-    if (m_index_type == INDEX_TYPE_SECONDARY &&
-        m_total_index_flags_length > 0 &&
-        !unp_reader->read(m_total_index_flags_length)) {
-      return HA_ERR_ROCKSDB_CORRUPT_DATA;
-    }
+  assert(unp_reader->remaining_bytes());
+  if (m_index_type == INDEX_TYPE_SECONDARY &&
+      m_total_index_flags_length > 0 &&
+      !unp_reader->read(m_total_index_flags_length)) {
+    return HA_ERR_ROCKSDB_CORRUPT_DATA;
   }
 
   *unpack_header = unp_reader->get_current_ptr();
