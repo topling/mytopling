@@ -2006,10 +2006,27 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
   if (unp_reader.is_empty()) {
     has_unpack_info = false;
   } else {
+   #if 0
     int err = decode_unpack_info(&unp_reader, &has_unpack_info, &unpack_header);
     if (unlikely(err)) {
       return err;
     }
+   #else
+    // manually inline
+    if (m_index_type == INDEX_TYPE_SECONDARY &&
+        m_total_index_flags_length > 0 &&
+        !unp_reader.read(m_total_index_flags_length)) {
+      return HA_ERR_ROCKSDB_CORRUPT_DATA;
+    }
+    unpack_header = unp_reader.get_current_ptr();
+    has_unpack_info =
+        unp_reader.remaining_bytes() && is_unpack_data_tag(unpack_header[0]);
+    if (has_unpack_info) {
+      if (!unp_reader.read(get_unpack_header_size(unpack_header[0]))) {
+        return HA_ERR_ROCKSDB_CORRUPT_DATA;
+      }
+    }
+   #endif
   }
 
   // Reset the blob buffer required for unpacking.
