@@ -2085,13 +2085,15 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
         return HA_ERR_ROCKSDB_CORRUPT_DATA;
     }
     else {
-      bool covered_column = (fpi->m_covered == KEY_COVERED);
+      bool covered_column;
       if (has_covered_bitmap &&
           is_variable_length_field(fpi->m_field_real_type) &&
           fpi->m_covered == KEY_MAY_BE_COVERED) {
         covered_column = curr_bitmap_pos < MAX_REF_PARTS &&
                         (covered_bits & (1u << curr_bitmap_pos++));
                         //< LITTLE ENDIAN only
+      } else {
+        covered_column = (fpi->m_covered == KEY_COVERED);
       }
       if (fpi->m_unpack_func && covered_column) {
         /* It is possible to unpack this column. Do it. */
