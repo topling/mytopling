@@ -119,7 +119,9 @@ int Rdb_convert_to_record_key_decoder::decode_field(
     }
   }
 
-  Rdb_unpack_func_context ctx = {table};
+  //Rdb_unpack_func_context ctx = {table};
+  static_assert(sizeof(Rdb_unpack_func_context) == sizeof(table));
+  auto& ctx = reinterpret_cast<Rdb_unpack_func_context&>(table); // faster
   return (fpi->m_unpack_func)(fpi, &ctx, buf + fpi->m_field_offset, reader,
                               unpack_reader);
 }
