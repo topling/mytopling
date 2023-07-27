@@ -289,14 +289,14 @@ class Rdb_string_reader {
     nullptr if the remaining string doesn't have that many bytes.
   */
   const char *read(const uint size) {
-    const char *res;
-    if (unlikely(m_ptr + size > m_end)) {
-      res = nullptr;
+    const char *res = (const char*)m_ptr;
+    const auto next = m_ptr + size;
+    if (likely(next <= m_end)) {
+      m_ptr = next;
+      return res;
     } else {
-      res = (const char*)m_ptr;
-      m_ptr += size;
+      return nullptr;
     }
-    return res;
   }
 
   bool read_uint8(uint *const res) {
