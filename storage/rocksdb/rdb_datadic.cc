@@ -93,6 +93,7 @@ Rdb_key_def::Rdb_key_def() {
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
+terark_forceinline
 int Rdb_convert_to_record_key_decoder::decode_field(
     Rdb_field_packing *fpi, TABLE *table, uchar *buf, Rdb_string_reader *reader,
     Rdb_string_reader *unpack_reader) {
@@ -141,6 +142,7 @@ int Rdb_convert_to_record_key_decoder::decode_field(
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
+terark_forceinline
 int Rdb_convert_to_record_key_decoder::decode(
     uchar *const buf, Rdb_field_packing *fpi, TABLE *table,
     bool has_unpack_info, Rdb_string_reader *reader,
@@ -154,11 +156,14 @@ int Rdb_convert_to_record_key_decoder::decode(
 
   int res = decode_field(fpi, table, buf, reader,
                          maybe_missing_unpack ? nullptr : unpack_reader);
-
+ #if 0
   if (res != UNPACK_SUCCESS) {
     return HA_ERR_ROCKSDB_CORRUPT_DATA;
   }
   return HA_EXIT_SUCCESS;
+ #else
+  return res;
+ #endif
 }
 
 /*
@@ -172,6 +177,7 @@ int Rdb_convert_to_record_key_decoder::decode(
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
+terark_forceinline
 int Rdb_convert_to_record_key_decoder::skip(
     const Rdb_field_packing *fpi, const Field *field MY_ATTRIBUTE((__unused__)),
     Rdb_string_reader *reader, Rdb_string_reader *unp_reader,

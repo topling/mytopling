@@ -217,7 +217,7 @@ const size_t RDB_SIZEOF_AUTO_INCREMENT_VERSION = sizeof(uint16);
 // Possible return values for rdb_index_field_unpack_t functions.
 enum {
   UNPACK_SUCCESS = 0,
-  UNPACK_FAILURE = 1,
+  UNPACK_FAILURE = HA_ERR_ROCKSDB_CORRUPT_DATA, //1,
 };
 
 /*
