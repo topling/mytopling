@@ -847,8 +847,7 @@ class Rdb_key_def {
     Currently this support varchar and blob data types.
   */
   static void store_field(const uchar *data, const size_t length, uchar *dst,
-                          Rdb_field_packing *const fpi,
-                          Rdb_unpack_func_context *const ctx);
+                          Rdb_field_packing *const fpi);
   /*
     Returns the data pointer from field.
     Currently this support varchar and blob data types.

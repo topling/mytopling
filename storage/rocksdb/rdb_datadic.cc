@@ -3313,9 +3313,7 @@ uint Rdb_key_def::calc_unpack_variable_format(uchar flag, bool *done) {
 }
 
 void Rdb_key_def::store_field(const uchar *data, const size_t length,
-                              uchar *ptr, Rdb_field_packing *const fpi,
-                              Rdb_unpack_func_context *const ctx
-                                  MY_ATTRIBUTE((__unused__))) {
+                              uchar *ptr, Rdb_field_packing *const fpi) {
   if (fpi->m_field_real_type == MYSQL_TYPE_VARCHAR) {
     auto length_bytes = fpi->m_varlength_bytes;
     if (length_bytes == 1) {
@@ -3486,7 +3484,7 @@ int Rdb_key_def::unpack_binary_varlength(
   if (!finished) {
     return UNPACK_FAILURE;
   }
-  store_field(data_start, len, dst, fpi, ctx);
+  store_field(data_start, len, dst, fpi);
   return UNPACK_SUCCESS;
 }
 
@@ -3591,7 +3589,7 @@ finished:
     memset(data, fpi->m_field_charset->pad_char, extra_spaces);
     len += extra_spaces;
   }
-  store_field(data_start, len, dst, fpi, ctx);
+  store_field(data_start, len, dst, fpi);
   return UNPACK_SUCCESS;
 }
 
@@ -3714,7 +3712,7 @@ int Rdb_key_def::unpack_unknown_varlength(Rdb_field_packing *const fpi,
     }
     if ((ptr = (const uchar *)unp_reader->read(len))) {
       memcpy(data, ptr, len);
-      store_field(data_start, len, dst, fpi, ctx);
+      store_field(data_start, len, dst, fpi);
       return UNPACK_SUCCESS;
     }
   }
@@ -3872,7 +3870,7 @@ finished:
     memset(data, fpi->m_field_charset->pad_char, extra_spaces);
     len += extra_spaces;
   }
-  store_field(data_start, len, dst, fpi, ctx);
+  store_field(data_start, len, dst, fpi);
   return UNPACK_SUCCESS;
 }
 
