@@ -109,7 +109,7 @@ class Rdb_pack_field_context {
   add/remove arguments
 */
 struct Rdb_unpack_func_context {
-  TABLE *table;
+  TABLE * const table;
 };
 
 class Rdb_key_field_iterator {
