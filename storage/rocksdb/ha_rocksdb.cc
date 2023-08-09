@@ -7923,7 +7923,7 @@ else {
       {"params", {
         {"info_log", "${myrocks_logger}"},
         {"trash_dir", trash_dir},
-        {"read_bytes_per_sec", rocksdb_sst_mgr_rate_bytes_per_sec},
+        {"rate_bytes_per_sec", rocksdb_sst_mgr_rate_bytes_per_sec},
         {"delete_existing_trash", true}
       }}
     }, rocksdb_db_options->sst_file_manager);
