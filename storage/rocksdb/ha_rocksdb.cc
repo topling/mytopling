@@ -7812,6 +7812,7 @@ else {
 }
 
   std::shared_ptr<Rdb_logger> myrocks_logger = std::make_shared<Rdb_logger>();
+  rocksdb_db_options->info_log_level = rocksdb::InfoLogLevel(rocksdb_info_log_level);
   rocksdb::Status s = rocksdb::CreateLoggerFromOptions(
       rocksdb_datadir, *rocksdb_db_options, &rocksdb_db_options->info_log);
   if (s.ok()) {
