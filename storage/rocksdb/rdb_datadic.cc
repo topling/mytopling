@@ -93,10 +93,11 @@ Rdb_key_def::Rdb_key_def() {
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
+template<class ValueSliceReader>
 terark_forceinline
 int Rdb_convert_to_record_key_decoder::decode_field(
     Rdb_field_packing *fpi, TABLE *table, uchar *buf, Rdb_string_reader *reader,
-    Rdb_string_reader *unpack_reader) {
+    ValueSliceReader *unpack_reader) {
   if (fpi->m_field_is_nullable) {
     const char *nullp;
     if (!(nullp = reader->read(1))) {
@@ -123,8 +124,13 @@ int Rdb_convert_to_record_key_decoder::decode_field(
   //Rdb_unpack_func_context ctx = {table};
   static_assert(sizeof(Rdb_unpack_func_context) == sizeof(table));
   auto& ctx = reinterpret_cast<Rdb_unpack_func_context&>(table); // faster
-  return (fpi->m_unpack_func)(fpi, &ctx, buf + fpi->m_field_offset, reader,
-                              unpack_reader);
+  if constexpr (std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
+    return (fpi->m_unpack_func)(fpi, &ctx, buf + fpi->m_field_offset, reader,
+                                nullptr);
+  } else {
+    return (fpi->m_unpack_func)(fpi, &ctx, buf + fpi->m_field_offset, reader,
+                                unpack_reader);
+  }
 }
 
 /*
@@ -142,11 +148,12 @@ int Rdb_convert_to_record_key_decoder::decode_field(
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
+template<class ValueSliceReader>
 terark_forceinline
 int Rdb_convert_to_record_key_decoder::decode(
     uchar *const buf, Rdb_field_packing *fpi, TABLE *table,
     bool has_unpack_info, Rdb_string_reader *reader,
-    Rdb_string_reader *unpack_reader) {
+    ValueSliceReader *unpack_reader) {
   assert(buf != nullptr);
 
   // If we need unpack info, but there is none, tell the unpack function
@@ -177,10 +184,11 @@ int Rdb_convert_to_record_key_decoder::decode(
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
+template<class ValueSliceReader>
 terark_forceinline
 int Rdb_convert_to_record_key_decoder::skip(
     const Rdb_field_packing *fpi, const Field *field MY_ATTRIBUTE((__unused__)),
-    Rdb_string_reader *reader, Rdb_string_reader *unp_reader,
+    Rdb_string_reader *reader, ValueSliceReader *unp_reader,
     bool covered_bitmap_format_enabled) {
   /* It is impossible to unpack the column. Skip it. */
   if (fpi->m_field_is_nullable) {
@@ -199,6 +207,10 @@ int Rdb_convert_to_record_key_decoder::skip(
   }
   if ((fpi->m_skip_func)(fpi, reader)) {
     return HA_ERR_ROCKSDB_CORRUPT_DATA;
+  }
+
+  if (std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
+    return HA_EXIT_SUCCESS;
   }
 
   // If this is a space padded varchar, we need to skip the indicator
@@ -1990,13 +2002,14 @@ int Rdb_key_def::decode_unpack_info(Rdb_string_reader *unp_reader,
 */
 #pragma GCC push_options
 #pragma GCC optimize ("-Ofast")
+template<class ValueSliceReader>
 ROCKSDB_FLATTEN
-int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
+int Rdb_key_def::unpack_record_tpl(TABLE *const table, uchar *const buf,
                                const rocksdb::Slice *const packed_key,
                                const rocksdb::Slice *const unpack_info,
                                const bool verify_row_debug_checksums) const {
   Rdb_string_reader reader(packed_key);
-  Rdb_string_reader unp_reader(unpack_info);
+  ValueSliceReader unp_reader(unpack_info);
 
   // There is no checksuming data after unpack_info for primary keys, because
   // the layout there is different. The checksum is verified in
@@ -2161,11 +2174,18 @@ int Rdb_key_def::unpack_record(TABLE *const table, uchar *const buf,
 
   return HA_EXIT_SUCCESS;
 }
-#pragma GCC pop_options
+template int Rdb_key_def::unpack_record_tpl<Rdb_empty_reader>
+                              (TABLE *const table, uchar *const buf,
+                               const rocksdb::Slice *const packed_key,
+                               const rocksdb::Slice *const unpack_info,
+                               const bool verify_row_debug_checksums) const;
+template int Rdb_key_def::unpack_record_tpl<Rdb_string_reader>
+                              (TABLE *const table, uchar *const buf,
+                               const rocksdb::Slice *const packed_key,
+                               const rocksdb::Slice *const unpack_info,
+                               const bool verify_row_debug_checksums) const;
 
-bool Rdb_key_def::table_has_hidden_pk(const TABLE *const table) {
-  return table->s->primary_key == MAX_INDEXES;
-}
+#pragma GCC pop_options
 
 void Rdb_key_def::report_checksum_mismatch(const bool is_key,
                                            const char *const data,

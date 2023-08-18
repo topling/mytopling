@@ -348,6 +348,37 @@ class Rdb_string_reader {
   const char *get_current_ptr() const { return (const char*)m_ptr; }
 };
 
+class Rdb_empty_reader {
+  Rdb_empty_reader &operator=(const Rdb_empty_reader &) = default;
+ public:
+  Rdb_empty_reader(const Rdb_empty_reader &) = default;
+ #if 0
+  static Rdb_empty_reader read_or_empty(const rocksdb::Slice *const slice) {
+    return slice ? Rdb_empty_reader(slice) : Rdb_empty_reader(nullptr, 0);
+  }
+ #endif
+  Rdb_empty_reader() {}
+  explicit Rdb_empty_reader(const std::string &str MY_ATTRIBUTE((unused))) {
+    assert(str.empty());
+  }
+  explicit Rdb_empty_reader(const rocksdb::Slice* s MY_ATTRIBUTE((unused))) {
+    assert(s->empty());
+  }
+  Rdb_empty_reader(const uchar* /*buf*/, uint buf_len MY_ATTRIBUTE((unused)))
+  noexcept {
+    assert(0 == buf_len);
+  }
+  constexpr bool is_empty() const { return true; }
+  constexpr void safe_skip(size_t len MY_ATTRIBUTE((unused))) { assert(0 == len); }
+  constexpr const char *read(uint /*size*/) { return nullptr; }
+  constexpr bool read_uint8(uint*) { return true; }
+  constexpr bool read_uint16(uint*) { return true; }
+  constexpr bool read_uint32(uint32*) { return true; }
+  constexpr bool read_uint64(uint64*) { return true; }
+  constexpr size_t remaining_bytes() const { return 0; }
+  constexpr const char *get_current_ptr() const { return nullptr; }
+};
+
 /*
   @brief
   A buffer one can write the data to.

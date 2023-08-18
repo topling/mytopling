@@ -683,8 +683,9 @@ int Rdb_converter::decode_value_header_for_pk(
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
+template<class ValueSliceReader>
 ROCKSDB_FLATTEN
-int Rdb_converter::decode(
+int Rdb_converter::decode_tpl(
     const std::shared_ptr<Rdb_key_def> &pk_def,
     uchar *const dst,
     const rocksdb::Slice *key_slice,
@@ -701,25 +702,37 @@ int Rdb_converter::decode(
   rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
   key_slice = &rowkey_slice;
 #endif
-  bool skip_value = !decode_value || get_decode_fields()->size() == 0;
+  bool skip_value = std::is_same_v<ValueSliceReader, Rdb_empty_reader> ||
+                    !decode_value || m_decoders_vect.empty();
   if (unlikely(!m_key_requested && skip_value)) {
     return HA_EXIT_SUCCESS;
   }
 
-  Rdb_string_reader value_slice_reader(value_slice);
-  rocksdb::Slice unpack_slice;
-  if (int err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice)) {
-    return err;
-  }
-
-  /*
-    Decode PK fields from the key
-  */
-  if (m_key_requested) {
-    int err = pk_def->unpack_record(m_table, dst, key_slice, &unpack_slice,
-                                false /* verify_checksum */);
-    if (err != HA_EXIT_SUCCESS) {
+  ValueSliceReader value_slice_reader(value_slice);
+  if constexpr (!std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
+    rocksdb::Slice unpack_slice;
+    if (int err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice)) {
       return err;
+    }
+
+    /*
+      Decode PK fields from the key
+    */
+    if (m_key_requested) {
+      int err = pk_def->unpack_record_tpl<ValueSliceReader>(m_table, dst, key_slice, &unpack_slice,
+                                  false /* verify_checksum */);
+      if (err != HA_EXIT_SUCCESS) {
+        return err;
+      }
+    }
+  }
+  else {
+    if (m_key_requested) {
+      int err = pk_def->unpack_record_tpl<ValueSliceReader>(m_table, dst, key_slice, nullptr,
+                                  false /* verify_checksum */);
+      if (err != HA_EXIT_SUCCESS) {
+        return err;
+      }
     }
   }
 
@@ -728,6 +741,7 @@ int Rdb_converter::decode(
     return HA_EXIT_SUCCESS;
   }
 
+  if constexpr (!std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
 #if 0
   Rdb_value_field_iterator<Rdb_convert_to_record_value_decoder, uchar *>
       value_field_iterator(m_table, &value_slice_reader, this, dst);
@@ -784,12 +798,26 @@ int Rdb_converter::decode(
 }
 #endif
 
-  if (m_verify_row_debug_checksums) {
-    return verify_row_debug_checksum(pk_def, &value_slice_reader, key_slice,
-                                     value_slice);
+    if (m_verify_row_debug_checksums) {
+      return verify_row_debug_checksum(pk_def, &value_slice_reader, key_slice,
+                                      value_slice);
+    }
   }
   return HA_EXIT_SUCCESS;
 }
+
+template int Rdb_converter::decode_tpl<Rdb_empty_reader>(
+    const std::shared_ptr<Rdb_key_def> &pk_def,
+    uchar *const dst,
+    const rocksdb::Slice *key_slice,
+    const rocksdb::Slice *value_slice,
+    bool decode_value);
+template int Rdb_converter::decode_tpl<Rdb_string_reader>(
+    const std::shared_ptr<Rdb_key_def> &pk_def,
+    uchar *const dst,
+    const rocksdb::Slice *key_slice,
+    const rocksdb::Slice *value_slice,
+    bool decode_value);
 
 /*
   Verify checksum for row

@@ -63,17 +63,20 @@ class Rdb_convert_to_record_key_decoder {
       const Rdb_convert_to_record_key_decoder &decoder) = delete;
   Rdb_convert_to_record_key_decoder &operator=(
       const Rdb_convert_to_record_key_decoder &decoder) = delete;
+  template<class ValueSliceReader>
   static int decode(uchar *const buf, Rdb_field_packing *fpi, TABLE *table,
                     bool has_unpack_info, Rdb_string_reader *reader,
-                    Rdb_string_reader *unpack_reader);
+                    ValueSliceReader *unpack_reader);
+  template<class ValueSliceReader>
   static int skip(const Rdb_field_packing *fpi, const Field *field,
-                  Rdb_string_reader *reader, Rdb_string_reader *unpack_reader,
+                  Rdb_string_reader *reader, ValueSliceReader *unpack_reader,
                   bool covered_bitmap_format_enabled);
 
  private:
+  template<class ValueSliceReader>
   static int decode_field(Rdb_field_packing *fpi, TABLE *table, uchar *buf,
                           Rdb_string_reader *reader,
-                          Rdb_string_reader *unpack_reader);
+                          ValueSliceReader *unpack_reader);
 };
 
 /*
@@ -283,7 +286,19 @@ class Rdb_key_def {
   /* Pack the hidden primary key into mem-comparable form. */
   uint pack_hidden_pk(const longlong hidden_pk_id,
                       uchar *const packed_tuple) const;
+
+  inline
   int unpack_record(TABLE *const table, uchar *const buf,
+                    const rocksdb::Slice *const packed_key,
+                    const rocksdb::Slice *const unpack_info,
+                    const bool verify_row_debug_checksums) const {
+    return unpack_info->empty() ?
+      unpack_record_tpl<Rdb_empty_reader>(table, buf, packed_key, unpack_info, verify_row_debug_checksums) :
+      unpack_record_tpl<Rdb_string_reader>(table, buf, packed_key, unpack_info, verify_row_debug_checksums);
+  }
+
+  template<class ValueSliceReader>
+  int unpack_record_tpl(TABLE *const table, uchar *const buf,
                     const rocksdb::Slice *const packed_key,
                     const rocksdb::Slice *const unpack_info,
                     const bool verify_row_debug_checksums) const;
@@ -635,7 +650,9 @@ class Rdb_key_def {
   inline bool has_unpack_info(const uint kp) const;
 
   /* Check if given table has a primary key */
-  static bool table_has_hidden_pk(const TABLE *const table);
+  static bool table_has_hidden_pk(const TABLE *const table) {
+    return table->s->primary_key == MAX_INDEXES;
+  }
 
   void report_checksum_mismatch(const bool is_key, const char *const data,
                                 const size_t data_size) const;

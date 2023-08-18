@@ -149,9 +149,19 @@ class Rdb_converter {
     }
   }
 
+  inline
   int decode(const std::shared_ptr<Rdb_key_def> &key_def, uchar *dst,
              const rocksdb::Slice *key_slice, const rocksdb::Slice *value_slice,
-             bool decode_value = true);
+             bool decode_value = true) {
+    return value_slice->empty() ?
+      decode_tpl<Rdb_empty_reader>(key_def, dst, key_slice, nullptr, decode_value) :
+      decode_tpl<Rdb_string_reader>(key_def, dst, key_slice, value_slice, decode_value);
+  }
+
+  template<class ValueSliceReader>
+  int decode_tpl(const std::shared_ptr<Rdb_key_def> &key_def, uchar *dst,
+             const rocksdb::Slice *key_slice, const rocksdb::Slice *value_slice,
+             bool decode_value);
 
   int encode_value_slice(const std::shared_ptr<Rdb_key_def> &pk_def,
                          const rocksdb::Slice &pk_packed_slice,
