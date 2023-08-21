@@ -4609,32 +4609,6 @@ class Rdb_transaction {
     return get_iterator(options, column_family, table_type);
   }
 
-  rocksdb::Iterator *refresh_iterator(
-      const rocksdb::Snapshot* snapshot,
-      rocksdb::ColumnFamilyHandle *const column_family, bool skip_bloom_filter,
-      const rocksdb::Slice &eq_cond_lower_bound,
-      const rocksdb::Slice &eq_cond_upper_bound, TABLE_TYPE table_type) {
-    rocksdb::ReadOptions options = m_read_opts[table_type];
-    const bool fill_cache = !THDVAR(get_thd(), skip_fill_cache);
-    if (skip_bloom_filter) {
-      const bool enable_iterate_bounds =
-          THDVAR(get_thd(), enable_iterate_bounds);
-      options.total_order_seek = true;
-      options.iterate_lower_bound =
-          enable_iterate_bounds ? &eq_cond_lower_bound : nullptr;
-      options.iterate_upper_bound =
-          enable_iterate_bounds ? &eq_cond_upper_bound : nullptr;
-    } else {
-      // With this option, Iterator::Valid() returns false if key
-      // is outside of the prefix bloom filter range set at Seek().
-      // Must not be set to true if not using bloom filter.
-      options.prefix_same_as_start = true;
-    }
-    options.fill_cache = fill_cache;
-    options.snapshot = snapshot;
-    return get_iterator(options, column_family, table_type);
-  }
-
   virtual bool is_tx_started(TABLE_TYPE table_type) const = 0;
   virtual void start_tx(TABLE_TYPE table_type) = 0;
   virtual void start_stmt() = 0;
@@ -18879,16 +18853,6 @@ const rocksdb::Snapshot* rdb_snapshot_commit_in_the_middle(THD *thd) {
     return rdb->GetSnapshot();
   else
     return nullptr;
-}
-
-rocksdb::Iterator *rdb_tx_refresh_iterator(
-    THD *thd, rocksdb::ColumnFamilyHandle *const cf, bool skip_bloom_filter,
-    const rocksdb::Slice &eq_cond_lower_bound,
-    const rocksdb::Slice &eq_cond_upper_bound,
-    const rocksdb::Snapshot *snapshot, TABLE_TYPE table_type) {
-  Rdb_transaction *tx = get_tx_from_thd(thd);
-  return tx->refresh_iterator(snapshot, cf, skip_bloom_filter,
-      eq_cond_lower_bound, eq_cond_upper_bound, table_type);
 }
 
 bool rdb_tx_started(Rdb_transaction *tx, TABLE_TYPE table_type) {
