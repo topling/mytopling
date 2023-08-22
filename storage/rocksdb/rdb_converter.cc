@@ -374,6 +374,7 @@ Rdb_converter::Rdb_converter(const THD *thd, const Rdb_tbl_def *tbl_def,
   m_row_checksums_checked = 0;
   m_null_bytes = nullptr;
   m_needs_kv_value = true;
+  m_has_instant_fields = false;
   setup_field_encoders(dd_table);
 }
 
@@ -489,6 +490,13 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
   // skipping. Remove them.
   m_decoders_vect.erase(m_decoders_vect.begin() + last_useful,
                         m_decoders_vect.end());
+  m_has_instant_fields = false;
+  for (auto& field : m_decoders_vect) {
+    if (field.m_field_enc->m_is_instant_field) {
+      m_has_instant_fields = true;
+      break;
+    }
+  }
 
   if (!keyread_only && active_index != m_table->s->primary_key) {
     m_tbl_def->m_key_descr_arr[active_index]->get_lookup_bitmap(
@@ -523,6 +531,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     }
   }
 
+  m_has_instant_fields = false;
   for (uint i = 0; i < m_table->s->fields; i++) {
     Field *const field = m_table->field[i];
     m_encoder_arr[i].m_storage_type = Rdb_field_encoder::STORE_ALL;
@@ -581,6 +590,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     // currently instant ddl only support append column
     if (is_instant_table && i >= instant_cols) {
       m_encoder_arr[i].m_is_instant_field = true;
+      m_has_instant_fields = true;
       dd::Column *column =
           const_cast<dd::Column *>(dd_find_column(dd_table, field->field_name));
       dd_table_get_instant_default(

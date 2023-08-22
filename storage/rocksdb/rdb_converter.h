@@ -153,7 +153,7 @@ class Rdb_converter {
   int decode(const std::shared_ptr<Rdb_key_def> &key_def, uchar *dst,
              const rocksdb::Slice *key_slice, const rocksdb::Slice *value_slice,
              bool decode_value = true) {
-    return value_slice->empty() ?
+    return value_slice->empty() && !m_has_instant_fields ?
       decode_tpl<Rdb_empty_reader>(key_def, dst, key_slice, nullptr, decode_value) :
       decode_tpl<Rdb_string_reader>(key_def, dst, key_slice, value_slice, decode_value);
   }
@@ -234,6 +234,9 @@ class Rdb_converter {
   the session variable at the start of each query.
   */
   bool m_verify_row_debug_checksums;
+
+  bool m_has_instant_fields;
+
   // Thread handle
   const THD *m_thd;
   /* MyRocks table definition*/
