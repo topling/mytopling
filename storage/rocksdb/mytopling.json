@@ -131,7 +131,7 @@
         "large minDictZipValueSize will disable value zip": "10M",
         "minDictZipValueSize": "10M",
         "keyPrefixLen": 4,
-        "minPreadLen": 128
+        "minPreadLen": -1
       }
     },
     "dzip": {
@@ -156,7 +156,7 @@
         "debugLevel": 0,
         "minDictZipValueSize": "30",
         "keyPrefixLen": 4,
-        "minPreadLen": 64
+        "minPreadLen": -1
       }
     },
     "dispatch": {
@@ -300,7 +300,7 @@
       "max_background_flushes": 2,
       "max_background_compactions": 32,
       "max_subcompactions": 1,
-      "max_level1_subcompactions": 17,
+      "max_level1_subcompactions": 3,
       "max_log_file_size": "256M",
       "keep_log_file_num": 100,
       "verify_sst_unique_id_in_manifest": false,
