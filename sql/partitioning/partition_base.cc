@@ -34,6 +34,7 @@
 #include "sql/sql_parse.h"  // append_file_to_dir
 
 #include "myisam.h"                                  // TT_FOR_UPGRADE
+#include "sql/log.h"
 #include "mysql/components/services/log_builtins.h"  // print error messages
 #include "sql/key.h"         // key_rec_cmp, field_unpack
 #include "sql/mysqld.h"      // opt_parthandler_allow_drop_partition

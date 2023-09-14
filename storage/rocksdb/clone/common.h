@@ -26,6 +26,7 @@
 #include <string>
 #include <unordered_set>
 
+//#include <sql/log.h>
 #include "my_dbug.h"
 #include "my_inttypes.h"
 #include "mysql/plugin.h"
@@ -611,8 +612,7 @@ class [[nodiscard]] session {
 
     mysql_mutex_lock(&m_error_mutex);
     if (m_error == 0 || is_restartable_error(m_error)) {
-      LogPluginErrMsg(
-          INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
           "MyRocks clone session setting error %d (file \"%s\", errno %d), "
           "previous error %d",
           new_error, new_error_path.c_str(), errno_to_save, m_error);
@@ -638,7 +638,7 @@ class [[nodiscard]] session {
     mysql_mutex_unlock(&m_error_mutex);
 
     if (error_copy != 0) {
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks clone error in another thread: %d", error_copy);
     }
 

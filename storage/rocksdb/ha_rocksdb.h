@@ -29,6 +29,8 @@
 #include <vector>
 
 /* MySQL header files */
+#include <sql/log.h>
+#include <mysql/components/services/log_builtins.h>
 #include "my_checksum.h"
 #include "my_dbug.h"
 #include "my_icp.h" /* icp_result */
@@ -201,6 +203,8 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
     TRUE <=> Primary Key columns can be decoded from the index
   */
   mutable bool m_pk_can_be_decoded;
+  bool m_iter_is_scan = false;
+  bool m_is_mysql_system_table = false;
 
   uchar *m_pk_packed_tuple; /* Buffer for storing PK in StorageFormat */
   // ^^ todo: change it to 'char*'? TODO: ^ can we join this with last_rowkey?
@@ -241,7 +245,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   /* class to convert between Mysql format and RocksDB format*/
   std::unique_ptr<Rdb_converter> m_converter;
 
-  std::unique_ptr<Rdb_iterator> m_iterator;
+  std::unique_ptr<Rdb_iterator_base> m_iterator;
   std::unique_ptr<Rdb_iterator_base> m_pk_iterator;
 
   /*
@@ -364,7 +368,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   void load_auto_incr_value();
   ulonglong load_auto_incr_value_from_index();
   void update_auto_incr_val(ulonglong val);
-  void update_auto_incr_val_from_field();
+  void update_auto_incr_val_from_field(Rdb_transaction*);
   rocksdb::Status get_datadic_auto_incr(Rdb_transaction *const tx,
                                         const GL_INDEX_ID &gl_index_id,
                                         ulonglong *new_val) const;
@@ -801,7 +805,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
                        const bool skip_unique_check)
       MY_ATTRIBUTE((__warn_unused_result__));
   int get_pk_for_update(struct update_row_info *const row_info);
-  int check_and_lock_unique_pk(const struct update_row_info &row_info,
+  int check_and_lock_unique_pk(const struct update_row_info &row_info, THD*,
                                bool *const found, const bool skip_unique_check)
       MY_ATTRIBUTE((__warn_unused_result__));
   int acquire_prefix_lock(const Rdb_key_def &kd, Rdb_transaction *tx,
@@ -860,6 +864,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   void dec_table_n_rows();
 
   bool should_skip_invalidated_record(const int rc);
+  bool should_skip_invalidated_record(const int rc, THD*);
   bool should_skip_locked_record(const int rc);
   bool should_recreate_snapshot(const int rc, const bool is_new_snapshot);
   bool can_assume_tracked(THD *thd);
@@ -1171,7 +1176,7 @@ Rdb_transaction *get_tx_from_thd(THD *const thd);
 void add_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 
-const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction *tx);
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction*, bool create_snapshot = true);
 
 rocksdb::Iterator *rdb_tx_get_iterator(
     THD *thd, rocksdb::ColumnFamilyHandle *const cf, bool skip_bloom_filter,
@@ -1201,6 +1206,7 @@ void rdb_tx_multi_get(Rdb_transaction *tx,
                       const size_t num_keys, const rocksdb::Slice *keys,
                       rocksdb::PinnableSlice *values, TABLE_TYPE table_type,
                       rocksdb::Status *statuses, const bool sorted_input);
+void rdb_tx_finish_pin(Rdb_transaction *tx, TABLE_TYPE);
 
 inline void rocksdb_smart_seek(bool seek_backward,
                                rocksdb::Iterator *const iter,
@@ -1233,7 +1239,13 @@ inline void rocksdb_smart_prev(bool seek_backward,
 // If the iterator is not valid it might be because of EOF but might be due
 // to IOError or corruption. The good practice is always check it.
 // https://github.com/facebook/rocksdb/wiki/Iterator#error-handling
-bool is_valid_iterator(rocksdb::Iterator *scan_it);
+bool is_valid_iter_err(rocksdb::Iterator *scan_it);
+inline bool is_valid_iterator(rocksdb::Iterator *scan_it) {
+  if (scan_it->Valid())
+    return true;
+  else
+    return is_valid_iter_err(scan_it);
+}
 
 bool rdb_should_hide_ttl_rec(const Rdb_key_def &kd,
                              const rocksdb::Slice *const ttl_rec_val,

@@ -286,6 +286,7 @@ const char *getHlcQueryDatabaseName(const myrocks_select_from_rpc *param) {
 static const bypass_rpc_exception clean_return;
 }  // namespace
 
+
 /**
   Run bypass select query
 */

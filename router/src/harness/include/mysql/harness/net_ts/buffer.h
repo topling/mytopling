@@ -38,6 +38,7 @@
 #include "mysql/harness/net_ts/executor.h"               // async_completion
 #include "mysql/harness/net_ts/impl/socket_constants.h"  // wait_write
 #include "mysql/harness/stdx/expected.h"
+#include <utility>
 
 namespace net {
 

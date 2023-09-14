@@ -18,6 +18,9 @@
 #include <sstream>
 #include <string>
 
+/* MySQL header files */
+#include <sql/log.h>
+
 namespace myrocks {
 
 class Rdb_logger : public rocksdb::Logger {
@@ -57,7 +60,7 @@ class Rdb_logger : public rocksdb::Logger {
     char msg[LOG_BUFF_MAX];
     vsnprintf(msg, sizeof(msg) - 1, f.c_str(), ap);
 
-    LogPluginErrMsg(mysql_log_level, ER_LOG_PRINTF_MSG, "%s", msg);
+    log_errlog_formatted(mysql_log_level, msg);
   }
 
   void Logv(const char *format, va_list ap) override {
@@ -83,6 +86,10 @@ class Rdb_logger : public rocksdb::Logger {
   }
 
  private:
+  rocksdb::Status CloseImpl() override {
+    if (m_logger) return m_logger->Close();
+    else return rocksdb::Status::OK();
+  }
   std::shared_ptr<rocksdb::Logger> m_logger;
   rocksdb::InfoLogLevel m_mysql_log_level;
 };

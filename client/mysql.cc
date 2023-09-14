@@ -3223,6 +3223,7 @@ static int com_help(String *buffer [[maybe_unused]],
     if (*help_arg) return com_server_help(buffer, line, help_arg);
   }
 
+#if 0
   put_info(
       "\nFor information about MySQL products and services, visit:\n"
       "   http://www.mysql.com/\n"
@@ -3232,6 +3233,20 @@ static int com_help(String *buffer [[maybe_unused]],
       "To buy MySQL Enterprise support, training, or other products, visit:\n"
       "   https://shop.mysql.com/\n",
       INFO_INFO);
+#else
+  put_info(
+      "\nFor information about MyTopling products and services, visit:\n"
+      "   http://topling.cn/\n"
+      "MyTopling is compatible to MySQL, so MySQL Reference Manual can be\n"
+      "used for MyTopling.\n"
+      "For developer information, including the MySQL Reference Manual, "
+      "visit:\n"
+      "   http://dev.mysql.com/\n"
+      "To buy MyTopling Enterprise support, training, or other products, visit:\n"
+      "   https://topling.cn/\n",
+      INFO_INFO);
+#endif
+
   put_info("List of all MySQL commands:", INFO_INFO);
   if (!named_cmds)
     put_info(

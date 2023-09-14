@@ -40,8 +40,16 @@
 
 /* Server header files */
 #include "sql/dd/object_id.h"
+#include <terark/hash_strmap.hpp>
+#include <terark/util/vec_idx_map.hpp>
+
+namespace terark {
+  class NonOwnerFileStream;
+}
 
 namespace myrocks {
+
+using terark::NonOwnerFileStream;
 
 class Rdb_dict_manager;
 class Rdb_dict_manager_selector;
@@ -57,17 +65,20 @@ class Rdb_convert_to_record_key_decoder {
       const Rdb_convert_to_record_key_decoder &decoder) = delete;
   Rdb_convert_to_record_key_decoder &operator=(
       const Rdb_convert_to_record_key_decoder &decoder) = delete;
+  template<class ValueSliceReader>
   static int decode(uchar *const buf, Rdb_field_packing *fpi, TABLE *table,
                     bool has_unpack_info, Rdb_string_reader *reader,
-                    Rdb_string_reader *unpack_reader);
+                    ValueSliceReader *unpack_reader);
+  template<class ValueSliceReader>
   static int skip(const Rdb_field_packing *fpi, const Field *field,
-                  Rdb_string_reader *reader, Rdb_string_reader *unpack_reader,
+                  Rdb_string_reader *reader, ValueSliceReader *unpack_reader,
                   bool covered_bitmap_format_enabled);
 
  private:
+  template<class ValueSliceReader>
   static int decode_field(Rdb_field_packing *fpi, TABLE *table, uchar *buf,
                           Rdb_string_reader *reader,
-                          Rdb_string_reader *unpack_reader);
+                          ValueSliceReader *unpack_reader);
 };
 
 /*
@@ -103,7 +114,7 @@ class Rdb_pack_field_context {
   add/remove arguments
 */
 struct Rdb_unpack_func_context {
-  TABLE *table;
+  TABLE * const table;
 };
 
 class Rdb_key_field_iterator {
@@ -114,8 +125,8 @@ class Rdb_key_field_iterator {
   uint m_curr_bitmap_pos;
   const MY_BITMAP *m_covered_bitmap;
   uchar *m_buf;
-  bool m_has_unpack_info;
   const Rdb_key_def *m_key_def;
+  bool m_has_unpack_info;
   bool m_secondary_key;
   bool m_hidden_pk_exists;
   bool m_is_hidden_pk;
@@ -211,7 +222,7 @@ const size_t RDB_SIZEOF_AUTO_INCREMENT_VERSION = sizeof(uint16);
 // Possible return values for rdb_index_field_unpack_t functions.
 enum {
   UNPACK_SUCCESS = 0,
-  UNPACK_FAILURE = 1,
+  UNPACK_FAILURE = HA_ERR_ROCKSDB_CORRUPT_DATA, //1,
 };
 
 /*
@@ -277,7 +288,19 @@ class Rdb_key_def {
   /* Pack the hidden primary key into mem-comparable form. */
   uint pack_hidden_pk(const longlong hidden_pk_id,
                       uchar *const packed_tuple) const;
+
+  inline
   int unpack_record(TABLE *const table, uchar *const buf,
+                    const rocksdb::Slice *const packed_key,
+                    const rocksdb::Slice *const unpack_info,
+                    const bool verify_row_debug_checksums) const {
+    return unpack_info->empty() ?
+      unpack_record_tpl<Rdb_empty_reader>(table, buf, packed_key, unpack_info, verify_row_debug_checksums) :
+      unpack_record_tpl<Rdb_string_reader>(table, buf, packed_key, unpack_info, verify_row_debug_checksums);
+  }
+
+  template<class ValueSliceReader>
+  int unpack_record_tpl(TABLE *const table, uchar *const buf,
                     const rocksdb::Slice *const packed_key,
                     const rocksdb::Slice *const unpack_info,
                     const bool verify_row_debug_checksums) const;
@@ -322,13 +345,18 @@ class Rdb_key_def {
 
   /* Check if given mem-comparable key belongs to this index */
   bool covers_key(const rocksdb::Slice &slice) const {
-    if (slice.size() < INDEX_NUMBER_SIZE) return false;
+    if (unlikely(slice.size() < INDEX_NUMBER_SIZE)) return false;
 
+  #if 0
     if (memcmp(slice.data(), m_index_number_storage_form, INDEX_NUMBER_SIZE)) {
       return false;
     }
 
     return true;
+  #else
+    return *(const uint32_t*)slice.data() ==
+           *(const uint32_t*)m_index_number_storage_form;
+  #endif
   }
 
   void get_lookup_bitmap(const TABLE *table, MY_BITMAP *map) const;
@@ -368,7 +396,7 @@ class Rdb_key_def {
   }
 
   GL_INDEX_ID get_gl_index_id() const {
-    const GL_INDEX_ID gl_index_id = {m_cf_handle->GetID(), get_index_number()};
+    const GL_INDEX_ID gl_index_id = {m_cf_id, m_index_number};
     return gl_index_id;
   }
 
@@ -412,6 +440,7 @@ class Rdb_key_def {
 
   Rdb_key_def &operator=(const Rdb_key_def &) = delete;
   Rdb_key_def(const Rdb_key_def &k);
+  Rdb_key_def();
   Rdb_key_def(uint indexnr_arg, uint keyno_arg,
               std::shared_ptr<rocksdb::ColumnFamilyHandle> cf_handle_arg,
               uint16_t index_dict_version_arg, uchar index_type_arg,
@@ -569,13 +598,17 @@ class Rdb_key_def {
   };
 
   // Stores if the secondary index keys are covered for index scans or not.
-  enum INDEX_KEY_TYPE {
+  enum INDEX_KEY_TYPE : unsigned char {
     KEY_COVERED = 1,
     KEY_NOT_COVERED = 2,
     KEY_MAY_BE_COVERED = 3,
   };
 
   void setup(const TABLE &table, const Rdb_tbl_def &tbl_def);
+
+  void serde_write(NonOwnerFileStream&) const;
+  void serde_read(NonOwnerFileStream&);
+  inline uint32_t get_cf_id() const { return m_cf_id; }
 
   [[nodiscard]] static uint extract_ttl_duration(const TABLE &table_arg,
                                                  const Rdb_tbl_def &tbl_def_arg,
@@ -623,7 +656,9 @@ class Rdb_key_def {
   inline bool has_unpack_info(const uint kp) const;
 
   /* Check if given table has a primary key */
-  [[nodiscard]] static bool table_has_hidden_pk(const TABLE &table);
+  [[nodiscard]] static bool table_has_hidden_pk(const TABLE &table) {
+    return table.s->primary_key == MAX_INDEXES;
+  }
 
   void report_checksum_mismatch(const bool is_key, const char *const data,
                                 const size_t data_size) const;
@@ -809,7 +844,7 @@ class Rdb_key_def {
 
   Rdb_field_packing *get_pack_info(uint pack_no);
 
- private:
+ protected:
 #ifndef NDEBUG
   inline bool is_storage_available(const int offset, const int needed) const {
     const int storage_length = static_cast<int>(max_storage_fmt_length());
@@ -821,7 +856,8 @@ class Rdb_key_def {
       static_cast<std::uint32_t>(dd::INVALID_OBJECT_ID);
 
   /* Global number of this index (used as prefix in StorageFormat) */
-  const uint32 m_index_number;
+  uint32 m_index_number;
+  uint32_t m_cf_id;
 
   uchar m_index_number_storage_form[INDEX_NUMBER_SIZE];
 
@@ -837,8 +873,7 @@ class Rdb_key_def {
     Currently this support varchar and blob data types.
   */
   static void store_field(const uchar *data, const size_t length, uchar *dst,
-                          Rdb_field_packing *const fpi,
-                          Rdb_unpack_func_context *const ctx);
+                          Rdb_field_packing *const fpi);
   /*
     Returns the data pointer from field.
     Currently this support varchar and blob data types.
@@ -904,7 +939,7 @@ class Rdb_key_def {
   /* Maximum total length of mem-comparable blob keys */
   uint m_max_blob_length;
 
- private:
+ protected:
   /* Number of key parts in the primary key*/
   uint m_pk_key_parts;
 
@@ -1013,8 +1048,8 @@ class Rdb_field_packing {
   */
   bool m_field_is_nullable; /* true <=> NULL-byte is stored */
   bool m_field_unsigned_flag;
-  enum_field_types m_field_real_type;
   uchar m_field_null_bit_mask;
+  enum_field_types m_field_real_type;
   uint m_field_pack_length;
   uint m_field_null_offset;
   ptrdiff_t m_field_offset;
@@ -1044,6 +1079,9 @@ class Rdb_field_packing {
   */
   Rdb_key_def::INDEX_KEY_TYPE m_covered;
 
+  /* true means unpack_info stores the original field value */
+  bool m_unpack_info_stores_value;
+
   const std::vector<uchar> *space_xfrm;
   size_t space_xfrm_len;
   size_t space_mb_len;
@@ -1054,9 +1092,6 @@ class Rdb_field_packing {
     @return true: this field makes use of unpack_info.
   */
   bool uses_unpack_info() const { return (m_make_unpack_info_func != nullptr); }
-
-  /* true means unpack_info stores the original field value */
-  bool m_unpack_info_stores_value;
 
   rdb_index_field_pack_t m_pack_func;
   rdb_make_unpack_info_t m_make_unpack_info_func;
@@ -1388,7 +1423,11 @@ class Rdb_ddl_manager : public Ensure_initialized {
   Rdb_cf_manager *m_cf_manager = nullptr;
 
   // Contains Rdb_tbl_def elements
+#if 0
   std::unordered_map<std::string, Rdb_tbl_def *> m_ddl_map;
+#else
+  terark::hash_strmap<Rdb_tbl_def*> m_ddl_map;
+#endif
 
   // Maps index id to <table_name, index number>
   std::map<GL_INDEX_ID, std::pair<std::string, uint>> m_index_num_to_keydef;
@@ -1427,6 +1466,11 @@ class Rdb_ddl_manager : public Ensure_initialized {
   int find_table_stats(const std::string &table_name,
                        Rdb_table_stats *tbl_stats);
   std::shared_ptr<const Rdb_key_def> safe_find(GL_INDEX_ID gl_index_id);
+
+  void write_key_def_all(NonOwnerFileStream&);
+  void write_key_def_rng(NonOwnerFileStream&, uint32_t cf_id, rocksdb::Slice, rocksdb::Slice);
+  rocksdb::Status read_key_def_all(NonOwnerFileStream&, std::vector<std::shared_ptr<Rdb_key_def> >*);
+
   void set_stats(const std::unordered_map<GL_INDEX_ID, Rdb_index_stats> &stats);
   void adjust_stats(const std::vector<Rdb_index_stats> &new_data,
                     const std::vector<Rdb_index_stats> &deleted_data =
@@ -1667,6 +1711,7 @@ class Rdb_dict_manager : public Ensure_initialized {
                          const GL_INDEX_ID &index_id) const;
   bool get_index_info(const GL_INDEX_ID &gl_index_id,
                       struct Rdb_index_info *const index_info) const;
+  void get_all_index_info(std::vector<Rdb_index_info>* index_info_vec) const;
 
   /* CF id => CF flags */
   void add_cf_flags(rocksdb::WriteBatch *const batch, const uint cf_id,
@@ -1686,6 +1731,15 @@ class Rdb_dict_manager : public Ensure_initialized {
   void get_ongoing_index_operation(
       std::unordered_set<GL_INDEX_ID> *gl_index_ids,
       Rdb_key_def::DATA_DICT_TYPE dd_type) const;
+
+  void
+  get_ongoing_index_operation(std::vector<GL_INDEX_ID> *gl_index_ids,
+                              Rdb_key_def::DATA_DICT_TYPE dd_type) const;
+  template<class ResultFetcher>
+  void
+  get_ongoing_index_operation_tpl(ResultFetcher,
+                                  Rdb_key_def::DATA_DICT_TYPE dd_type) const;
+
   bool is_index_operation_ongoing(const GL_INDEX_ID &gl_index_id,
                                   Rdb_key_def::DATA_DICT_TYPE dd_type) const;
   void start_ongoing_index_operation(rocksdb::WriteBatch *batch,
@@ -1712,6 +1766,9 @@ class Rdb_dict_manager : public Ensure_initialized {
       std::unordered_set<GL_INDEX_ID> *gl_index_ids) const {
     get_ongoing_index_operation(gl_index_ids,
                                 Rdb_key_def::DDL_DROP_INDEX_ONGOING);
+  }
+  void get_ongoing_drop_indexes(std::vector<GL_INDEX_ID> *vec) const {
+    get_ongoing_index_operation(vec, Rdb_key_def::DDL_DROP_INDEX_ONGOING);
   }
   inline void get_ongoing_create_indexes(
       std::unordered_set<GL_INDEX_ID> *gl_index_ids) const {
