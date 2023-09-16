@@ -2001,7 +2001,9 @@ int Rdb_key_def::decode_unpack_info(Rdb_string_reader *unp_reader,
     other              HA_ERR error code
 */
 #pragma GCC push_options
-#pragma GCC optimize ("-Ofast")
+#if defined(NDEBUG)
+  #pragma GCC optimize ("-Ofast")
+#endif
 template<class ValueSliceReader>
 ROCKSDB_FLATTEN
 int Rdb_key_def::unpack_record_tpl(TABLE *const table, uchar *const buf,
