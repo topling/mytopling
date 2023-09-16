@@ -13521,15 +13521,6 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
 
   active_index = idx;
   m_iterator.reset();
-  if (rocksdb_reuse_iter) {
-    if (tx->m_iter_cache) {
-      // default cf
-      ROCKSDB_VERIFY_EQ(m_key_descr_arr[active_index_pos()]->get_cf_id(), 0);
-      tx->m_iter_cache->init(thd, m_key_descr_arr[active_index_pos()],
-                             m_pk_descr, m_tbl_def);
-      m_iterator = std::move(tx->m_iter_cache);
-    }
-  }
   if (idx != table->s->primary_key &&
       m_key_descr_arr[idx]->is_partial_index()) {
     const dd::Table *dd_table = nullptr;
@@ -13546,6 +13537,13 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
                                    m_pk_descr, m_tbl_def, table, dd_table));
     }
   } else {
+    if (rocksdb_reuse_iter && tx->m_iter_cache) {
+      auto& kd = m_key_descr_arr[active_index_pos()];
+      ROCKSDB_VERIFY(dynamic_cast<Rdb_iterator_partial*>(tx->m_iter_cache.get()) == nullptr);
+      ROCKSDB_VERIFY_EQ(kd->get_cf_id(), 0); // 0 is default cf id
+      tx->m_iter_cache->init(thd, kd, m_pk_descr, m_tbl_def);
+      m_iterator = std::move(tx->m_iter_cache);
+    }
     if (!m_iterator) {
       m_iterator.reset(new Rdb_iterator_base(
           thd, this, m_key_descr_arr[active_index_pos()], m_pk_descr, m_tbl_def));
