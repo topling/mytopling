@@ -3730,6 +3730,10 @@ int Rdb_key_def::unpack_unknown_varlength(Rdb_field_packing *const fpi,
 
   assert(len_bytes > 0);
   assert(unp_reader != nullptr);
+  if (nullptr == unp_reader) {
+    // TODO: fix it, this is a bug, unp_reader should not be null
+    return UNPACK_FAILURE;
+  }
 
   if ((ptr = (uchar *)unp_reader->read(len_bytes))) {
     uint len = 0;
