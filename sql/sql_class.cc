@@ -2795,7 +2795,7 @@ bool THD::always_yield() {
 
   @param cond A predicate that returns true if a yield should take place.
 */
-void THD::check_yield(std::function<bool()> cond) {
+void THD::check_yield(std::function<bool()>&& cond) {
   yield_cond = std::move(cond);
   thd_wait_begin(this, THD_WAIT_YIELD);
   thd_wait_end(this);

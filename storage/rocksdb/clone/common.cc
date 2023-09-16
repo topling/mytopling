@@ -57,7 +57,7 @@ void mkdir_or_abort(const std::string &dir) {
   if (my_stat(path.c_str(), &stat_info, MYF(0)) == nullptr) return false;
 
   if (!S_ISDIR(stat_info.st_mode)) {
-    myrocks::rdb_fatal_error("Temp path %s exists but is not a directory",
+    rdb_fatal_error("Temp path %s exists but is not a directory",
                              path.c_str());
   }
 
@@ -79,23 +79,23 @@ void move_temp_dir_to_destination(const std::string &temp,
                                   const std::string &old,
                                   const std::string &dest, bool empty_allowed) {
   if (!temp_dir_exists_abort_if_not_dir(temp)) return;
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "Found in-place clone temp dir %s", temp.c_str());
 
   if (path_exists(old)) {
-    myrocks::rdb_fatal_error("Found in-place clone saved old data dir %s",
+    rdb_fatal_error("Found in-place clone saved old data dir %s",
                              old.c_str());
   }
 
   const auto temp_dir_marker_path =
       myrocks::rdb_concat_paths(temp, myrocks::clone::in_progress_marker_file);
   if (path_exists(temp_dir_marker_path)) {
-    myrocks::rdb_fatal_error("Found in-place clone in-progress marker file %s",
+    rdb_fatal_error("Found in-place clone in-progress marker file %s",
                              temp_dir_marker_path.c_str());
   }
 
   if (!empty_allowed && is_dir_empty(temp)) {
-    myrocks::rdb_fatal_error("In-place clone temp directory %s is empty",
+    rdb_fatal_error("In-place clone temp directory %s is empty",
                              temp.c_str());
   }
 
@@ -120,7 +120,7 @@ void move_temp_dir_contents_to_dest(const std::string &temp,
   if (temp_exists) {
     const auto dest_existed = path_exists(dest);
     if (!dest_existed) {
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "Directory %s not found, creating", dest.c_str());
       mkdir_or_abort(dest);
     }
@@ -128,15 +128,15 @@ void move_temp_dir_contents_to_dest(const std::string &temp,
     if (dest_existed) {
       myrocks::for_each_in_dir(dest, MY_FAE, [&dest](const fileinfo &f_info) {
         if (myrocks::has_file_extension(f_info.name, old_wal_suffix))
-          myrocks::rdb_fatal_error("MyRocks clone fixup temp file %s found",
+          rdb_fatal_error("MyRocks clone fixup temp file %s found",
                                    f_info.name);
 
         const auto old_path = myrocks::rdb_concat_paths(dest, f_info.name);
         const auto saved_old_path = old_path + old_wal_suffix;
         if (my_rename(old_path.c_str(), saved_old_path.c_str(),
                       MYF(MY_WME | MY_FAE))) {
-          myrocks::rdb_fatal_error("Failed to rename %s to %s",
-                                   old_path.c_str(), saved_old_path.c_str());
+          rdb_fatal_error("Failed to rename %s to %s : %s",
+                          old_path.c_str(), saved_old_path.c_str(), strerror(errno));
         }
         return true;
       });
@@ -177,7 +177,7 @@ std::atomic<uint> session::m_next_task_id{session::m_main_task_id + 1};
 std::string checkpoint_base_dir() { return std::string{rocksdb_datadir}; }
 
 [[nodiscard]] bool remove_dir(const std::string &dir, bool fatal_error) {
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "Removing %s",
+  sql_print_information( "Removing %s",
                   dir.c_str());
   const auto fatal_flag = fatal_error ? MY_FAE : 0;
   if (!for_each_in_dir(
@@ -207,8 +207,7 @@ void fixup_on_startup() {
   struct stat stat_info;
 
   if (my_stat(force_rollback_marker, &stat_info, MYF(0)) != nullptr) {
-    LogPluginErrMsg(
-        INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
         "Found %s, rolling back MyRocks clone due to InnoDB clone rollback",
         force_rollback_marker);
 
@@ -220,7 +219,7 @@ void fixup_on_startup() {
     remove_temp_dir(in_place_temp_datadir);
     remove_temp_dir(in_place_temp_wal_dir);
 
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "Removing %s",
+    sql_print_information( "Removing %s",
                     force_rollback_marker);
     myrocks::rdb_file_delete_or_abort(force_rollback_marker);
   }

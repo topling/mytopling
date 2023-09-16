@@ -59,6 +59,10 @@
 #include "myisampack.h"      // mi_int2store
 #include "template_utils.h"  // pointer_cast
 
+#define terark topling
+#include <terark/util/nolocks_localtime.cpp>
+#define localtime_r terark::nolocks_localtime_r
+
 const ulonglong log_10_int[20] = {1,
                                   10,
                                   100,

@@ -21,7 +21,7 @@
 #include <condition_variable>
 #include <functional>
 #include <mutex>
-#include <unordered_map>
+#include <terark/gold_hash_map.hpp>
 
 /* MySQL header files */
 #include "./my_sys.h"
@@ -69,8 +69,7 @@ class Rdb_mutex : public rocksdb::TransactionDBMutex {
   friend class Rdb_cond_var;
 
 #ifndef STANDALONE_UNITTEST
-  void set_unlock_action(const PSI_stage_info *const old_stage_arg);
-  std::unordered_map<THD *, std::shared_ptr<PSI_stage_info>> m_old_stage_info;
+  terark::gold_hash_map<THD*, PSI_stage_info> m_old_stage_info;
 #endif
 };
 
@@ -92,7 +91,7 @@ class Rdb_cond_var : public rocksdb::TransactionDBCondVar {
   // Returns non-OK if TransactionDB should stop waiting and fail the operation.
   // May return OK spuriously even if not notified.
   virtual rocksdb::Status Wait(
-      const std::shared_ptr<rocksdb::TransactionDBMutex> mutex) override;
+      const std::shared_ptr<rocksdb::TransactionDBMutex>& mutex) override;
 
   // Block current thread until condition variable is notifiesd by a call to
   // Notify() or NotifyAll(), or if the timeout is reached.
@@ -107,7 +106,7 @@ class Rdb_cond_var : public rocksdb::TransactionDBCondVar {
   //  fail the operation.
   // May return OK spuriously even if not notified.
   virtual rocksdb::Status WaitFor(
-      const std::shared_ptr<rocksdb::TransactionDBMutex> mutex,
+      const std::shared_ptr<rocksdb::TransactionDBMutex>& mutex,
       int64_t timeout_time) override;
 
   // If any threads are waiting on *this, unblock at least one of the

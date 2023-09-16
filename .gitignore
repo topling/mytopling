@@ -47,3 +47,5 @@ source_downloads
 
 # LLVM coverage files
 *.profraw
+build-*
+cmake-build-*

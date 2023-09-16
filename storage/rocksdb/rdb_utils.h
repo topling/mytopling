@@ -23,10 +23,8 @@
 /* MySQL header files */
 #include "./my_stacktrace.h"
 #include "./sql_string.h"
+#include "sql/log.h"
 #include "sql/mysqld.h"
-#define LOG_COMPONENT_TAG "rocksdb"
-#include "mysql/components/services/log_builtins.h"
-#include "mysqld_error.h"
 
 /* RocksDB header files */
 #include "rocksdb/slice.h"
@@ -223,32 +221,7 @@ inline int purge_all_jemalloc_arenas() {
 #endif
 }
 
-MY_ATTRIBUTE((cold, noreturn, noinline))
-void rdb_fatal_error(const char *msg);
-
-#if defined(__clang__) && (__clang_major__ >= 15)
-#define RDB_VARIADIC_TEMPLATE_FORMAT
-#endif
-
-template <typename... Params>
-#ifdef RDB_VARIADIC_TEMPLATE_FORMAT
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wgcc-compat"
-MY_ATTRIBUTE((cold, noreturn, noinline, format(printf, 1, 2)))
-#else
-MY_ATTRIBUTE((cold, noreturn, noinline))
-#endif
-
-void rdb_fatal_error(const char *fmt, Params &&...params) {
-  // NO_LINT_DEBUG
-  LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG, fmt,
-                  std::forward<Params>(params)...);
-  abort();
-}
-
-#ifdef RDB_VARIADIC_TEMPLATE_FORMAT
-#pragma clang diagnostic pop
-#endif
+#define rdb_fatal_error(...) sql_print_error(__VA_ARGS__), abort()
 
 /*
   Helper function to check the result of locking or unlocking a mutex. We'll
@@ -424,9 +397,8 @@ class Rdb_exec_time {
     result += "}";
 
     /* NO_LINT_DEBUG */
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "MyRocks: rdb execution report (microsec): %s",
-                    result.c_str());
+    sql_print_information("MyRocks: rdb execution report (microsec): %s",
+                          result.c_str());
   }
 };
 

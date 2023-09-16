@@ -186,7 +186,7 @@ class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
       auto index_ids = get_index_ids();
       if (!index_ids.empty()) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+        sql_print_information(
                         "MyRocks: Rdb_sst_partitioner_factory creating "
                         "partitioner with %lu "
                         "indexes.",
@@ -205,7 +205,7 @@ class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
    */
   bool add_index(Index_id index_id) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks: Rdb_sst_partitioner_factory adding index %d.",
                     index_id);
     const std::lock_guard<std::mutex> lock(m_index_ids_mutex);
@@ -219,7 +219,7 @@ class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
    */
   bool remove_index(Index_id index_id) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks: Rdb_sst_partitioner_factory removing index %d.",
                     index_id);
     const std::lock_guard<std::mutex> lock(m_index_ids_mutex);
@@ -277,8 +277,7 @@ class Rdb_bulk_load_index_registry {
     if (rdb_sst_partitioner_factory == nullptr) {
       // should never happen
       // NO_LINT_DEBUG
-      LogPluginErrMsg(
-          WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_warning(
           "MyRocks: Rdb_sst_partitioner_factory not registered for cf %s ",
           cf->GetName().c_str());
       return false;
@@ -350,7 +349,7 @@ class Rdb_bulk_load_index_registry {
       const rocksdb::Slice compact_begin_key = begin_index_key;
       const rocksdb::Slice compact_end_key = end_index_Key;
       // NO_LINT_DEBUG
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks: CompactRange on cf %s. key range ['%s', '%s'].",
                       cf->GetName().c_str(),
                       compact_begin_key.ToString(/*hex*/ true).c_str(),
