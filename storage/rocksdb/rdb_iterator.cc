@@ -215,6 +215,7 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
     // same logic as rdb_tx_get_iterator, but just do Refresh
     extern const rocksdb::Snapshot* rdb_snapshot_commit_in_the_middle(THD*);
     const rocksdb::Snapshot* snap = rdb_snapshot_commit_in_the_middle(m_thd);
+    assert(nullptr == m_scan_it_snapshot);
     if (snap) {
       m_scan_it_snapshot = snap;
     } else  if (!read_current) {
