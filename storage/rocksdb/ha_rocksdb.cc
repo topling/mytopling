@@ -1003,6 +1003,7 @@ unsigned long long rocksdb_converter_record_cached_length = 0;
 static bool rocksdb_file_checksums = false;
 static std::time_t last_binlog_ttl_compaction_ts = std::time(nullptr);
 
+bool rocksdb_write_reduce_cpu = true;
 bool rocksdb_enable_auto_sort_sst = true;
 bool rocksdb_reuse_iter = false;
 std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
@@ -1196,6 +1197,10 @@ static int handle_rocksdb_corrupt_data_error() {
   }
 }
 
+static MYSQL_SYSVAR_BOOL(write_reduce_cpu, rocksdb_write_reduce_cpu,
+                         PLUGIN_VAR_RQCMDARG,
+                         "Set WriteOptions reduce_cpu_usage",
+                         nullptr, nullptr, true);
 static MYSQL_SYSVAR_BOOL(enable_auto_sort_sst, rocksdb_enable_auto_sort_sst,
                          PLUGIN_VAR_RQCMDARG,
                          "Allow rocksdb auto sort sst table factory",
@@ -3299,6 +3304,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(partial_index_ignore_killed),
     MYSQL_SYSVAR(disable_instant_ddl),
     MYSQL_SYSVAR(enable_tmp_table),
+    MYSQL_SYSVAR(write_reduce_cpu),
     MYSQL_SYSVAR(enable_auto_sort_sst),
     MYSQL_SYSVAR(reuse_iter),
     MYSQL_SYSVAR(alter_table_comment_inplace),
@@ -5449,6 +5455,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
     //     than access tls ptr.
     // write_opts.memtable_insert_hint_per_batch = true;
 
+    write_opts.reduce_cpu_usage = rocksdb_write_reduce_cpu;
     write_opts.protection_bytes_per_key =
         THDVAR(m_thd, protection_bytes_per_key);
     if (table_type == INTRINSIC_TMP) {
