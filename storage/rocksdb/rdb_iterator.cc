@@ -309,7 +309,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   Rdb_transaction* tx = nullptr;
 
   if (!m_valid) return HA_ERR_END_OF_FILE;
-  const rocksdb::Comparator *kd_comp = kd.get_cf()->GetComparator();
+  assert(kd.get_cf()->GetComparator()->IsForwardBytewise());
 
   const uint32_t refresh_interval = 10000;
   if (unlikely(++m_call_cnt >= refresh_interval)) {
@@ -363,9 +363,9 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     //     revcf->Compare(0077, 0078) < 0 ==> False
     if (m_check_iterate_bounds &&
         ((!m_scan_it_upper_bound_slice.empty() &&
-          kd_comp->Compare(key, m_scan_it_upper_bound_slice) > 0) ||
+          key > m_scan_it_upper_bound_slice) ||
          (!m_scan_it_lower_bound_slice.empty() &&
-          kd_comp->Compare(key, m_scan_it_lower_bound_slice) < 0))) {
+          key < m_scan_it_lower_bound_slice))) {
       rc = HA_ERR_END_OF_FILE;
       break;
     }
