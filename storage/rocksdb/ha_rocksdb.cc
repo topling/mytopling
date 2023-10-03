@@ -8237,8 +8237,7 @@ else {
   }
 
   if (rocksdb_collect_sst_properties) {
-    properties_collector_factory =
-        std::make_shared<Rdb_tbl_prop_coll_factory>(&ddl_manager);
+    ROCKSDB_VERIFY(nullptr != properties_collector_factory);
 
     rocksdb_set_compaction_options(nullptr, nullptr, nullptr, nullptr);
 
