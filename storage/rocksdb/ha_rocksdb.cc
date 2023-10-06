@@ -5446,14 +5446,19 @@ class Rdb_transaction_impl : public Rdb_transaction {
     tx_opts.write_batch_flush_threshold =
         THDVAR(m_thd, write_batch_flush_threshold);
 
-
     // for SkipListMemTable, hint is the last insert position,
     //     hint can speed up sequential insert
     // for CSPPMemTab, hint is tls ptr, can reduce tls access time,
     //     hint can speed up sequential insert and random insert, but hint
     //     is searched from MemTableInserter::HintMap, this maybe slower
     //     than access tls ptr.
-    // write_opts.memtable_insert_hint_per_batch = true;
+    // it may be faster, since cspp.token.acquire() may be slow caused by
+    // token.release() -- Iterator always use token.acquire, not token.idle.
+    //
+    // NOTE: this fixes cspp memtab write timeout, the timeout is caused by
+    //       many token acquire timeout in one WriteBatch, this may be a cspp
+    //       defeact, should be fixed later.
+    write_opts.memtable_insert_hint_per_batch = true;
 
     write_opts.reduce_cpu_usage = rocksdb_write_reduce_cpu;
     write_opts.protection_bytes_per_key =
