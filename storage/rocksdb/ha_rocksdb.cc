@@ -4734,8 +4734,10 @@ class Rdb_transaction {
                          const bool sorted_input) const = 0;
 
   void zero_copy_finish_pin(TABLE_TYPE table_type) const {
+   #if 0 // disable for bugs: GetAndRefSuperVersion() called before FinishPin
     auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
     ro.FinishPin(); // for zero copy
+   #endif
   }
 
   rocksdb::Iterator *get_iterator(
@@ -5342,7 +5344,9 @@ class Rdb_transaction_impl : public Rdb_transaction {
                  rocksdb::Status *statuses,
                  const bool sorted_input) const override {
     auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
+   #if 0 // disable for bugs: GetAndRefSuperVersion() called before FinishPin
     ro.StartPin(); // for zero copy
+   #endif
     ro.async_io = rocksdb_async_queue_depth > 1;
     ro.async_queue_depth = rocksdb_async_queue_depth;
     m_rocksdb_tx[table_type]->MultiGet(m_read_opts[table_type], column_family,
