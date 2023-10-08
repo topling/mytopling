@@ -223,7 +223,7 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
       m_scan_it_snapshot = snap;
     } else  if (!read_current) {
       Rdb_transaction *const tx = get_tx_from_thd(m_thd);
-      auto ro = rdb_tx_acquire_snapshot(tx);
+      auto& ro = rdb_tx_acquire_snapshot(tx); // must by reference
       snap = ro.snapshot;
     }
     auto s = m_scan_it->Refresh(snap, false/*keep_iter_pos*/);
