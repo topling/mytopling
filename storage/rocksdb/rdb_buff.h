@@ -362,7 +362,7 @@ class Rdb_empty_reader {
     assert(str.empty());
   }
   explicit Rdb_empty_reader(const rocksdb::Slice* s MY_ATTRIBUTE((unused))) {
-    assert(s->empty());
+    assert(nullptr == s || s->empty());
   }
   Rdb_empty_reader(const uchar* /*buf*/, uint buf_len MY_ATTRIBUTE((unused)))
   noexcept {
