@@ -4734,6 +4734,7 @@ class Rdb_transaction {
                          const bool sorted_input) const = 0;
 
   void zero_copy_finish_pin(TABLE_TYPE table_type) const {
+    (void)table_type; // use it
    #if 0 // disable for bugs: GetAndRefSuperVersion() called before FinishPin
     auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
     ro.FinishPin(); // for zero copy
@@ -6023,12 +6024,14 @@ class Rdb_ha_data {
   std::multiset<ha_rocksdb *> m_tmp_table_handlers;
 };
 
+__always_inline
 static Rdb_ha_data *&get_ha_data_or_null(THD *const thd) {
   Rdb_ha_data **ha_data =
       reinterpret_cast<Rdb_ha_data **>(my_core::thd_ha_data(thd, rocksdb_hton));
   return *ha_data;
 }
 
+__always_inline
 static Rdb_ha_data *&get_ha_data(THD *const thd) {
   auto *&ha_data = get_ha_data_or_null(thd);
   if (ha_data == nullptr) {
@@ -6055,7 +6058,7 @@ void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler) {
   get_ha_data(thd)->remove_tmp_table_handler(rocksdb_handler);
 }
 
-inline
+__always_inline
 Rdb_transaction *inline_get_tx_from_thd(THD *const thd) {
   return get_ha_data(thd)->get_trx();
 }
@@ -16487,6 +16490,60 @@ int ha_rocksdb::inplace_populate_sk(
     tx->release_snapshot(m_tbl_def->get_table_type());
   }
 
+  bool bulk_load_partial_index = THDVAR(ha_thd(), bulk_load_partial_index);
+  bool all_use_auto_sort = true;
+  for (const auto &index : indexes) {
+    if (index->is_partial_index() && !bulk_load_partial_index)
+      continue; // Skip populating partial indexes.
+    bool is_unique = new_table_arg->key_info[index->get_keyno()].flags & HA_NOSAME;
+    all_use_auto_sort = all_use_auto_sort && tx->use_auto_sort_sst() && !is_unique;
+  }
+
+if (all_use_auto_sort) { // build multi indexes by one pass scan
+  res = ha_rnd_init(true /* scan */);
+  if (res) DBUG_RETURN(res);
+  while ((res = ha_rnd_next(table->record[0])) == 0) {
+    longlong hidden_pk_id = 0;
+    if (hidden_pk_exists &&
+        (res = read_hidden_pk_id_from_rowkey(&hidden_pk_id))) {
+      sql_print_error("Error retrieving hidden pk id.");
+      ha_rnd_end();
+      DBUG_RETURN(res);
+    }
+    if ((res = fill_virtual_columns())) {
+      ha_index_end();
+      DBUG_RETURN(res);
+    }
+    for (const auto &index : indexes) {
+      if (index->is_partial_index() && !bulk_load_partial_index)
+        continue; // Skip populating partial indexes.
+      const int new_packed_size = index->pack_record(
+          new_table_arg, m_pack_buffer, table->record[0], m_sk_packed_tuple,
+          &m_sk_tails, should_store_row_debug_checksums(), hidden_pk_id, 0,
+          nullptr, m_ttl_bytes);
+      const rocksdb::Slice key(m_sk_packed_tuple, new_packed_size);
+      const rocksdb::Slice val(m_sk_tails.ptr(), m_sk_tails.get_current_pos());
+      if ((res = bulk_load_key(tx, *index, key, val, false/*sort*/))) {
+        ha_rnd_end();
+        DBUG_RETURN(res);
+      }
+    }
+  }
+  if (res != HA_ERR_END_OF_FILE) {
+    sql_print_error("Error retrieving index entry from primary key.");
+    ha_rnd_end();
+    DBUG_RETURN(res);
+  }
+  ha_rnd_end();
+  bool is_critical_error;
+  res = tx->finish_bulk_load(&is_critical_error, true, new_table_arg,
+                              m_table_handler->m_table_name);
+  if (res && is_critical_error) {
+    sql_print_error("Error finishing bulk load.");
+    DBUG_RETURN(res);
+  }
+}
+else {
   for (const auto &index : indexes) {
     // Skip populating partial indexes.
     if (index->is_partial_index() && !THDVAR(ha_thd(), bulk_load_partial_index))
@@ -16565,7 +16622,7 @@ int ha_rocksdb::inplace_populate_sk(
       DBUG_RETURN(res);
     }
   }
-
+}
   /*
     Explicitly tell jemalloc to clean up any unused dirty pages at this point.
     See https://reviews.facebook.net/D63723 for more details.

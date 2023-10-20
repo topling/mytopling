@@ -34,6 +34,8 @@
 /* MyRocks header files */
 #include "./rdb_utils.h"
 
+#include <terark/gold_hash_map.hpp>
+
 namespace myrocks {
 
 class Rdb_sst_file_ordered {
@@ -123,7 +125,6 @@ class Rdb_sst_info {
   rocksdb::DB *const m_db;
   rocksdb::ColumnFamilyHandle *const m_cf;
   const rocksdb::DBOptions &m_db_options;
-  uint64_t m_curr_size;
   uint64_t m_max_size;
   uint m_sst_count;
   std::atomic<int> m_background_error;
@@ -132,7 +133,12 @@ class Rdb_sst_info {
   static std::atomic<uint64_t> m_prefix_counter;
   static std::string m_suffix;
   mysql_mutex_t m_commit_mutex;
-  Rdb_sst_file_ordered *m_sst_file;
+
+  struct OneFile {
+    Rdb_sst_file_ordered* sst_file = nullptr;
+    uint64_t curr_size = 0;
+  };
+  terark::gold_hash_map<uint32_t, OneFile> m_sst_map;
 
   // List of committed SST files - we'll ingest them later in one single batch
   std::vector<std::string> m_committed_files;
@@ -143,8 +149,8 @@ class Rdb_sst_info {
   const bool m_tracing;
   bool m_print_client_error;
 
-  int open_new_sst_file();
-  void close_curr_sst_file();
+  int open_new_sst_file(OneFile&);
+  void close_curr_sst_file(OneFile&);
   void commit_sst_file(Rdb_sst_file_ordered *sst_file);
   void commit_sst_file_func(Rdb_sst_file_ordered*);
 

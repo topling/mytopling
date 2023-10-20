@@ -40,6 +40,11 @@
 #include "./rdb_cf_options.h"
 #include "./rdb_psi.h"
 
+#include <terark/io/DataIO_Basic.hpp> // for BIG_ENDIAN_OF
+
+#define m_sst_file  sst.sst_file
+#define m_curr_size sst.curr_size
+
 namespace myrocks {
 
 extern std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
@@ -328,11 +333,9 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
     : m_db(db),
       m_cf(cf),
       m_db_options(db_options),
-      m_curr_size(0),
       m_sst_count(0),
       m_background_error(HA_EXIT_SUCCESS),
       m_done(false),
-      m_sst_file(nullptr),
       m_use_auto_sort_sst(use_auto_sort_sst),
       m_tracing(tracing),
       m_print_client_error(true) {
@@ -372,7 +375,9 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
 }
 
 Rdb_sst_info::~Rdb_sst_info() {
-  assert(m_sst_file == nullptr);
+  for (auto& [index_id, sst] : m_sst_map) {
+    SHIP_ASSERT(m_sst_file == nullptr);
+  }
   SHIP_ASSERT(m_commiting_threads.empty());
 
   for (const auto &sst_file : m_committed_files) {
@@ -386,7 +391,7 @@ Rdb_sst_info::~Rdb_sst_info() {
   mysql_mutex_destroy(&m_commit_mutex);
 }
 
-int Rdb_sst_info::open_new_sst_file() {
+int Rdb_sst_info::open_new_sst_file(OneFile& sst) {
   assert(m_sst_file == nullptr);
 
   // Create the new sst file's name
@@ -433,7 +438,7 @@ void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
   delete sst_file;
 }
 
-void Rdb_sst_info::close_curr_sst_file() {
+void Rdb_sst_info::close_curr_sst_file(OneFile& sst) {
   assert(m_sst_file != nullptr);
   assert(m_curr_size > 0);
 
@@ -451,9 +456,12 @@ int Rdb_sst_info::put(const rocksdb::Slice &key, const rocksdb::Slice &value) {
 
   assert(!m_done);
 
+  auto index_id = BIG_ENDIAN_OF(unaligned_load<uint32_t>(key.data_));
+  auto& sst = m_sst_map[index_id];
+
   if (m_curr_size + key.size() + value.size() >= m_max_size) {
     // The current sst file has reached its maximum, close it out
-    close_curr_sst_file();
+    close_curr_sst_file(sst);
 
     // While we are here, check to see if we have had any errors from the
     // background thread - we don't want to wait for the end to report them
@@ -464,7 +472,7 @@ int Rdb_sst_info::put(const rocksdb::Slice &key, const rocksdb::Slice &value) {
 
   if (m_curr_size == 0) {
     // We don't have an sst file open - open one
-    rc = open_new_sst_file();
+    rc = open_new_sst_file(sst);
     if (rc != 0) {
       return rc;
     }
@@ -506,9 +514,11 @@ int Rdb_sst_info::finish(Rdb_sst_commit_info *commit_info,
 
   m_print_client_error = print_client_error;
 
-  if (m_curr_size > 0) {
-    // Close out any existing files
-    close_curr_sst_file();
+  for (auto& [index_id, sst] : m_sst_map) {
+    if (m_curr_size > 0) {
+      // Close out any existing files
+      close_curr_sst_file(sst);
+    }
   }
 
   for (auto& thr : m_commiting_threads) {
