@@ -138,6 +138,7 @@ class Rdb_sst_info {
     Rdb_sst_file_ordered* sst_file = nullptr;
     uint64_t curr_size = 0;
   };
+  uint64_t m_avg_max_size;
   terark::gold_hash_map<uint32_t, OneFile> m_sst_map;
 
   // List of committed SST files - we'll ingest them later in one single batch

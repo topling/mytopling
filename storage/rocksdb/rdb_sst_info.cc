@@ -457,9 +457,13 @@ int Rdb_sst_info::put(const rocksdb::Slice &key, const rocksdb::Slice &value) {
   assert(!m_done);
 
   auto index_id = BIG_ENDIAN_OF(unaligned_load<uint32_t>(key.data_));
-  auto& sst = m_sst_map[index_id];
+  auto ib = m_sst_map.emplace(index_id, OneFile());
+  if (unlikely(ib.second)) {
+    m_avg_max_size = m_max_size / m_sst_map.size();
+  }
+  auto& sst = ib.first->second;
 
-  if (m_curr_size + key.size() + value.size() >= m_max_size) {
+  if (m_curr_size >= m_avg_max_size) {
     // The current sst file has reached its maximum, close it out
     close_curr_sst_file(sst);
 
