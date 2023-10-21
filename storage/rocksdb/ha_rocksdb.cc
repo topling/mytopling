@@ -16491,66 +16491,71 @@ int ha_rocksdb::inplace_populate_sk(
   }
 
   bool bulk_load_partial_index = THDVAR(ha_thd(), bulk_load_partial_index);
-  bool all_use_auto_sort = true;
+  auto key_info = new_table_arg->key_info;
+  auto num_use_auto_sort = 0;
   for (const auto &index : indexes) {
     if (index->is_partial_index() && !bulk_load_partial_index)
       continue; // Skip populating partial indexes.
-    bool is_unique = new_table_arg->key_info[index->get_keyno()].flags & HA_NOSAME;
-    all_use_auto_sort = all_use_auto_sort && tx->use_auto_sort_sst() && !is_unique;
+    bool is_unique = key_info[index->get_keyno()].flags & HA_NOSAME;
+    if (tx->use_auto_sort_sst() && !is_unique)
+      num_use_auto_sort++;
   }
-
-if (all_use_auto_sort) { // build multi indexes by one pass scan
-  res = ha_rnd_init(true /* scan */);
-  if (res) DBUG_RETURN(res);
-  while ((res = ha_rnd_next(table->record[0])) == 0) {
-    longlong hidden_pk_id = 0;
-    if (hidden_pk_exists &&
-        (res = read_hidden_pk_id_from_rowkey(&hidden_pk_id))) {
-      sql_print_error("Error retrieving hidden pk id.");
-      ha_rnd_end();
-      DBUG_RETURN(res);
-    }
-    if ((res = fill_virtual_columns())) {
-      ha_index_end();
-      DBUG_RETURN(res);
-    }
-    for (const auto &index : indexes) {
-      if (index->is_partial_index() && !bulk_load_partial_index)
-        continue; // Skip populating partial indexes.
-      const int new_packed_size = index->pack_record(
-          new_table_arg, m_pack_buffer, table->record[0], m_sk_packed_tuple,
-          &m_sk_tails, should_store_row_debug_checksums(), hidden_pk_id, 0,
-          nullptr, m_ttl_bytes);
-      const rocksdb::Slice key(m_sk_packed_tuple, new_packed_size);
-      const rocksdb::Slice val(m_sk_tails.ptr(), m_sk_tails.get_current_pos());
-      if ((res = bulk_load_key(tx, *index, key, val, false/*sort*/))) {
+  if (num_use_auto_sort) { // build multi indexes by one pass scan
+    assert(tx->use_auto_sort_sst()); // now this must be true
+    res = ha_rnd_init(true /* scan */);
+    if (res) DBUG_RETURN(res);
+    while ((res = ha_rnd_next(table->record[0])) == 0) {
+      longlong hidden_pk_id = 0;
+      if (hidden_pk_exists &&
+          (res = read_hidden_pk_id_from_rowkey(&hidden_pk_id))) {
+        sql_print_error("Error retrieving hidden pk id.");
         ha_rnd_end();
         DBUG_RETURN(res);
       }
+      if ((res = fill_virtual_columns())) {
+        ha_index_end();
+        DBUG_RETURN(res);
+      }
+      for (const auto &index : indexes) {
+        if (index->is_partial_index() && !bulk_load_partial_index)
+          continue; // Skip populating partial indexes.
+        if (key_info[index->get_keyno()].flags & HA_NOSAME)
+          continue; // is unique index, skip it
+        const int new_packed_size = index->pack_record(
+            new_table_arg, m_pack_buffer, table->record[0], m_sk_packed_tuple,
+            &m_sk_tails, should_store_row_debug_checksums(), hidden_pk_id, 0,
+            nullptr, m_ttl_bytes);
+        const rocksdb::Slice key(m_sk_packed_tuple, new_packed_size);
+        const rocksdb::Slice val(m_sk_tails.ptr(), m_sk_tails.get_current_pos());
+        if ((res = bulk_load_key(tx, *index, key, val, false/*sort*/))) {
+          ha_rnd_end();
+          DBUG_RETURN(res);
+        }
+      }
+    }
+    if (res != HA_ERR_END_OF_FILE) {
+      sql_print_error("Error retrieving index entry from primary key.");
+      ha_rnd_end();
+      DBUG_RETURN(res);
+    }
+    ha_rnd_end();
+    bool is_critical_error;
+    res = tx->finish_bulk_load(&is_critical_error, true, new_table_arg,
+                                m_table_handler->m_table_name);
+    if (res && is_critical_error) {
+      sql_print_error("Error finishing bulk load.");
+      DBUG_RETURN(res);
     }
   }
-  if (res != HA_ERR_END_OF_FILE) {
-    sql_print_error("Error retrieving index entry from primary key.");
-    ha_rnd_end();
-    DBUG_RETURN(res);
-  }
-  ha_rnd_end();
-  bool is_critical_error;
-  res = tx->finish_bulk_load(&is_critical_error, true, new_table_arg,
-                              m_table_handler->m_table_name);
-  if (res && is_critical_error) {
-    sql_print_error("Error finishing bulk load.");
-    DBUG_RETURN(res);
-  }
-}
-else {
   for (const auto &index : indexes) {
     // Skip populating partial indexes.
-    if (index->is_partial_index() && !THDVAR(ha_thd(), bulk_load_partial_index))
+    if (index->is_partial_index() && bulk_load_partial_index)
       continue;
 
-    bool is_unique = new_table_arg->key_info[index->get_keyno()].flags & HA_NOSAME;
+    bool is_unique = key_info[index->get_keyno()].flags & HA_NOSAME;
     bool can_use_auto_sort = tx->use_auto_sort_sst() && !is_unique;
+    if (can_use_auto_sort)
+      continue; // index has been created, skip
 
     /*
       Note: We use the currently existing table + tbl_def object here,
@@ -16590,7 +16595,7 @@ else {
         Add record to offset tree in preparation for writing out to
         disk in sorted chunks.
       */
-      if ((res = bulk_load_key(tx, *index, key, val, !can_use_auto_sort))) {
+      if ((res = bulk_load_key(tx, *index, key, val, true))) {
         ha_rnd_end();
         DBUG_RETURN(res);
       }
@@ -16622,7 +16627,7 @@ else {
       DBUG_RETURN(res);
     }
   }
-}
+
   /*
     Explicitly tell jemalloc to clean up any unused dirty pages at this point.
     See https://reviews.facebook.net/D63723 for more details.
