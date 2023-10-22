@@ -68,17 +68,17 @@ class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
    * if a partition is required for given index
    */
   bool should_partition(const std::string &index_key,
-                        const rocksdb::Slice *previous_key,
-                        const rocksdb::Slice *current_key) const {
+                        const rocksdb::Slice &previous_key,
+                        const rocksdb::Slice &current_key) const {
     // for reverse cf, indexKey is upper limit of index data,
     // for normal cf, indexKey is lower limit of index data.
     // we want indexKey itself get partitioned with other keys in the index.
     if (m_is_reverse_cf) {
-      return m_comparator->Compare(*previous_key, index_key) <= 0 &&
-             m_comparator->Compare(*current_key, index_key) > 0;
+      return m_comparator->Compare(previous_key, index_key) <= 0 &&
+             m_comparator->Compare(current_key, index_key) > 0;
     }
-    return m_comparator->Compare(*previous_key, index_key) < 0 &&
-           m_comparator->Compare(*current_key, index_key) >= 0;
+    return m_comparator->Compare(previous_key, index_key) < 0 &&
+           m_comparator->Compare(current_key, index_key) >= 0;
   }
 
  public:
@@ -120,11 +120,11 @@ class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
 
   rocksdb::PartitionerResult ShouldPartition(
       const rocksdb::PartitionerRequest &request) override {
-    assert(m_comparator->Compare(*request.current_user_key,
-                                 *request.prev_user_key) > 0);
+    assert(m_comparator->Compare(request.current_user_key,
+                                 request.prev_user_key) > 0);
 
-    if (m_comparator->Compare(*request.prev_user_key, m_max_index_key) > 0 ||
-        m_comparator->Compare(*request.current_user_key, m_min_index_key) < 0) {
+    if (m_comparator->Compare(request.prev_user_key, m_max_index_key) > 0 ||
+        m_comparator->Compare(request.current_user_key, m_min_index_key) < 0) {
       return rocksdb::PartitionerResult::kNotRequired;
     }
     for (const auto &index_key_range : m_index_key_ranges) {
