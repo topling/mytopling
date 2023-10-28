@@ -1072,13 +1072,12 @@ template<bool Echo, bool UseMB>
 static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
                           const CHARSET_INFO *cs) {
   auto my_ismbchar = cs->cset->ismbchar;
-  uchar c, sep;
   uint found_escape = 0;
-  lip->tok_bitmap = 0;
-  sep = lip->yyGetLast();  // String should end with this
+  uchar tok_bitmap = 0;
+  uchar sep = lip->yyGetLast();  // String should end with this
   while (!lip->eof()) {
-    c = lip->yyGetFast<Echo>();
-    lip->tok_bitmap |= c;
+    const uchar c = lip->yyGetFast<Echo>();
+    tok_bitmap |= c;
     {
       int l;
       if (UseMB &&
@@ -1090,6 +1089,7 @@ static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
     if (c == '\\' && !(lip->m_thd->variables.sql_mode &
                        MODE_NO_BACKSLASH_ESCAPES)) {  // Escaped character
       found_escape = 1;
+      lip->tok_bitmap = tok_bitmap;
       if (lip->eof()) return nullptr;
       lip->yySkip();
     } else if (c == sep) {
@@ -1111,6 +1111,7 @@ static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
       end -= post_skip;
       assert(end >= str);
 
+      lip->tok_bitmap = tok_bitmap;
       if (!(start =
                 static_cast<char *>(lip->m_thd->alloc((uint)(end - str) + 1))))
         return const_cast<char *>("");  // MEM_ROOT has set error flag
@@ -1172,6 +1173,7 @@ static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
       return start;
     }
   }
+  lip->tok_bitmap = tok_bitmap;
   return nullptr;  // unexpected end of query
 }
 static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
