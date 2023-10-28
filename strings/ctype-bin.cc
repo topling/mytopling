@@ -512,8 +512,8 @@ CHARSET_INFO my_charset_bin = {
     0,
     0,                                              /* number        */
     MY_CS_COMPILED | MY_CS_BINSORT | MY_CS_PRIMARY, /* state */
-    "binary",                                       /* cs name    */
-    "binary",                                       /* m_coll_name   */
+    "binary\0\0",                                   /* cs name    */
+    "binary\0\0",                                   /* m_coll_name   */
     "Binary pseudo charset",                        /* comment       */
     nullptr,                                        /* tailoring     */
     nullptr,                                        /* coll_param    */
