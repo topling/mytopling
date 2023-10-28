@@ -1869,7 +1869,7 @@ class PT_insert_values_list : public Parse_tree_node {
 
   bool contextualize(Parse_context *pc) override;
 
-  bool push_back(mem_root_deque<Item *> *x) {
+  bool push_back(List_item *x) {
     many_values.push_back(x);
     return false;
   }

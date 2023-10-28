@@ -1888,7 +1888,7 @@ class Query_block {
   List<Item_func_match> ftfunc_list_alloc{};
 
   /// The VALUES items of a table value constructor.
-  mem_root_deque<mem_root_deque<Item *> *> *row_value_list{nullptr};
+  mem_root_deque<List_item *> *row_value_list{nullptr};
 
   /// List of semi-join nests generated for this query block
   mem_root_deque<TABLE_LIST *> sj_nests;
