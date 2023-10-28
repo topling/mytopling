@@ -455,6 +455,36 @@ class mem_root_deque {
     return std::make_reverse_iterator(begin());
   }
 
+  template<class Func>
+  void for_each(Func fn) const {
+    auto blocks = m_blocks;
+    size_t begblk = m_begin_idx / block_elements;
+    size_t endblk = m_end_idx / block_elements;
+    size_t idxblk = begblk;
+    if (size_t idx = m_begin_idx % block_elements; idx || begblk == endblk) {
+      auto endelem = begblk == endblk ? m_end_idx % block_elements : block_elements;
+      auto* elements = blocks[begblk].elements;
+      for (; idx < endelem; idx++) {
+        fn(elements[idx]);
+      }
+      idxblk++;
+    }
+    for (; idxblk < endblk; idxblk++) {
+      auto* elements = blocks[idxblk].elements;
+      for (size_t idx = 0; idx < block_elements; idx++) {
+        fn(elements[idx]);
+      }
+    }
+    if (begblk < endblk) { // begblk == endblk has been handled before
+      if (size_t endelem = m_end_idx % block_elements) {
+        auto* elements = blocks[endblk].elements;
+        for (size_t idx = 0; idx < endelem; idx++) {
+          fn(elements[idx]);
+        }
+      }
+    }
+  }
+
   size_t size() const { return m_end_idx - m_begin_idx; }
   bool empty() const { return size() == 0; }
 
