@@ -1550,16 +1550,17 @@ void execute_init_command(THD *thd, LEX_STRING *init_command,
 /* This works because items are allocated with (*THR_MALLOC)->Alloc() */
 
 void free_items(Item *item) {
-  Item *next;
   DBUG_TRACE;
   THD* thd = current_thd;
-  for (; item; item = next) {
+  while (item) {
+    auto next = item->next_free;
+    __builtin_prefetch(next);
     // This may be a long list. Yield every so often to avoid scheduler stalls.
     if (thd) {
       thd->check_yield();
     }
-    next = item->next_free;
     item->delete_self();
+    item = next;
   }
 }
 
@@ -1570,12 +1571,14 @@ void free_items(Item *item) {
 void cleanup_items(Item *item) {
   DBUG_TRACE;
   THD* thd = current_thd;
-  for (; item; item = item->next_free) {
-    // This may be a long list. Yield every so often to avoid scheduler stalls.
+  while (item) {
+    auto next = item->next_free;
+    __builtin_prefetch(next);
     if (thd) {
       thd->check_yield();
     }
     item->cleanup();
+    item = next;
   }
 }
 
@@ -1586,13 +1589,14 @@ void cleanup_items(Item *item) {
 */
 void bind_fields(Item *first) {
   THD* thd = current_thd;
-
-  for (Item *item = first; item; item = item->next_free) {
-    // This may be a long list. Yield every so often to avoid scheduler stalls.
+  for (Item *item = first; item; ) {
+    auto next = item->next_free;
+    __builtin_prefetch(next);
     if (thd) {
       thd->check_yield();
     }
     item->bind_fields();
+    item = next;
   }
 }
 
