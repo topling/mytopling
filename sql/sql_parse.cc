@@ -1472,11 +1472,12 @@ void execute_init_command(THD *thd, LEX_STRING *init_command,
 /* This works because items are allocated with (*THR_MALLOC)->Alloc() */
 
 void free_items(Item *item) {
-  Item *next;
   DBUG_TRACE;
-  for (; item; item = next) {
-    next = item->next_free;
+  while (item) {
+    auto next = item->next_free;
+    __builtin_prefetch(next);
     item->delete_self();
+    item = next;
   }
 }
 
@@ -1486,7 +1487,12 @@ void free_items(Item *item) {
 */
 void cleanup_items(Item *item) {
   DBUG_TRACE;
-  for (; item; item = item->next_free) item->cleanup();
+  while (item) {
+    auto next = item->next_free;
+    __builtin_prefetch(next);
+    item->cleanup();
+    item = next;
+  }
 }
 
 /**
@@ -1495,7 +1501,12 @@ void cleanup_items(Item *item) {
   @param first   Pointer to first item, follow "next" chain to visit all items
 */
 void bind_fields(Item *first) {
-  for (Item *item = first; item; item = item->next_free) item->bind_fields();
+  for (Item *item = first; item; ) {
+    auto next = item->next_free;
+    __builtin_prefetch(next);
+    item->bind_fields();
+    item = next;
+  }
 }
 
 /**
