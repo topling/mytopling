@@ -124,6 +124,14 @@ class Mem_root_array_YY {
   /// Returns a constant pointer to the past-the-end element in the array.
   const_iterator cend() const { return end(); }
 
+  template<class Func>
+  void for_each(Func fn) const {
+    Element_type * first = m_array;
+    for (size_t i = 0, n = m_size; i < n; i++) {
+      fn(first[i]);
+    }
+  }
+
   /// Erases all of the elements.
   void clear() {
     if (!empty()) chop(0);
