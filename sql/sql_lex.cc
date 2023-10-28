@@ -1078,10 +1078,8 @@ static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
   while (!lip->eof()) {
     const uchar c = lip->yyGetFast<Echo>();
     tok_bitmap |= c;
-    {
-      int l;
-      if (UseMB &&
-          (l = my_ismbchar(cs, lip->get_ptr() - 1, lip->get_end_of_query()))) {
+    if (UseMB) {
+      if (int l = my_ismbchar(cs, lip->get_ptr() - 1, lip->get_end_of_query())) {
         lip->skip_binary(l - 1);
         continue;
       }
