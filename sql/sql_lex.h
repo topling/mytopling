@@ -3193,6 +3193,7 @@ class Lex_input_stream {
     @param echo the echo mode.
   */
   void set_echo(bool echo) { m_echo = echo; }
+  bool is_echo() const { return m_echo; }
 
   void save_in_comment_state() {
     m_echo_saved = m_echo;
@@ -3225,6 +3226,14 @@ class Lex_input_stream {
     assert(m_ptr <= m_end_of_query);
     char c = *m_ptr++;
     if (m_echo) *m_cpp_ptr++ = c;
+    return c;
+  }
+
+  template<bool Echo>
+  unsigned char yyGetFast() {
+    assert(m_ptr <= m_end_of_query);
+    char c = *m_ptr++;
+    if (Echo) *m_cpp_ptr++ = c;
     return c;
   }
 

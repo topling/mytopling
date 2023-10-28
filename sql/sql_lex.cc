@@ -1068,20 +1068,20 @@ static LEX_STRING get_quoted_token(Lex_input_stream *lip, uint skip,
   Return an unescaped text literal without quotes
   Fix sometimes to do only one scan of the string
 */
-
-static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
+template<bool Echo, bool UseMB>
+static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
+                          const CHARSET_INFO *cs) {
+  auto my_ismbchar = cs->cset->ismbchar;
   uchar c, sep;
   uint found_escape = 0;
-  const CHARSET_INFO *cs = lip->m_thd->charset();
-
   lip->tok_bitmap = 0;
   sep = lip->yyGetLast();  // String should end with this
   while (!lip->eof()) {
-    c = lip->yyGet();
+    c = lip->yyGetFast<Echo>();
     lip->tok_bitmap |= c;
     {
       int l;
-      if (use_mb(cs) &&
+      if (UseMB &&
           (l = my_ismbchar(cs, lip->get_ptr() - 1, lip->get_end_of_query()))) {
         lip->skip_binary(l - 1);
         continue;
@@ -1093,7 +1093,7 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
       if (lip->eof()) return nullptr;
       lip->yySkip();
     } else if (c == sep) {
-      if (c == lip->yyGet())  // Check if two separators in a row
+      if (c == lip->yyGetFast<Echo>())  // Check if two separators in a row
       {
         found_escape = 1;  // duplicate. Remember for delete
         continue;
@@ -1127,7 +1127,7 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
 
         for (to = start; str != end; str++) {
           int l;
-          if (use_mb(cs) && (l = my_ismbchar(cs, str, end))) {
+          if (UseMB && (l = my_ismbchar(cs, str, end))) {
             while (l--) *to++ = *str++;
             str--;
             continue;
@@ -1174,6 +1174,19 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
   }
   return nullptr;  // unexpected end of query
 }
+static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
+  const CHARSET_INFO *cs = lip->m_thd->charset();
+  if (lip->is_echo())
+    if (use_mb(cs))
+      return get_text_tpl<1,1>(lip, pre_skip, post_skip, cs);
+    else
+      return get_text_tpl<1,0>(lip, pre_skip, post_skip, cs);
+  else
+    if (use_mb(cs))
+      return get_text_tpl<0,1>(lip, pre_skip, post_skip, cs);
+    else
+      return get_text_tpl<0,0>(lip, pre_skip, post_skip, cs);
+}
 
 uint Lex_input_stream::get_lineno(const char *raw_ptr) const {
   assert(m_buf <= raw_ptr && raw_ptr <= m_end_of_query);
@@ -1181,9 +1194,10 @@ uint Lex_input_stream::get_lineno(const char *raw_ptr) const {
 
   uint ret = 1;
   const CHARSET_INFO *cs = m_thd->charset();
+  auto my_ismbchar = cs->cset->ismbchar;
   for (const char *c = m_buf; c < raw_ptr; c++) {
     uint mb_char_len;
-    if (use_mb(cs) && (mb_char_len = my_ismbchar(cs, c, m_end_of_query))) {
+    if (my_ismbchar && (mb_char_len = my_ismbchar(cs, c, m_end_of_query))) {
       c += mb_char_len - 1;  // skip the rest of the multibyte character
       continue;              // we don't expect '\n' there
     }

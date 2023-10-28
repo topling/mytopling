@@ -1170,6 +1170,10 @@ bool validate_string(const CHARSET_INFO *cs, const char *str, size_t length,
     *length_error = well_formed_error;
     return well_formed_error;
   }
+  if (memcmp(cs->csname, "binary\0\0", 8) == 0) {
+    *valid_length = length;
+    return false;
+  }
 
   /*
     well_formed_len() is not functional on single-byte character sets,
