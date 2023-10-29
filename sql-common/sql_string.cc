@@ -1170,16 +1170,17 @@ bool validate_string(const CHARSET_INFO *cs, const char *str, size_t length,
     *length_error = well_formed_error;
     return well_formed_error;
   }
-  if (memcmp(cs->csname, "binary\0\0", 8) == 0) {
-    *valid_length = length;
-    return false;
-  }
 
   /*
     well_formed_len() is not functional on single-byte character sets,
     so use mb_wc() instead:
   */
   *length_error = false;
+
+  if (memcmp(cs->csname, "binary\0\0", 8) == 0) {
+    *valid_length = length;
+    return false;
+  }
 
   const uchar *from = reinterpret_cast<const uchar *>(str);
   const uchar *from_end = from + length;
