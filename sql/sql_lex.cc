@@ -1070,8 +1070,8 @@ static LEX_STRING get_quoted_token(Lex_input_stream *lip, uint skip,
 */
 template<bool Echo, bool UseMB>
 static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
-                          const CHARSET_INFO *cs) {
-  auto my_ismbchar = cs->cset->ismbchar;
+                          const CHARSET_INFO *cs,
+                          decltype(cs->cset->ismbchar) my_ismbchar) {
   uint found_escape = 0;
   uchar tok_bitmap = 0;
   uchar sep = lip->yyGetLast();  // String should end with this
@@ -1176,16 +1176,17 @@ static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
 }
 static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
   const CHARSET_INFO *cs = lip->m_thd->charset();
+  auto ismbchar = cs->cset->ismbchar;
   if (lip->is_echo())
-    if (use_mb(cs))
-      return get_text_tpl<1,1>(lip, pre_skip, post_skip, cs);
+    if (ismbchar)
+      return get_text_tpl<1,1>(lip, pre_skip, post_skip, cs, ismbchar);
     else
-      return get_text_tpl<1,0>(lip, pre_skip, post_skip, cs);
+      return get_text_tpl<1,0>(lip, pre_skip, post_skip, cs, ismbchar);
   else
-    if (use_mb(cs))
-      return get_text_tpl<0,1>(lip, pre_skip, post_skip, cs);
+    if (ismbchar)
+      return get_text_tpl<0,1>(lip, pre_skip, post_skip, cs, ismbchar);
     else
-      return get_text_tpl<0,0>(lip, pre_skip, post_skip, cs);
+      return get_text_tpl<0,0>(lip, pre_skip, post_skip, cs, ismbchar);
 }
 
 uint Lex_input_stream::get_lineno(const char *raw_ptr) const {
