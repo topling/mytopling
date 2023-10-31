@@ -9724,7 +9724,8 @@ bool fill_record(THD *thd, TABLE *table, const mem_root_deque<Item *> &fields,
     assert(field != nullptr && field->table_ref->table == table);
 
     Field *const rfield = field->field;
-    Item *value = *value_it++;
+    Item *value = *value_it;
+    ++value_it;
 
     /* If bitmap over wanted fields are set, skip non marked fields. */
     if (bitmap && !bitmap_is_set(bitmap, rfield->field_index())) continue;
@@ -10139,7 +10140,8 @@ bool fill_record(THD *thd, TABLE *table, Field **ptr,
     // Skip hidden system field.
     if (field->is_hidden_by_system()) continue;
 
-    Item *value = *value_it++;
+    Item *value = *value_it;
+    ++value_it;
     assert(field->table == table);
 
     /* If bitmap over wanted fields are set, skip non marked fields. */
