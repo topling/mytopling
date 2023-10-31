@@ -40,6 +40,7 @@
 #include "./rdb_cf_options.h"
 #include "./rdb_psi.h"
 
+#include <rocksdb/threadpool.h>
 #include <terark/io/DataIO_Basic.hpp> // for BIG_ENDIAN_OF
 
 #define m_sst_file  sst.sst_file
@@ -378,7 +379,6 @@ Rdb_sst_info::~Rdb_sst_info() {
   for (auto& [index_id, sst] : m_sst_map) {
     SHIP_ASSERT(m_sst_file == nullptr);
   }
-  SHIP_ASSERT(m_commiting_threads.empty());
 
   for (const auto &sst_file : m_committed_files) {
     // In case something went wrong attempt to delete the temporary file.
@@ -417,10 +417,14 @@ int Rdb_sst_info::open_new_sst_file(OneFile& sst) {
 }
 
 void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
-  m_commiting_threads_mutex.lock();
-  m_commiting_threads.emplace_back(
-    &Rdb_sst_info::commit_sst_file_func, this, sst_file);
-  m_commiting_threads_mutex.unlock();
+  auto func = [](void* arg) {
+    auto sst = (Rdb_sst_file_ordered*)arg;
+    auto info = sst->m_sst_info;
+    info->commit_sst_file_func(sst);
+  };
+  sst_file->m_sst_info = this;
+  m_commiting_files.fetch_add(1, std::memory_order_relaxed);
+  rocksdb::Env::Default()->Schedule(func, sst_file);
 }
 
 void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
@@ -434,6 +438,8 @@ void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
 
   m_committed_files.push_back(sst_file->get_name());
   m_commiting_threads_mutex.unlock();
+
+  m_commiting_files.fetch_sub(1, std::memory_order_relaxed);
 
   delete sst_file;
 }
@@ -525,10 +531,14 @@ int Rdb_sst_info::finish(Rdb_sst_commit_info *commit_info,
     }
   }
 
-  for (auto& thr : m_commiting_threads) {
-    thr.join();
+  // wait for all commiting files to be committed
+  int num = 0;
+  while (num++ < 100 && m_commiting_files.load(std::memory_order_relaxed)) {
+    std::this_thread::yield();
   }
-  m_commiting_threads.clear();
+  while (m_commiting_files.load(std::memory_order_relaxed)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
 
   // This checks out the list of files so that the caller can collect/group
   // them and ingest them all in one go, and any racing calls to commit

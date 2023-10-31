@@ -115,6 +115,8 @@ class Rdb_sst_file_ordered {
   rocksdb::Status put(const rocksdb::Slice &key, const rocksdb::Slice &value);
   rocksdb::Status commit();
   inline const std::string get_name() const { return m_file.get_name(); }
+
+  class Rdb_sst_info* m_sst_info = nullptr;
 };
 
 class Rdb_sst_info {
@@ -143,7 +145,7 @@ class Rdb_sst_info {
 
   // List of committed SST files - we'll ingest them later in one single batch
   std::vector<std::string> m_committed_files;
-  std::vector<std::thread> m_commiting_threads;
+  std::atomic<size_t> m_commiting_files{0};
   std::mutex m_commiting_threads_mutex;
 
   const bool m_use_auto_sort_sst;
