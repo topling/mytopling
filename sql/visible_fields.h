@@ -50,7 +50,7 @@ template <class Iterator>
 class VisibleFieldsAdapter {
  public:
   VisibleFieldsAdapter(Iterator base, Iterator end) : m_it(base), m_end(end) {
-    while (m_it != m_end && (*m_it)->hidden) {
+    while (m_it != m_end && is_hidden(*m_it)) {
       ++m_it;
     }
   }
@@ -59,7 +59,7 @@ class VisibleFieldsAdapter {
   VisibleFieldsAdapter &operator++() {
     do {
       ++m_it;
-    } while (m_it != m_end && (*m_it)->hidden);
+    } while (m_it != m_end && is_hidden(*m_it));
     return *this;
   }
 
@@ -68,7 +68,7 @@ class VisibleFieldsAdapter {
     VisibleFieldsAdapter ret = *this;
     do {
       m_it++;
-    } while (m_it != m_end && (*m_it)->hidden);
+    } while (m_it != m_end && is_hidden(*m_it));
     return ret;
   }
 
@@ -90,6 +90,9 @@ class VisibleFieldsAdapter {
   using iterator_category = std::forward_iterator_tag;
 
  private:
+  bool is_hidden(typename Iterator::reference x) const {
+    return x->hidden;
+  }
   Iterator m_it, m_end;
 };
 
