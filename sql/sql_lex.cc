@@ -1174,8 +1174,8 @@ static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
   lip->tok_bitmap = tok_bitmap;
   return nullptr;  // unexpected end of query
 }
-static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
-  const CHARSET_INFO *cs = lip->m_thd->charset();
+static char *get_text(Lex_input_stream *lip, const CHARSET_INFO *cs,
+                      int pre_skip, int post_skip) {
   auto ismbchar = cs->cset->ismbchar;
   if (lip->is_echo())
     if (ismbchar)
@@ -1502,7 +1502,7 @@ static int lex_one_token(Lexer_yystype *yylval, THD *thd) {
         }
         /* Found N'string' */
         lip->yySkip();  // Skip '
-        if (!(yylval->lex_str.str = get_text(lip, 2, 1))) {
+        if (!(yylval->lex_str.str = get_text(lip, cs, 2, 1))) {
           state = MY_LEX_CHAR;  // Read char by char
           break;
         }
@@ -1853,7 +1853,7 @@ static int lex_one_token(Lexer_yystype *yylval, THD *thd) {
         /* " used for strings */
         [[fallthrough]];
       case MY_LEX_STRING:  // Incomplete text string
-        if (!(yylval->lex_str.str = get_text(lip, 1, 1))) {
+        if (!(yylval->lex_str.str = get_text(lip, cs, 1, 1))) {
           state = MY_LEX_CHAR;  // Read char by char
           break;
         }
