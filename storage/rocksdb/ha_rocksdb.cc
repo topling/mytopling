@@ -4042,7 +4042,8 @@ class Rdb_transaction {
                       "status code = %d, status = %s",
                       s.code(), s.ToString().c_str());
       s = m_bulk_load_index_registry.compact_index_ranges(
-          rdb, getCompactRangeOptions());
+          rdb, getCompactRangeOptions(0, (rocksdb::BottommostLevelCompaction)
+                  THDVAR(m_thd, manual_compaction_bottommost_level)));
       if (!s.ok()) {
         // NO_LINT_DEBUG
         sql_print_information(
@@ -15185,10 +15186,12 @@ int ha_rocksdb::optimize(THD *const thd MY_ATTRIBUTE((__unused__)),
   assert(thd != nullptr);
   assert(check_opt != nullptr);
 
+  auto compact_options = getCompactRangeOptions(0,
+    (rocksdb::BottommostLevelCompaction)THDVAR(thd, manual_compaction_bottommost_level));
   for (uint i = 0; i < table->s->keys; i++) {
     uchar buf[Rdb_key_def::INDEX_NUMBER_SIZE * 2];
     auto range = get_range(i, buf);
-    const rocksdb::Status s = rdb->CompactRange(getCompactRangeOptions(),
+    const rocksdb::Status s = rdb->CompactRange(compact_options,
                                                 m_key_descr_arr[i]->get_cf(),
                                                 &range.start, &range.limit);
     if (!s.ok()) {
