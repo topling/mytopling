@@ -458,6 +458,9 @@ class mem_root_deque {
   template<class Func>
   void for_each(Func fn) const {
     auto blocks = m_blocks;
+    if (unlikely(nullptr == blocks)) {
+      return;
+    }
     size_t begblk = m_begin_idx / block_elements;
     size_t endblk = m_end_idx / block_elements;
     size_t idxblk = begblk;
