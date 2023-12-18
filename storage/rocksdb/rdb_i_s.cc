@@ -932,56 +932,18 @@ static int rdb_i_s_compact_stats_fill_table(
   DBUG_RETURN(ret);
 }
 
-namespace {
+} // namespace myrocks
 
-using rocksdb::CompactionReason;
+namespace rocksdb {
 
 // TODO(T65629248): this is copy/pasted from RocksDB as it is not exposed in a
 // public header file. Once https://github.com/facebook/rocksdb/issues/6471 is
 // fixed, we should delete this and use the RocksDB-provided strings.
-const char *GetCompactionReasonString(CompactionReason compaction_reason) {
-  switch (compaction_reason) {
-    case CompactionReason::kUnknown:
-      return "Unknown";
-    case CompactionReason::kLevelL0FilesNum:
-      return "LevelL0FilesNum";
-    case CompactionReason::kLevelMaxLevelSize:
-      return "LevelMaxLevelSize";
-    case CompactionReason::kUniversalSizeAmplification:
-      return "UniversalSizeAmplification";
-    case CompactionReason::kUniversalSizeRatio:
-      return "UniversalSizeRatio";
-    case CompactionReason::kUniversalSortedRunNum:
-      return "UniversalSortedRunNum";
-    case CompactionReason::kFIFOMaxSize:
-      return "FIFOMaxSize";
-    case CompactionReason::kFIFOReduceNumFiles:
-      return "FIFOReduceNumFiles";
-    case CompactionReason::kFIFOTtl:
-      return "FIFOTtl";
-    case CompactionReason::kManualCompaction:
-      return "ManualCompaction";
-    case CompactionReason::kFilesMarkedForCompaction:
-      return "FilesMarkedForCompaction";
-    case CompactionReason::kBottommostFiles:
-      return "BottommostFiles";
-    case CompactionReason::kTtl:
-      return "Ttl";
-    case CompactionReason::kFlush:
-      return "Flush";
-    case CompactionReason::kExternalSstIngestion:
-      return "ExternalSstIngestion";
-    case CompactionReason::kPeriodicCompaction:
-      return "PeriodicCompaction";
-    case CompactionReason::kNumOfReasons:
-      // fall through
-    default:
-      assert(false);
-      return "Invalid";
-  }
-}
+const char *GetCompactionReasonString(CompactionReason compaction_reason);
 
 }  // anonymous namespace
+
+namespace myrocks {
 
 /*
   Support for INFORMATION_SCHEMA.ROCKSDB_ACTIVE_COMPACTION_STATS dynamic table
