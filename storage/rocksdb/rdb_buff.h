@@ -422,11 +422,11 @@ class Rdb_string_writer {
   }
   Rdb_string_writer() {}
 
-  void reserve(size_t size) { m_data.resize(size); }
+  void reserve(size_t size) { m_data.reserve(size); }
   void alloc(size_t size) {
     size_t pos = m_data.tell();
-    if (m_data.size() < pos + size) {
-      m_data.resize(pos + size);
+    if (m_data.capacity() < pos + size) {
+      m_data.reserve(pos + size);
     }
     m_data.skip_unsafe(size);
   }
