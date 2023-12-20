@@ -408,16 +408,12 @@ class Rdb_string_writer {
   }
 
   Rdb_string_writer(Rdb_string_writer &&rhs) noexcept {
-    static_cast<terark::SeekableMemIO&>(m_data) =
-    static_cast<terark::SeekableMemIO&>(rhs.m_data);
-    rhs.m_data.risk_release_ownership();
+    m_data.swap(rhs.m_data);
   }
 
   Rdb_string_writer &operator=(Rdb_string_writer &&rhs) noexcept {
-    if (m_data.begin()) ::free(m_data.begin());
-    static_cast<terark::SeekableMemIO&>(m_data) =
-    static_cast<terark::SeekableMemIO&>(rhs.m_data);
-    rhs.m_data.risk_release_ownership();
+    m_data.clear();
+    m_data.swap(rhs.m_data);
     return *this;
   }
   Rdb_string_writer() {}
