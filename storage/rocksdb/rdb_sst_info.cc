@@ -368,6 +368,17 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
   if (!s.ok()) {
     // Default size if we can't get the cf's target size
     m_max_size = 64 * 1024 * 1024;
+  } else if (cf_descr.options.write_buffer_size >
+             cf_descr.options.target_file_size_base * 3) {
+    // MyTopling write_buffer_size is much larger than target_file_size_base
+    // in most cases, in RocksDB these two are equal in most cases.
+    // MyTopling has auto sort sst which will sort in TableBuilder::Finish().
+    //
+    // MyTopling also build multi indexes in alter table ... create index ...
+    // in which m_max_size is for total size of per SSTs of all indexes, when
+    // indexes are too many, sst will too small, so m_max_size should be
+    // larger. This can also set by rocksdb_bulk_sst_size specifically.
+    m_max_size = cf_descr.options.write_buffer_size;
   } else {
     // Set the maximum size to 3 times the cf's target size
     m_max_size = cf_descr.options.target_file_size_base * 3;
