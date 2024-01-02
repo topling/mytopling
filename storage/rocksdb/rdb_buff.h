@@ -468,7 +468,7 @@ class Rdb_string_writer {
   }
 
   void truncate(const size_t pos) {
-    assert(pos < m_data.size());
+    assert(pos < m_data.tell());
     m_data.seek_unsafe(pos);
   }
 
