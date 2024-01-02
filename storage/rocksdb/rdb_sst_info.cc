@@ -385,7 +385,8 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
   }
   extern long long rocksdb_bulk_sst_size;
   if (rocksdb_bulk_sst_size) {
-    m_max_size = std::max(uint64_t(rocksdb_bulk_sst_size), m_max_size);
+    m_max_size = std::max(uint64_t(rocksdb_bulk_sst_size),
+                          cf_descr.options.target_file_size_base);
   }
   mysql_mutex_init(rdb_sst_commit_key, &m_commit_mutex, MY_MUTEX_INIT_FAST);
 }
