@@ -42,6 +42,7 @@
 
 #include <rocksdb/threadpool.h>
 #include <terark/io/DataIO_Basic.hpp> // for BIG_ENDIAN_OF
+#include <topling/side_plugin_repo.h>
 
 #define m_sst_file  sst.sst_file
 #define m_curr_size sst.curr_size
@@ -432,6 +433,10 @@ int Rdb_sst_info::open_new_sst_file(OneFile& sst) {
   return HA_EXIT_SUCCESS;
 }
 
+static size_t g_busy_memory_bytes = 0;
+static std::mutex g_commiting_threads_mutex;
+static std::condition_variable g_commiting_cond;
+
 void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
   auto func = [](void* arg) {
     auto sst = (Rdb_sst_file_ordered*)arg;
@@ -439,23 +444,44 @@ void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
     info->commit_sst_file_func(sst);
   };
   sst_file->m_sst_info = this;
-  m_commiting_files.fetch_add(1, std::memory_order_relaxed);
+  uint64_t t0 = 0;
+  {
+    std::unique_lock<std::mutex> lock(g_commiting_threads_mutex);
+    while (g_busy_memory_bytes >= 2 * m_max_size) {
+      if (t0 == 0) {
+        t0 = rocksdb::Env::Default()->NowMicros();
+      }
+      sql_print_information(
+        "RocksDB: commit_sst_file: wait memory busy %s, limit %s",
+        rocksdb::SizeToString(g_busy_memory_bytes).c_str(),
+        rocksdb::SizeToString(2 * m_max_size).c_str());
+      g_commiting_cond.wait(lock); // avoid OOM
+    }
+    g_busy_memory_bytes += sst_file->curr_size;
+    m_commiting_files++;
+  }
+  if (t0) {
+    double sec = (rocksdb::Env::Default()->NowMicros() - t0) / 1e6;
+    sql_print_information("RocksDB: commit_sst_file: wait memory for %.3f sec", sec);
+  }
   rocksdb::Env::Default()->Schedule(func, sst_file);
 }
 
 void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
   const rocksdb::Status s = sst_file->commit();
 
-  m_commiting_threads_mutex.lock();
+  g_commiting_threads_mutex.lock();
   if (!s.ok()) {
     set_error_msg(sst_file->get_name(), s);
     set_background_error(HA_ERR_ROCKSDB_BULK_LOAD);
   }
 
   m_committed_files.push_back(sst_file->get_name());
-  m_commiting_threads_mutex.unlock();
 
-  m_commiting_files.fetch_sub(1, std::memory_order_relaxed);
+  m_commiting_files--;
+  g_busy_memory_bytes -= sst_file->curr_size;
+  g_commiting_cond.notify_all();
+  g_commiting_threads_mutex.unlock();
 
   delete sst_file;
 }
@@ -464,6 +490,7 @@ void Rdb_sst_info::close_curr_sst_file(OneFile& sst) {
   assert(m_sst_file != nullptr);
   assert(m_curr_size > 0);
 
+  m_sst_file->curr_size = sst.curr_size;
   commit_sst_file(m_sst_file);
 
   // Reset for next sst file
@@ -548,12 +575,11 @@ int Rdb_sst_info::finish(Rdb_sst_commit_info *commit_info,
   }
 
   // wait for all commiting files to be committed
-  int num = 0;
-  while (num++ < 100 && m_commiting_files.load(std::memory_order_relaxed)) {
-    std::this_thread::yield();
-  }
-  while (m_commiting_files.load(std::memory_order_relaxed)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  {
+    std::unique_lock<std::mutex> lock(g_commiting_threads_mutex);
+    while (m_commiting_files > 0) {
+      g_commiting_cond.wait(lock);
+    }
   }
 
   // This checks out the list of files so that the caller can collect/group

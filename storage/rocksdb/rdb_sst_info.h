@@ -117,6 +117,7 @@ class Rdb_sst_file_ordered {
   inline const std::string get_name() const { return m_file.get_name(); }
 
   class Rdb_sst_info* m_sst_info = nullptr;
+  size_t curr_size = 0;
 };
 
 class Rdb_sst_info {
@@ -145,8 +146,7 @@ class Rdb_sst_info {
 
   // List of committed SST files - we'll ingest them later in one single batch
   std::vector<std::string> m_committed_files;
-  std::atomic<size_t> m_commiting_files{0};
-  std::mutex m_commiting_threads_mutex;
+  size_t m_commiting_files = 0;
 
   const bool m_use_auto_sort_sst;
   const bool m_tracing;
