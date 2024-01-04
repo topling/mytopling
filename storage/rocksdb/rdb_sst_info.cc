@@ -41,7 +41,7 @@
 #include "./rdb_psi.h"
 
 #include <rocksdb/threadpool.h>
-#include <terark/io/DataIO_Basic.hpp> // for BIG_ENDIAN_OF
+#include <terark/io/DataIO_Basic.hpp> // for NATIVE_OF_BIG_ENDIAN
 #include <topling/side_plugin_repo.h>
 
 #define m_sst_file  sst.sst_file
@@ -506,7 +506,7 @@ int Rdb_sst_info::put(const rocksdb::Slice &key, const rocksdb::Slice &value) {
 
   assert(!m_done);
 
-  auto index_id = BIG_ENDIAN_OF(unaligned_load<uint32_t>(key.data_));
+  auto index_id = NATIVE_OF_BIG_ENDIAN(unaligned_load<uint32_t>(key.data_));
   auto ib = m_sst_map.emplace(index_id, OneFile());
   if (unlikely(ib.second)) {
     m_avg_max_size = m_max_size / m_sst_map.size();
