@@ -52,13 +52,14 @@ class Rdb_logger : public rocksdb::Logger {
     }
 
     // log to MySQL
-    std::string f("LibRocksDB:");
-    f.append(format);
+    char* f = (char*)alloca(strlen("LibRocksDB:") + strlen(format) + 1);
+    strcpy(f, "LibRocksDB:"); // compiler optimize to mov
+    strcat(f, format); // optimize to memcpy, strlen(format) result is reused
 
     // Given that we are working with a va_list, we can't pass it down
     // to log_errlog_formatted and need to format the message ourselves
     char msg[LOG_BUFF_MAX];
-    vsnprintf(msg, sizeof(msg) - 1, f.c_str(), ap);
+    vsnprintf(msg, sizeof(msg) - 1, f, ap);
 
     log_errlog_formatted(mysql_log_level, msg);
   }
