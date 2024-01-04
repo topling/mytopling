@@ -27,7 +27,7 @@ void Rdb_logger::Logv(const rocksdb::InfoLogLevel log_level, const char *format,
     mysql_log_level = loglevel::WARNING_LEVEL;
   } else if (log_level >= rocksdb::InfoLogLevel::INFO_LEVEL) {
     mysql_log_level = loglevel::INFORMATION_LEVEL;
-  } else if (log_level >= rocksdb::InfoLogLevel::DEBUG_LEVEL) {
+  } else {
     mysql_log_level = loglevel::DEBUG_LEVEL;
   }
 
