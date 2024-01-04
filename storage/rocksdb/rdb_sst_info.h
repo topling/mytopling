@@ -129,6 +129,7 @@ class Rdb_sst_info {
   rocksdb::ColumnFamilyHandle *const m_cf;
   const rocksdb::DBOptions &m_db_options;
   uint64_t m_max_size;
+  uint m_parallel_num;
   uint m_sst_count;
   std::atomic<int> m_background_error;
   bool m_done;

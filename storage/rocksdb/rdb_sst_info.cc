@@ -378,6 +378,13 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
     m_max_size = std::max(uint64_t(rocksdb_bulk_sst_size),
                           cf_descr.options.target_file_size_base);
   }
+  extern long long rocksdb_bulk_sst_parallel_num;
+  if (rocksdb_bulk_sst_parallel_num > 0) {
+    m_parallel_num = uint(rocksdb_bulk_sst_parallel_num);
+  } else {
+    m_parallel_num = uint(cf_descr.options.max_write_buffer_number);
+  }
+
   mysql_mutex_init(rdb_sst_commit_key, &m_commit_mutex, MY_MUTEX_INIT_FAST);
 }
 
@@ -423,6 +430,7 @@ int Rdb_sst_info::open_new_sst_file(OneFile& sst) {
 }
 
 static size_t g_busy_memory_bytes = 0;
+static size_t g_commiting_files_total = 0;
 static std::mutex g_commiting_threads_mutex;
 static std::condition_variable g_commiting_cond;
 
@@ -435,18 +443,20 @@ void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
   sst_file->m_sst_info = this;
   uint64_t t0 = 0;
   {
+    auto mem_limit = m_max_size * m_parallel_num;
     std::unique_lock<std::mutex> lock(g_commiting_threads_mutex);
-    while (g_busy_memory_bytes >= 2 * m_max_size) {
+    while (g_busy_memory_bytes >= mem_limit) {
       if (t0 == 0) {
         t0 = rocksdb::Env::Default()->NowMicros();
       }
       sql_print_information(
-        "RocksDB: commit_sst_file: wait memory busy %s, limit %s",
+        "RocksDB: commit_sst_file: wait memory busy %s, limit %s, commiting %zd",
         rocksdb::SizeToString(g_busy_memory_bytes).c_str(),
-        rocksdb::SizeToString(2 * m_max_size).c_str());
+        rocksdb::SizeToString(mem_limit).c_str(), g_commiting_files_total);
       g_commiting_cond.wait(lock); // avoid OOM
     }
     g_busy_memory_bytes += sst_file->curr_size;
+    g_commiting_files_total++;
     m_commiting_files++;
   }
   if (t0) {
@@ -468,6 +478,7 @@ void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
   m_committed_files.push_back(sst_file->get_name());
 
   m_commiting_files--;
+  g_commiting_files_total--;
   g_busy_memory_bytes -= sst_file->curr_size;
   g_commiting_cond.notify_all();
   g_commiting_threads_mutex.unlock();

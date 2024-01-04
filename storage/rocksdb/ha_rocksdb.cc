@@ -875,6 +875,7 @@ static int handle_rocksdb_corrupt_data_error();
 static long long rocksdb_block_cache_size;
 static long long rocksdb_sim_cache_size;
 long long rocksdb_bulk_sst_size; // extern used by rdb_sst_info.cc
+long long rocksdb_bulk_sst_parallel_num; // extern used by rdb_sst_info.cc
 static bool rocksdb_use_hyper_clock_cache;
 static bool rocksdb_charge_memory;
 static bool rocksdb_use_write_buffer_manager;
@@ -2275,6 +2276,13 @@ static MYSQL_SYSVAR_LONGLONG(bulk_sst_size, rocksdb_bulk_sst_size,
                              /* max */ LLONG_MAX,
                              /* Block size */ 0);
 
+static MYSQL_SYSVAR_LONGLONG(
+    bulk_sst_parallel_num, rocksdb_bulk_sst_parallel_num,
+    PLUGIN_VAR_RQCMDARG,
+    "sst commit/TableBuilder::Finish() parallel number for bulk load",
+     nullptr, nullptr, /* default */ 0, /* min */ 0, /* max */ LLONG_MAX,
+    /* Block size */ 0);
+
 static MYSQL_SYSVAR_BOOL(
     use_hyper_clock_cache, rocksdb_use_hyper_clock_cache,
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -3189,6 +3197,8 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(block_cache_size),
     MYSQL_SYSVAR(sim_cache_size),
     MYSQL_SYSVAR(bulk_sst_size),
+    MYSQL_SYSVAR(bulk_sst_parallel_num),
+
     MYSQL_SYSVAR(use_hyper_clock_cache),
     MYSQL_SYSVAR(cache_high_pri_pool_ratio),
     MYSQL_SYSVAR(cache_dump),
