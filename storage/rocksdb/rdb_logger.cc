@@ -10,8 +10,6 @@ void Rdb_logger::Logv(const rocksdb::InfoLogLevel log_level, const char *format,
                       va_list ap) {
   assert(format != nullptr);
 
-  enum loglevel mysql_log_level;
-
   if (m_logger) {
     m_logger->Logv(log_level, format, ap);
   }
@@ -20,12 +18,15 @@ void Rdb_logger::Logv(const rocksdb::InfoLogLevel log_level, const char *format,
     return;
   }
 
+  enum loglevel mysql_log_level;
   if (log_level >= rocksdb::InfoLogLevel::ERROR_LEVEL) {
-    mysql_log_level = ERROR_LEVEL;
+    mysql_log_level = loglevel::ERROR_LEVEL;
   } else if (log_level >= rocksdb::InfoLogLevel::WARN_LEVEL) {
-    mysql_log_level = WARNING_LEVEL;
-  } else {
-    mysql_log_level = INFORMATION_LEVEL;
+    mysql_log_level = loglevel::WARNING_LEVEL;
+  } else if (log_level >= rocksdb::InfoLogLevel::INFO_LEVEL) {
+    mysql_log_level = loglevel::INFORMATION_LEVEL;
+  } else if (log_level >= rocksdb::InfoLogLevel::DEBUG_LEVEL) {
+    mysql_log_level = loglevel::DEBUG_LEVEL;
   }
 
   // log to MySQL
