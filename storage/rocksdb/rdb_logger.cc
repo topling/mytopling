@@ -19,7 +19,9 @@ void Rdb_logger::Logv(const rocksdb::InfoLogLevel log_level, const char *format,
   }
 
   enum loglevel mysql_log_level;
-  if (log_level >= rocksdb::InfoLogLevel::ERROR_LEVEL) {
+  if (log_level >= rocksdb::InfoLogLevel::FATAL_LEVEL) {
+    mysql_log_level = loglevel::SYSTEM_LEVEL;
+  } else if (log_level >= rocksdb::InfoLogLevel::ERROR_LEVEL) {
     mysql_log_level = loglevel::ERROR_LEVEL;
   } else if (log_level >= rocksdb::InfoLogLevel::WARN_LEVEL) {
     mysql_log_level = loglevel::WARNING_LEVEL;
