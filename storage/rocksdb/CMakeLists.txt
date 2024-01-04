@@ -181,6 +181,7 @@ SET(ROCKSDB_SE_SOURCES
   rdb_i_s.cc
   rdb_index_merge.cc
   rdb_io_watchdog.cc
+  rdb_logger.cc
   rdb_perf_context.cc
   rdb_mutex_wrapper.cc
   rdb_psi.h rdb_psi.cc
