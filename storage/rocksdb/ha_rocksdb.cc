@@ -8041,7 +8041,9 @@ else {
 }
 
   std::shared_ptr<Rdb_logger> myrocks_logger = std::make_shared<Rdb_logger>();
+#if 0 // DO NOT do this
   rocksdb_db_options->info_log_level = rocksdb::InfoLogLevel(rocksdb_info_log_level);
+#endif
   rocksdb::Status s = rocksdb::CreateLoggerFromOptions(
       rocksdb_datadir, *rocksdb_db_options, &rocksdb_db_options->info_log);
   if (s.ok()) {
@@ -8055,8 +8057,10 @@ else {
     g_repo.Put("myrocks_logger", {
       {"class", "Rdb_logger"},
       {"params", {
-        {"info_log_level", rocksdb::enum_stdstr(
+        {"rocksdb_info_log_level", rocksdb::enum_stdstr(
           static_cast<rocksdb::InfoLogLevel>(rocksdb_info_log_level))},
+        {"rocksdb_log_base_level", rocksdb::enum_stdstr(
+          rocksdb_db_options->info_log_level)},
       }}
     }, rocksdb_db_options->info_log);
   rocksdb_db_options->wal_dir = rocksdb_wal_dir;
