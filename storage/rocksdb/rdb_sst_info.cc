@@ -441,13 +441,14 @@ void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
     info->commit_sst_file_func(sst);
   };
   sst_file->m_sst_info = this;
+  auto env = rocksdb::Env::Default();
   uint64_t t0 = 0;
   {
     auto mem_limit = m_max_size * m_parallel_num;
     std::unique_lock<std::mutex> lock(g_commiting_threads_mutex);
     while (g_busy_memory_bytes >= mem_limit) {
       if (t0 == 0) {
-        t0 = rocksdb::Env::Default()->NowMicros();
+        t0 = env->NowMicros();
       }
       sql_print_information(
         "RocksDB: commit_sst_file: wait memory busy %s, limit %s, commiting %zd",
@@ -460,10 +461,10 @@ void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
     m_commiting_files++;
   }
   if (t0) {
-    double sec = (rocksdb::Env::Default()->NowMicros() - t0) / 1e6;
+    double sec = (env->NowMicros() - t0) / 1e6;
     sql_print_information("RocksDB: commit_sst_file: wait memory for %.3f sec", sec);
   }
-  rocksdb::Env::Default()->Schedule(func, sst_file);
+  env->Schedule(func, sst_file);
 }
 
 void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
