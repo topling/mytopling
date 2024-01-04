@@ -1,7 +1,5 @@
 // Created by leipeng 2024-01-04 12:05
 #include "logger.h"
-#include <sstream>
-#include <string>
 
 /* MySQL header files */
 #include <sql/log.h>
