@@ -949,6 +949,7 @@ enum loglevel log_prio_from_label(const char *label) {
   if (0 == native_strcasecmp(label, "SYSTEM")) return SYSTEM_LEVEL;
   if (0 == native_strcasecmp(label, "WARNING")) return WARNING_LEVEL;
   if (0 == native_strcasecmp(label, "NOTE")) return INFORMATION_LEVEL;
+  if (0 == native_strcasecmp(label, "Debug")) return DEBUG_LEVEL;
 
   return ERROR_LEVEL; /* purecov: inspected */
 }

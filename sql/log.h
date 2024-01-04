@@ -1458,7 +1458,8 @@ log_item_data *log_line_item_set(log_line *ll, log_item_type t);
   @return             a label corresponding to that priority.
   @retval  "ERROR"    for prio of ERROR_LEVEL or higher
   @retval  "Warning"  for prio of WARNING_LEVEL
-  @retval  "Note"     otherwise
+  @retval  "Note"     for prio of INFORMATION_LEVEL
+  @retval  "Debug"    otherwise
 */
 const char *log_label_from_prio(int prio);
 
