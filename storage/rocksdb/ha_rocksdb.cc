@@ -374,7 +374,8 @@ static Regex_list_handler *rdb_collation_exceptions;
 
 static const char *rdb_get_error_message(int nr);
 
-static void rocksdb_flush_all_memtables() {
+static void rocksdb_flush_all_memtables(rocksdb::FlushOptions fopt =
+                                        rocksdb::FlushOptions()) {
   const Rdb_cf_manager &cf_manager = rdb_get_cf_manager();
 
   if (!cf_manager.is_initialized()) return;
@@ -382,7 +383,7 @@ static void rocksdb_flush_all_memtables() {
   // RocksDB will fail the flush if the CF is deleted,
   // but here we don't handle return status
   for (const auto &cf_handle : cf_manager.get_all_cf()) {
-    rdb->Flush(rocksdb::FlushOptions(), cf_handle.get());
+    rdb->Flush(fopt, cf_handle.get());
   }
 }
 
@@ -8686,10 +8687,16 @@ static int rocksdb_shutdown(bool minimalShutdown) {
     rdb_drop_idx_thread.signal(true);
 
     // Flush all memtables for not losing data, even if WAL is disabled.
-    rocksdb_flush_all_memtables();
+    sql_print_information("Flush RocksDB MemTables");
+    {
+      rocksdb::FlushOptions fopt;
+      fopt.allow_write_stall = true; // to avoid rocksdb stuck bug
+      rocksdb_flush_all_memtables(fopt);
+    }
 
     // Stop all rocksdb background work
     if (rdb && rdb->GetBaseDB()) {
+      sql_print_information("Stop all RocksDB background work");
       CancelAllBackgroundWork(rdb->GetBaseDB(), true);
     }
 
