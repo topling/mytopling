@@ -8527,8 +8527,7 @@ if (!g_svr_read_only) {
   */
   std::vector<rocksdb::ColumnFamilyHandle *> new_compaction_enabled_cf_handles;
   for (auto cfh_ptr : cf_handles) {
-    if (prev_compaction_enabled_cf_names.find(cfh_ptr->GetName()) !=
-        prev_compaction_enabled_cf_names.end()) {
+    if (prev_compaction_enabled_cf_names.count(cfh_ptr->GetName())) {
       new_compaction_enabled_cf_handles.push_back(cfh_ptr);
     }
   }
