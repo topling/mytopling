@@ -126,7 +126,7 @@ enum table_cardinality_scan_type {
 
 enum Rdb_lock_type { RDB_LOCK_NONE, RDB_LOCK_READ, RDB_LOCK_WRITE };
 
-enum TABLE_TYPE {
+enum TABLE_TYPE : unsigned char {
   INTRINSIC_TMP = 0,
   USER_TABLE = 1,
 };
