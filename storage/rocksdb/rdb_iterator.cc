@@ -53,6 +53,8 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
     }
   }
   m_kd_is_reverse_cf = kd->m_is_reverse_cf;
+  m_kd_has_ttl = kd->has_ttl();
+  m_pkd_has_ttl = pkd->has_ttl();
 }
 
 Rdb_iterator_base::~Rdb_iterator_base() {
@@ -372,7 +374,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     }
 
     // Record is not visible due to TTL, move to next record.
-    if (m_pkd->has_ttl()) {
+    if (m_pkd_has_ttl) {
       const rocksdb::Slice value = m_scan_it->value();
       if (!tx) {
         tx = get_tx_from_thd(m_thd);
@@ -469,7 +471,7 @@ int Rdb_iterator_base::get(const rocksdb::Slice *key,
   }
 
   const bool hide_ttl_rec =
-      !skip_ttl_check && m_kd->has_ttl() &&
+      !skip_ttl_check && m_kd_has_ttl &&
       rdb_should_hide_ttl_rec(*m_kd, s.IsNotFound() ? nullptr : value, tx);
 
   if (hide_ttl_rec || s.IsNotFound()) {

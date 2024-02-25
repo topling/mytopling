@@ -163,6 +163,8 @@ class Rdb_iterator_base : public Rdb_iterator {
   bool m_valid;
   bool m_check_iterate_bounds;
   bool m_ignore_killed;
+  bool m_kd_has_ttl = false;
+  bool m_pkd_has_ttl = false;
 };
 
 class Rdb_iterator_partial : public Rdb_iterator_base {
