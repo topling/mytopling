@@ -117,7 +117,7 @@ int Rdb_iterator_base::read_before_key(const bool full_key_match,
       We are using full key and we've hit an exact match.
       */
     if ((full_key_match &&
-         m_kd->value_matches_prefix(m_scan_it->key(), key_slice))) {
+         m_kd->value_matches_prefix(InvokeRocksIter_key(), key_slice))) {
       rocksdb_smart_next(!m_kd_is_reverse_cf, m_scan_it);
       continue;
     }
@@ -214,6 +214,14 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
         m_thd, m_kd->get_cf(), skip_bloom, m_scan_it_lower_bound_slice,
         m_scan_it_upper_bound_slice, &m_scan_it_snapshot, m_table_type,
         read_current, !read_current);
+   #if defined(_MSC_VER) || defined(__clang__)
+   #else
+    m_iter_next = (RocksIterScanFN)(m_scan_it->*(&rocksdb::Iterator::Next));
+    m_iter_prev = (RocksIterScanFN)(m_scan_it->*(&rocksdb::Iterator::Prev));
+    m_iter_key = (RocksIterSliceFN)(m_scan_it->*(&rocksdb::Iterator::key));
+    m_iter_val = (RocksIterSliceFN)(m_scan_it->*(&rocksdb::Iterator::value));
+    m_iter_is_valid = (RocksIterValidFN)(m_scan_it->*(&rocksdb::Iterator::Valid));
+   #endif
     m_scan_it_skips_bloom = skip_bloom;
     m_has_been_setup = true;
   }
@@ -348,7 +356,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
       break;
     }
 
-    const rocksdb::Slice &key = m_scan_it->key();
+    const rocksdb::Slice key = InvokeRocksIter_key();
 
     // Outside our range, return EOF.
     if (!kd.value_matches_prefix(key, m_prefix_tuple)) {
@@ -375,7 +383,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
     // Record is not visible due to TTL, move to next record.
     if (m_pkd_has_ttl) {
-      const rocksdb::Slice value = m_scan_it->value();
+      const rocksdb::Slice value = InvokeRocksIter_val();
       if (!tx) {
         tx = get_tx_from_thd(m_thd);
       }

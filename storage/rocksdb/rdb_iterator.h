@@ -106,9 +106,13 @@ class Rdb_iterator_base : public Rdb_iterator {
 
   int prev() override { return next_with_direction(false, false); }
 
+ #if defined(_MSC_VER) || defined(__clang__)
   rocksdb::Slice key() override { return m_scan_it->key(); }
-
   rocksdb::Slice value() override { return m_scan_it->value(); }
+ #else
+  rocksdb::Slice key  () override { return m_iter_key(m_scan_it); }
+  rocksdb::Slice value() override { return m_iter_val(m_scan_it); }
+ #endif
 
   void reset() override {
     release_scan_iterator();
@@ -140,6 +144,40 @@ class Rdb_iterator_base : public Rdb_iterator {
 
   /* Iterator used for range scans and for full table/index scans */
   rocksdb::Iterator *m_scan_it;
+
+ #if defined(_MSC_VER) || defined(__clang__)
+  rocksdb::Slice InvokeRocksIter_key() const { return m_scan_iter->key(); }
+  rocksdb::Slice InvokeRocksIter_val() const { return m_scan_iter->value(); }
+ #else
+  typedef void (*RocksIterScanFN)(rocksdb::Iterator*);
+  typedef bool (*RocksIterValidFN)(const rocksdb::Iterator*);
+  typedef rocksdb::Slice (*RocksIterSliceFN)(const rocksdb::Iterator*);
+  RocksIterScanFN m_iter_next, m_iter_prev;
+  RocksIterSliceFN m_iter_key, m_iter_val;
+  RocksIterValidFN m_iter_is_valid;
+  inline void rocksdb_smart_next(bool seek_backward, rocksdb::Iterator* iter) {
+    if (seek_backward) {
+      m_iter_prev(iter); // iter->Prev();
+    } else {
+      m_iter_next(iter); // iter->Next();
+    }
+  }
+  inline void rocksdb_smart_prev(bool seek_backward, rocksdb::Iterator* iter) {
+    if (seek_backward) {
+      m_iter_next(iter); // iter->Next();
+    } else {
+      m_iter_prev(iter); // iter->Prev();
+    }
+  }
+  inline bool is_valid_iterator(rocksdb::Iterator* scan_it) {
+    if (likely(m_iter_is_valid(scan_it)))
+      return true;
+    else
+      return is_valid_iter_err(scan_it);
+  }
+  rocksdb::Slice InvokeRocksIter_key() const { return m_iter_key(m_scan_it); }
+  rocksdb::Slice InvokeRocksIter_val() const { return m_iter_val(m_scan_it); }
+ #endif
   uint32_t m_call_cnt = 0; // for refresh_iter
   void refresh_iter();
 
