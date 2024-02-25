@@ -205,6 +205,41 @@ class Rdb_iterator_base : public Rdb_iterator {
   bool m_pkd_has_ttl = false;
 };
 
+#if defined(_MSC_VER) || defined(__clang__)
+#else
+inline int Rdb_iterator_proxy::FatHandle::seek(
+              enum ha_rkey_function find_flag,
+              const rocksdb::Slice start_key, bool full_key_match,
+              const rocksdb::Slice end_key, bool read_current) {
+  return m_iter->seek(find_flag, start_key, full_key_match, end_key, read_current);
+}
+template<class LockType>
+inline int Rdb_iterator_proxy::FatHandle::get(
+              const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+              LockType type, bool skip_ttl_check, bool skip_wait) {
+  return m_iter->get(key, value, type, skip_ttl_check, skip_wait);
+}
+inline int Rdb_iterator_proxy::FatHandle::next() { return m_next(m_iter); }
+inline int Rdb_iterator_proxy::FatHandle::prev() { return m_prev(m_iter); }
+using rocksdb::Slice;
+inline Slice Rdb_iterator_proxy::FatHandle::key() { return m_key(m_iter); }
+inline Slice Rdb_iterator_proxy::FatHandle::value() { return m_value(m_iter); }
+inline void Rdb_iterator_proxy::FatHandle::reset() { return m_iter->reset(); }
+inline bool Rdb_iterator_proxy::FatHandle::is_valid() {
+  // this function is rarely used, not need optimization
+  // return m_is_valid(m_iter);
+  return m_iter->is_valid();
+}
+inline void Rdb_iterator_proxy::FatHandle::release_snapshot() {
+  return m_iter->release_snapshot();
+}
+inline Rdb_iterator_proxy::operator std::unique_ptr<Rdb_iterator_base>() && {
+  std::unique_ptr<Rdb_iterator_base> tmp(m_fat.m_iter);
+  m_fat.m_iter = nullptr;
+  return tmp;
+}
+#endif
+
 class Rdb_iterator_partial : public Rdb_iterator_base {
  private:
   TABLE *m_table;

@@ -25,6 +25,32 @@
 
 namespace myrocks {
 
+#if defined(_MSC_VER) || defined(__clang__)
+#else
+Rdb_iterator_proxy::FatHandle::~FatHandle() {
+  delete m_iter;
+}
+Rdb_iterator_proxy::~Rdb_iterator_proxy() = default;
+void Rdb_iterator_proxy::reset(Rdb_iterator_base* p) {
+  delete m_fat.m_iter;
+  m_fat.m_iter = p;
+  if (p) {
+   #pragma GCC diagnostic ignored "-Wpmf-conversions"
+    m_fat.m_next = (scan_ft)(p->*(&Rdb_iterator::next));
+    m_fat.m_prev = (scan_ft)(p->*(&Rdb_iterator::prev));
+    m_fat.m_key = (slice_ft)(p->*(&Rdb_iterator::key));
+    m_fat.m_value = (slice_ft)(p->*(&Rdb_iterator::value));
+    //m_fat.m_is_valid = (is_valid_ft)(p->*(&Rdb_iterator::is_valid));
+  }
+}
+void Rdb_iterator_proxy::swap(std::unique_ptr<Rdb_iterator_base>& y) {
+  auto tmp = m_fat.m_iter;
+  m_fat.m_iter = nullptr;
+  reset(y.release());
+  y.reset(tmp);
+}
+#endif
+
 Rdb_iterator::~Rdb_iterator() {}
 
 Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,

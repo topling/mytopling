@@ -11050,7 +11050,7 @@ done:
   return rc;
 }
 
-static void reset_iter(std::unique_ptr<Rdb_iterator_base>& iter) {
+static void reset_iter(Rdb_iterator_proxy& iter) {
   if (rocksdb_reuse_iter)
     iter->release_snapshot();
   else

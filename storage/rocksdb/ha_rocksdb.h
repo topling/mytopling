@@ -78,6 +78,65 @@ class Rdb_transaction_impl;
 class Rdb_writebatch_impl;
 class Rdb_field_encoder;
 
+#if defined(_MSC_VER) || defined(__clang__)
+  using Rdb_iterator_proxy = std::unique_ptr<Rdb_iterator_base>;
+#else
+class Rdb_iterator_proxy {
+  typedef int (*scan_ft)(Rdb_iterator*); // next/prev
+  typedef bool (*is_valid_ft)(Rdb_iterator*);
+  typedef rocksdb::Slice (*slice_ft)(Rdb_iterator*); // key/value
+  struct FatHandle {
+    Rdb_iterator_base* m_iter = nullptr;
+    scan_ft m_next, m_prev;
+    //is_valid_ft m_is_valid;
+    slice_ft m_key, m_value;
+    ~FatHandle();
+    FatHandle() = default;
+    FatHandle(const FatHandle&) = delete;
+    inline int seek(enum ha_rkey_function find_flag,
+                    const rocksdb::Slice start_key, bool full_key_match,
+                    const rocksdb::Slice end_key, bool read_current = false);
+    template<class LockType>
+    inline int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+                   LockType type, bool skip_ttl_check = false,
+                   bool skip_wait = false);
+    inline int next();
+    inline int prev();
+    inline rocksdb::Slice key();
+    inline rocksdb::Slice value();
+    inline void reset(); // == Rdb_iterator_base::reset()
+    inline bool is_valid();
+    inline void release_snapshot();
+  };
+  FatHandle m_fat;
+public:
+  ~Rdb_iterator_proxy();
+  Rdb_iterator_proxy() = default;
+  Rdb_iterator_proxy(Rdb_iterator_base* p) { reset(p); }
+        FatHandle* operator->()       { return &m_fat; }
+  const FatHandle* operator->() const { return &m_fat; }
+  void reset(Rdb_iterator_base* = nullptr); // == unique_ptr::reset()
+  void swap(std::unique_ptr<Rdb_iterator_base>& y);
+  Rdb_iterator_base* get() const { return m_fat.m_iter; }
+  explicit operator bool() const { return m_fat.m_iter != nullptr; }
+  void operator=(std::unique_ptr<Rdb_iterator_base>&& y) { reset(y.release()); }
+  bool operator!=(std::nullptr_t) const { return m_fat.m_iter != nullptr; }
+  bool operator==(std::nullptr_t) const { return m_fat.m_iter == nullptr; }
+  operator std::unique_ptr<Rdb_iterator_base>() &&;
+};
+
+} // namespace myrocks
+
+namespace std {
+  inline void swap(myrocks::Rdb_iterator_proxy& x,
+                   std::unique_ptr<myrocks::Rdb_iterator_base>& y) {
+    x.swap(y);
+  }
+}
+
+namespace myrocks {
+#endif
+
 #if defined(HAVE_PSI_INTERFACE)
 extern PSI_rwlock_key key_rwlock_read_free_rpl_tables;
 #endif
@@ -241,8 +300,8 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   /* class to convert between Mysql format and RocksDB format*/
   std::unique_ptr<Rdb_converter> m_converter;
 
-  std::unique_ptr<Rdb_iterator_base> m_iterator;
-  std::unique_ptr<Rdb_iterator_base> m_pk_iterator;
+  Rdb_iterator_proxy m_iterator;
+  Rdb_iterator_proxy m_pk_iterator;
 
   /*
     Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
