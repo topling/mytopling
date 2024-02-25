@@ -146,6 +146,7 @@ class Rdb_iterator_base : public Rdb_iterator {
   /* Whether m_scan_it was created with skip_bloom=true */
   bool m_scan_it_skips_bloom;
   bool m_has_been_setup = false;
+  bool m_kd_is_reverse_cf = false;
 
   const rocksdb::Snapshot *m_scan_it_snapshot;
 

@@ -52,6 +52,7 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
       add_tmp_table_handler(m_thd, m_rocksdb_handler);
     }
   }
+  m_kd_is_reverse_cf = kd->m_is_reverse_cf;
 }
 
 Rdb_iterator_base::~Rdb_iterator_base() {
@@ -104,7 +105,7 @@ int Rdb_iterator_base::read_before_key(const bool full_key_match,
 
     Symmetry with read_after_key is possible if rocksdb supported prefix seeks.
   */
-  rocksdb_smart_seek(!m_kd->m_is_reverse_cf, m_scan_it, key_slice);
+  rocksdb_smart_seek(!m_kd_is_reverse_cf, m_scan_it, key_slice);
 
   while (is_valid_iterator(m_scan_it)) {
     if (!m_ignore_killed && thd_killed(m_thd)) {
@@ -115,7 +116,7 @@ int Rdb_iterator_base::read_before_key(const bool full_key_match,
       */
     if ((full_key_match &&
          m_kd->value_matches_prefix(m_scan_it->key(), key_slice))) {
-      rocksdb_smart_next(!m_kd->m_is_reverse_cf, m_scan_it);
+      rocksdb_smart_next(!m_kd_is_reverse_cf, m_scan_it);
       continue;
     }
 
@@ -135,7 +136,7 @@ int Rdb_iterator_base::read_after_key(const rocksdb::Slice &key_slice) {
     with HA_READ_KEY_OR_NEXT, $GT = '>='
     with HA_READ_KEY_EXACT, $GT = '=='
   */
-  rocksdb_smart_seek(m_kd->m_is_reverse_cf, m_scan_it, key_slice);
+  rocksdb_smart_seek(m_kd_is_reverse_cf, m_scan_it, key_slice);
 
   return is_valid_iterator(m_scan_it) ? HA_EXIT_SUCCESS : HA_ERR_END_OF_FILE;
 }
@@ -334,9 +335,9 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
       skip_next = false;
     } else {
       if (move_forward) {
-        rocksdb_smart_next(kd.m_is_reverse_cf, m_scan_it);
+        rocksdb_smart_next(m_kd_is_reverse_cf, m_scan_it);
       } else {
-        rocksdb_smart_prev(kd.m_is_reverse_cf, m_scan_it);
+        rocksdb_smart_prev(m_kd_is_reverse_cf, m_scan_it);
       }
     }
 
@@ -676,7 +677,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
     if (rc == 0) {
       // Not materialized on disk, seek to beginning/end of map.
       m_materialized = false;
-      if (direction ^ m_kd->m_is_reverse_cf) {
+      if (direction ^ m_kd_is_reverse_cf) {
         m_records_it = m_records.begin();
       } else {
         m_records_it = m_records.end();
@@ -990,7 +991,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
       }
 
       if (direction) {
-        if (m_kd->m_is_reverse_cf) {
+        if (m_kd_is_reverse_cf) {
           // Emulate "SeekForPrev" behaviour.
           m_records_it = std::upper_bound(m_records.begin(), m_records.end(),
                                           start_key, m_comparator);
@@ -1007,7 +1008,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
           }
         }
       } else {
-        if (m_kd->m_is_reverse_cf) {
+        if (m_kd_is_reverse_cf) {
           m_records_it = std::upper_bound(m_records.begin(), m_records.end(),
                                           start_key, m_comparator);
           if (m_records_it == m_records.end()) {
@@ -1116,7 +1117,7 @@ int Rdb_iterator_partial::next_with_direction_in_group(bool direction) {
       }
     }
   } else {
-    if (direction ^ m_kd->m_is_reverse_cf) {
+    if (direction ^ m_kd_is_reverse_cf) {
       m_records_it++;
       if (m_records_it == m_records.end()) return HA_ERR_END_OF_FILE;
     } else {
