@@ -56,6 +56,7 @@
 #include "./rdb_global.h"
 #include "./rdb_index_merge.h"
 #include "./rdb_io_watchdog.h"
+#include "rdb_iterator.h"
 #include "./rdb_perf_context.h"
 #include "./rdb_sst_info.h"
 #include "./rdb_utils.h"
@@ -78,68 +79,6 @@ class Rdb_transaction;
 class Rdb_transaction_impl;
 class Rdb_writebatch_impl;
 class Rdb_field_encoder;
-using rocksdb::Slice;
-
-#if defined(_MSC_VER) || defined(__clang__)
-  using Rdb_iterator_proxy = std::unique_ptr<Rdb_iterator_base>;
-#else
-typedef rocksdb::Slice (*slice_ft)(void*); // key/value
-class Rdb_iterator_proxy {
-  typedef int (*scan_ft)(Rdb_iterator*); // next/prev
-  typedef bool (*is_valid_ft)(Rdb_iterator*);
-  struct FatHandle {
-    Rdb_iterator_base* m_iter = nullptr;
-    scan_ft m_next, m_prev;
-    //is_valid_ft m_is_valid;
-    void* m_kv_iter = nullptr; // be m_iter or rocksdb::Iterator
-    slice_ft m_key, m_value;
-    ~FatHandle();
-    FatHandle() = default;
-    FatHandle(const FatHandle&) = delete;
-    inline int seek(enum ha_rkey_function find_flag,
-                    const rocksdb::Slice start_key, bool full_key_match,
-                    const rocksdb::Slice end_key, bool read_current = false);
-    inline int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
-                   Rdb_lock_type type, bool skip_ttl_check = false,
-                   bool skip_wait = false);
-    inline int next();
-    inline int prev();
-    inline rocksdb::Slice key();
-    inline rocksdb::Slice value();
-    inline void reset(); // == Rdb_iterator_base::reset()
-    inline bool is_valid();
-    inline void release_snapshot();
-  };
-  FatHandle m_fat;
-public:
-  ~Rdb_iterator_proxy();
-  Rdb_iterator_proxy() = default;
-  Rdb_iterator_proxy(Rdb_iterator_base* p) { reset(p); }
-        FatHandle* operator->()       { return &m_fat; }
-  const FatHandle* operator->() const { return &m_fat; }
-  void reset(Rdb_iterator_base* = nullptr); // == unique_ptr::reset()
-  void swap(std::unique_ptr<Rdb_iterator_base>& y);
-  void bind_get_kv(Rdb_iterator_base*);
-  void bind_iter(Rdb_iterator_base*);
-  Rdb_iterator_base* get() const { return m_fat.m_iter; }
-  explicit operator bool() const { return m_fat.m_iter != nullptr; }
-  void operator=(std::unique_ptr<Rdb_iterator_base>&& y) { reset(y.release()); }
-  bool operator!=(std::nullptr_t) const { return m_fat.m_iter != nullptr; }
-  bool operator==(std::nullptr_t) const { return m_fat.m_iter == nullptr; }
-  operator std::unique_ptr<Rdb_iterator_base>() &&;
-};
-
-} // namespace myrocks
-
-namespace std {
-  inline void swap(myrocks::Rdb_iterator_proxy& x,
-                   std::unique_ptr<myrocks::Rdb_iterator_base>& y) {
-    x.swap(y);
-  }
-}
-
-namespace myrocks {
-#endif
 
 #if defined(HAVE_PSI_INTERFACE)
 extern PSI_rwlock_key key_rwlock_read_free_rpl_tables;

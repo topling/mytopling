@@ -23,6 +23,8 @@
 #include "sql/sql_class.h"
 #include "sql/thr_malloc.h"
 
+#include "ha_rocksdb.h"
+
 namespace myrocks {
 
 #if defined(_MSC_VER) || defined(__clang__)
