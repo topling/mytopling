@@ -231,7 +231,7 @@ class Rdb_converter {
     Number of bytes in on-disk (storage) record format that are used for
     storing SQL NULL flags.
   */
-  int m_null_bytes_length_in_record;
+  short m_null_bytes_length_in_record;
   /*
    true <=> Some fields in the PK may require unpack_info.
   */
