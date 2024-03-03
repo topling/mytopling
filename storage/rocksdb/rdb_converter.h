@@ -23,13 +23,18 @@
 // MySQL header files
 #include "./sql_string.h"
 #include "./ut0counter.h"
+#include <field_types.h>
+#include <my_base.h>
 
 // MyRocks header files
-#include "./ha_rocksdb.h"
 #include "./rdb_datadic.h"
 
 namespace myrocks {
 class Rdb_field_encoder;
+class Rdb_tbl_def;
+class Rdb_converter;
+class Rdb_key_def;
+extern unsigned long long rocksdb_converter_record_cached_length;
 
 uint32_t u64ToAsciiTable(uint64_t value, Rdb_string_writer *writer) noexcept;
 

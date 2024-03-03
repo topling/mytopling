@@ -31,8 +31,12 @@
 /* C standard header files */
 #include <arpa/inet.h>
 
+#include <rocksdb/db.h>
+#include <rocksdb/merge_operator.h>
+#include <rocksdb/slice_transform.h>
+#include <rocksdb/utilities/transaction_db.h>
+
 /* MyRocks header files */
-#include "./ha_rocksdb.h"
 #include "./properties_collector.h"
 #include "./rdb_buff.h"
 #include "./rdb_mutex_wrapper.h"
@@ -40,6 +44,7 @@
 
 /* Server header files */
 #include "sql/dd/object_id.h"
+#include "sql/table.h"
 #include <terark/hash_strmap.hpp>
 #include <terark/util/vec_idx_map.hpp>
 
@@ -54,6 +59,7 @@ using terark::NonOwnerFileStream;
 class Rdb_dict_manager;
 class Rdb_dict_manager_selector;
 class Rdb_key_def;
+class Rdb_tbl_def;
 class Rdb_field_packing;
 class Rdb_cf_manager;
 class Rdb_ddl_manager;

@@ -34,6 +34,7 @@
 #include "./rdb_datadic.h"
 #include "./rdb_utils.h"
 #include "ha_rocksdb_proto.h"
+#include "properties_collector.h"
 
 #include <topling/side_plugin_factory.h>
 #include <db/compaction/compaction_executor.h>

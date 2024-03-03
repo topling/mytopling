@@ -9,6 +9,7 @@
 #include "rdb_datadic.h"
 #include "ha_rocksdb_proto.h"
 #include "rocksdb/listener.h"
+#include "ha_rocksdb.h"
 
 /* C++ system header files */
 #include <string>

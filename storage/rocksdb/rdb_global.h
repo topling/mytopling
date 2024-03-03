@@ -499,7 +499,33 @@ struct st_io_stall_stats {
         total_stop(0),
         total_slowdown(0) {}
 };
+
+enum table_cardinality_scan_type {
+  SCAN_TYPE_NONE,
+  SCAN_TYPE_MEMTABLE_ONLY,
+  SCAN_TYPE_FULL_TABLE,
+};
+
+enum Rdb_lock_type { RDB_LOCK_NONE, RDB_LOCK_READ, RDB_LOCK_WRITE };
+
+enum TABLE_TYPE : unsigned char {
+  INTRINSIC_TMP = 0,
+  USER_TABLE = 1,
+};
+
 }  // namespace myrocks
+
+/* Provide hash function for GL_INDEX_ID so we can include it in sets */
+namespace std {
+template <>
+struct hash<myrocks::GL_INDEX_ID> {
+  std::size_t operator()(const myrocks::GL_INDEX_ID &gl_index_id) const {
+    const uint64_t val =
+        ((uint64_t)gl_index_id.cf_id << 32 | (uint64_t)gl_index_id.index_id);
+    return std::hash<uint64_t>()(val);
+  }
+};
+}  // namespace std
 
 // We define ROCKSDB_NAMESPACE = my_rocksdb to avoid symbol conflicts
 // But keep code with rocksdb for clarity

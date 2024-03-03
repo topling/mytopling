@@ -26,7 +26,7 @@
 #include "rocksdb/db.h"
 
 /* MyRocks header files */
-#include "./ha_rocksdb.h"
+#include "rdb_global.h"
 
 namespace myrocks {
 

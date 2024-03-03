@@ -166,34 +166,6 @@ struct Rdb_table_handler {
   Rdb_atomic_perf_counters m_table_perf_context;
 };
 
-}  // namespace myrocks
-
-/* Provide hash function for GL_INDEX_ID so we can include it in sets */
-namespace std {
-template <>
-struct hash<myrocks::GL_INDEX_ID> {
-  std::size_t operator()(const myrocks::GL_INDEX_ID &gl_index_id) const {
-    const uint64_t val =
-        ((uint64_t)gl_index_id.cf_id << 32 | (uint64_t)gl_index_id.index_id);
-    return std::hash<uint64_t>()(val);
-  }
-};
-}  // namespace std
-
-namespace myrocks {
-enum table_cardinality_scan_type {
-  SCAN_TYPE_NONE,
-  SCAN_TYPE_MEMTABLE_ONLY,
-  SCAN_TYPE_FULL_TABLE,
-};
-
-enum Rdb_lock_type { RDB_LOCK_NONE, RDB_LOCK_READ, RDB_LOCK_WRITE };
-
-enum TABLE_TYPE : unsigned char {
-  INTRINSIC_TMP = 0,
-  USER_TABLE = 1,
-};
-
 class Mrr_rowid_source;
 
 uint32_t rocksdb_perf_context_level(THD *const thd);
