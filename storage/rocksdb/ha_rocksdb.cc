@@ -119,6 +119,7 @@
 #include <terark/hash_strmap.hpp>
 #include <filesystem>
 
+#define m_ttl_bytes m_converter->get_ttl_bytes_buffer()
 
 // Internal MySQL APIs not exposed in any header.
 extern "C" {
@@ -9593,7 +9594,7 @@ int ha_rocksdb::open(const char *const name,
      Remove this code after moving convert_record_to_storage_format() into
      Rdb_converter class.
   */
-  m_ttl_bytes = m_converter->get_ttl_bytes_buffer();
+  // m_ttl_bytes = m_converter->get_ttl_bytes_buffer();
 
   info(HA_STATUS_NO_LOCK | HA_STATUS_VARIABLE | HA_STATUS_CONST);
 

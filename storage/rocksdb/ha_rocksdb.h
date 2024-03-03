@@ -237,6 +237,17 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   bool m_iter_is_scan = false;
   bool m_is_mysql_system_table = false;
 
+  /*
+    Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
+  */
+  // char *m_ttl_bytes;
+  /*
+    The TTL timestamp value can change if the explicit TTL column is
+    updated. If we detect this when updating the PK, we indicate it here so
+    we know we must always update any SK's.
+  */
+  bool m_ttl_bytes_updated;
+
   uchar *m_pk_packed_tuple; /* Buffer for storing PK in StorageFormat */
   // ^^ todo: change it to 'char*'? TODO: ^ can we join this with last_rowkey?
 
@@ -278,17 +289,6 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
 
   Rdb_iterator_proxy m_iterator;
   Rdb_iterator_proxy m_pk_iterator;
-
-  /*
-    Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
-  */
-  char *m_ttl_bytes;
-  /*
-    The TTL timestamp value can change if the explicit TTL column is
-    updated. If we detect this when updating the PK, we indicate it here so
-    we know we must always update any SK's.
-  */
-  bool m_ttl_bytes_updated;
 
   /* rowkey of the last record we've read, in StorageFormat. */
   String m_last_rowkey;
