@@ -34,7 +34,7 @@ typedef rocksdb::Slice (*slice_ft)(void*); // key/value
 class ha_rocksdb;
 bool is_valid_iter_err(rocksdb::Iterator *scan_it);
 
-class Rdb_iterator {
+class Rdb_iterator : public rocksdb::CacheAlignedNewDelete {
  public:
   virtual ~Rdb_iterator() = 0;
 
