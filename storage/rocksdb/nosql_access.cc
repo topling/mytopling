@@ -1525,7 +1525,7 @@ class select_exec {
   std::shared_ptr<Rdb_key_def> m_pk_def;
   ha_rocksdb *m_handler;
   THD *m_thd;
-  std::unique_ptr<Rdb_converter> m_converter;
+  Rdb_converter m_converter[1];
   uint m_index;
   KEY *m_index_info;
   KEY *m_pk_info;
@@ -2161,7 +2161,7 @@ select_exec_result INLINE_ATTR select_exec::run() {
     m_handler->print_error(HA_ERR_ROCKSDB_INVALID_TABLE, 0);
     return FAIL;
   }
-  m_converter.reset(new Rdb_converter(m_thd, m_tbl_def, m_table, m_dd_table));
+  m_converter->reset(m_thd, m_tbl_def, m_table, m_dd_table);
 
   // Scans WHERE and build the key and filter list
   const auto scan_where_result = scan_where();

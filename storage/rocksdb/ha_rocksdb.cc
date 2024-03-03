@@ -9586,7 +9586,7 @@ int ha_rocksdb::open(const char *const name,
   init_with_fields();
 
   /* Initialize decoder */
-  m_converter.reset(new Rdb_converter(ha_thd(), m_tbl_def, table, table_def));
+  m_converter->reset(ha_thd(), m_tbl_def, table, table_def);
 
   /*
      Update m_ttl_bytes address to same as Rdb_converter's m_ttl_bytes.
@@ -9632,7 +9632,7 @@ int ha_rocksdb::close(void) {
 
   m_pk_descr = nullptr;
   m_key_descr_arr = nullptr;
-  m_converter = nullptr;
+  m_converter->reset();
   m_iterator.reset(nullptr);
   free_key_buffers();
 
@@ -10842,8 +10842,7 @@ int ha_rocksdb::truncate_table(Rdb_tbl_def *tbl_def_arg,
 
   /* Update the local m_tbl_def reference */
   m_tbl_def = ddl_manager.find(orig_tablename);
-  m_converter.reset(
-      new Rdb_converter(ha_thd(), m_tbl_def, table_arg, table_def));
+  m_converter->reset(ha_thd(), m_tbl_def, table_arg, table_def);
   m_is_mysql_system_table = table_arg->s && m_tbl_def->m_is_mysql_system_table;
   DBUG_RETURN(err);
 }
@@ -14095,8 +14094,7 @@ void ha_rocksdb::change_table_ptr(TABLE *table_arg, TABLE_SHARE *share) {
     }
     assert(dd_table == nullptr);
 #endif
-    m_converter.reset(
-        new Rdb_converter(ha_thd(), m_tbl_def, table_arg, dd_table));
+    m_converter->reset(ha_thd(), m_tbl_def, table_arg, dd_table);
   }
 }
 

@@ -353,7 +353,35 @@ Rdb_converter::Rdb_converter(const THD *thd, const Rdb_tbl_def *tbl_def,
   setup_field_encoders(dd_table);
 }
 
+Rdb_converter::Rdb_converter() {
+  m_thd = nullptr;
+  m_tbl_def = nullptr;
+  m_table = nullptr;
+  m_key_requested = false;
+  m_verify_row_debug_checksums = false;
+  m_maybe_unpack_info = false;
+  m_row_checksums_checked = 0;
+  m_null_bytes = nullptr;
+  m_needs_kv_value = true;
+  m_has_instant_fields = false;
+  m_encoder_arr = nullptr;
+}
+
+void Rdb_converter::reset(const THD *thd, const Rdb_tbl_def *tbl_def,
+                          TABLE *table, const dd::Table *dd_table) {
+  this->~Rdb_converter();
+  new(this)Rdb_converter(thd, tbl_def, table, dd_table);
+}
+
+void Rdb_converter::reset() {
+  this->~Rdb_converter();
+  new(this)Rdb_converter();
+}
+
 Rdb_converter::~Rdb_converter() {
+  if (nullptr == m_encoder_arr) {
+    return;
+  }
   for (uint i = 0; i < m_table->s->fields; i++) {
     my_free(m_encoder_arr[i].m_instant_default_value);
   }
@@ -959,14 +987,16 @@ int Rdb_converter::encode_value_slice(
     m_storage_record.append(reinterpret_cast<char *>(pk_unpack_info->ptr()),
                             pk_unpack_info->get_current_pos());
   }
-  for (uint i = 0; i < m_table->s->fields; i++) {
+  uint  num_fields = m_table->s->fields;
+  auto* tbl_fields = m_table->field;
+  for (uint i = 0; i < num_fields; i++) {
     Rdb_field_encoder &encoder = m_encoder_arr[i];
     /* Don't pack decodable PK key parts */
     if (encoder.m_storage_type != Rdb_field_encoder::STORE_ALL) {
       continue;
     }
 
-    Field *const field = m_table->field[i];
+    Field *const field = tbl_fields[i];
 
     if (field->is_virtual_gcol()) {
       continue;

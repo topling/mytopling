@@ -52,6 +52,7 @@
 
 /* MyRocks header files */
 #include "./rdb_buff.h"
+#include "rdb_converter.h"
 #include "./rdb_global.h"
 #include "./rdb_index_merge.h"
 #include "./rdb_io_watchdog.h"
@@ -274,7 +275,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   uchar *m_pack_buffer;
 
   /* class to convert between Mysql format and RocksDB format*/
-  std::unique_ptr<Rdb_converter> m_converter;
+  Rdb_converter m_converter[1];
 
   Rdb_iterator_proxy m_iterator;
   Rdb_iterator_proxy m_pk_iterator;

@@ -142,9 +142,14 @@ class Rdb_converter {
   */
   Rdb_converter(const THD *thd, const Rdb_tbl_def *tbl_def, TABLE *table,
                 const dd::Table *dd_table);
+  Rdb_converter();
   Rdb_converter(const Rdb_converter &decoder) = delete;
   Rdb_converter &operator=(const Rdb_converter &decoder) = delete;
   ~Rdb_converter();
+
+  void reset(const THD *thd, const Rdb_tbl_def *tbl_def, TABLE *table,
+             const dd::Table *dd_table);
+  void reset();
 
   void setup_field_decoders(const MY_BITMAP *field_map, uint active_index,
                             bool keyread_only, bool decode_all_fields = false);
