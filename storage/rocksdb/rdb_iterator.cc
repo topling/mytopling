@@ -33,6 +33,9 @@ Rdb_iterator_proxy::FatHandle::~FatHandle() {
 Rdb_iterator_proxy::~Rdb_iterator_proxy() = default;
 void Rdb_iterator_proxy::reset(Rdb_iterator_base* p) {
   delete m_fat.m_iter;
+  bind_iter(p);
+}
+void Rdb_iterator_proxy::bind_iter(Rdb_iterator_base* p) {
   m_fat.m_iter = p;
   if (p) {
    #pragma GCC diagnostic ignored "-Wpmf-conversions"
@@ -45,8 +48,7 @@ void Rdb_iterator_proxy::reset(Rdb_iterator_base* p) {
 }
 void Rdb_iterator_proxy::swap(std::unique_ptr<Rdb_iterator_base>& y) {
   auto tmp = m_fat.m_iter;
-  m_fat.m_iter = nullptr;
-  reset(y.release());
+  bind_iter(y.release());
   y.reset(tmp);
 }
 #endif

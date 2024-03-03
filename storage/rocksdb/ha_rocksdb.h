@@ -117,6 +117,7 @@ public:
   const FatHandle* operator->() const { return &m_fat; }
   void reset(Rdb_iterator_base* = nullptr); // == unique_ptr::reset()
   void swap(std::unique_ptr<Rdb_iterator_base>& y);
+  void bind_iter(Rdb_iterator_base*);
   Rdb_iterator_base* get() const { return m_fat.m_iter; }
   explicit operator bool() const { return m_fat.m_iter != nullptr; }
   void operator=(std::unique_ptr<Rdb_iterator_base>&& y) { reset(y.release()); }
