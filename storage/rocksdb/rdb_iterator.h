@@ -238,17 +238,26 @@ class Rdb_iterator_proxy {
     FatHandle(const FatHandle&) = delete;
     inline int seek(enum ha_rkey_function find_flag,
                     const rocksdb::Slice start_key, bool full_key_match,
-                    const rocksdb::Slice end_key, bool read_current = false);
+                    const rocksdb::Slice end_key, bool read_current = false) {
+      return m_iter->seek(find_flag, start_key, full_key_match, end_key,
+                          read_current);
+    }
     inline int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
                    Rdb_lock_type type, bool skip_ttl_check = false,
-                   bool skip_wait = false);
-    inline int next();
-    inline int prev();
-    inline rocksdb::Slice key();
-    inline rocksdb::Slice value();
-    inline void reset(); // == Rdb_iterator_base::reset()
-    inline bool is_valid();
-    inline void release_snapshot();
+                   bool skip_wait = false) {
+      return m_iter->get(key, value, type, skip_ttl_check, skip_wait);
+    }
+    inline int next() { return m_next(m_iter); }
+    inline int prev() { return m_prev(m_iter); }
+    inline rocksdb::Slice key() { return m_key(m_kv_iter); }
+    inline rocksdb::Slice value() { return m_value(m_kv_iter); }
+    inline void reset() { m_iter->reset(); }
+    inline bool is_valid() {
+      // this function is not on frequent path, not need optimization
+      // return m_is_valid(m_iter);
+      return m_iter->is_valid();
+    }
+    inline void release_snapshot() { m_iter->release_snapshot(); }
   };
   FatHandle m_fat;
 public:
@@ -266,7 +275,11 @@ public:
   void operator=(std::unique_ptr<Rdb_iterator_base>&& y) { reset(y.release()); }
   bool operator!=(std::nullptr_t) const { return m_fat.m_iter != nullptr; }
   bool operator==(std::nullptr_t) const { return m_fat.m_iter == nullptr; }
-  operator std::unique_ptr<Rdb_iterator_base>() &&;
+  operator std::unique_ptr<Rdb_iterator_base>() && {
+    std::unique_ptr<Rdb_iterator_base> tmp(m_fat.m_iter);
+    m_fat.m_iter = nullptr;
+    return tmp;
+  }
 };
 
 } // namespace myrocks
@@ -279,39 +292,6 @@ namespace std {
 }
 
 namespace myrocks {
-#endif
-
-#if defined(_MSC_VER) || defined(__clang__)
-#else
-inline int Rdb_iterator_proxy::FatHandle::seek(
-              enum ha_rkey_function find_flag,
-              const rocksdb::Slice start_key, bool full_key_match,
-              const rocksdb::Slice end_key, bool read_current) {
-  return m_iter->seek(find_flag, start_key, full_key_match, end_key, read_current);
-}
-inline int Rdb_iterator_proxy::FatHandle::get(
-              const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
-              Rdb_lock_type type, bool skip_ttl_check, bool skip_wait) {
-  return m_iter->get(key, value, type, skip_ttl_check, skip_wait);
-}
-inline int Rdb_iterator_proxy::FatHandle::next() { return m_next(m_iter); }
-inline int Rdb_iterator_proxy::FatHandle::prev() { return m_prev(m_iter); }
-inline Slice Rdb_iterator_proxy::FatHandle::key() { return m_key(m_kv_iter); }
-inline Slice Rdb_iterator_proxy::FatHandle::value() { return m_value(m_kv_iter); }
-inline void Rdb_iterator_proxy::FatHandle::reset() { return m_iter->reset(); }
-inline bool Rdb_iterator_proxy::FatHandle::is_valid() {
-  // this function is rarely used, not need optimization
-  // return m_is_valid(m_iter);
-  return m_iter->is_valid();
-}
-inline void Rdb_iterator_proxy::FatHandle::release_snapshot() {
-  return m_iter->release_snapshot();
-}
-inline Rdb_iterator_proxy::operator std::unique_ptr<Rdb_iterator_base>() && {
-  std::unique_ptr<Rdb_iterator_base> tmp(m_fat.m_iter);
-  m_fat.m_iter = nullptr;
-  return tmp;
-}
 #endif
 
 class Rdb_iterator_partial : public Rdb_iterator_base {
