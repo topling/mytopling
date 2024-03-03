@@ -35,21 +35,53 @@ void Rdb_iterator_proxy::reset(Rdb_iterator_base* p) {
   delete m_fat.m_iter;
   bind_iter(p);
 }
+static Slice BadSliceFunc(void* place) {
+  ROCKSDB_DIE("place = %s", (char*)place);
+}
 void Rdb_iterator_proxy::bind_iter(Rdb_iterator_base* p) {
   m_fat.m_iter = p;
   if (p) {
    #pragma GCC diagnostic ignored "-Wpmf-conversions"
     m_fat.m_next = (scan_ft)(p->*(&Rdb_iterator::next));
     m_fat.m_prev = (scan_ft)(p->*(&Rdb_iterator::prev));
-    m_fat.m_key = (slice_ft)(p->*(&Rdb_iterator::key));
-    m_fat.m_value = (slice_ft)(p->*(&Rdb_iterator::value));
+    this->bind_get_kv(p);
     //m_fat.m_is_valid = (is_valid_ft)(p->*(&Rdb_iterator::is_valid));
+  }
+  else {
+    m_fat.m_kv_iter = (void*)"Rdb_iterator_proxy::reset";
+    m_fat.m_key = m_fat.m_value = &BadSliceFunc;
   }
 }
 void Rdb_iterator_proxy::swap(std::unique_ptr<Rdb_iterator_base>& y) {
   auto tmp = m_fat.m_iter;
   bind_iter(y.release());
   y.reset(tmp);
+  if (tmp)
+    tmp->m_iter_proxy = nullptr;
+}
+void Rdb_iterator_proxy::bind_get_kv(Rdb_iterator_base* p) {
+  m_fat.m_kv_iter = p->bind_get_kv(&m_fat.m_key, &m_fat.m_value);
+  p->m_iter_proxy = this;
+}
+void* Rdb_iterator_base::bind_get_kv(slice_ft* get_key, slice_ft* get_val) {
+  if (m_scan_it) {
+    // Rdb_iterator_proxy will direct call Iter::key/value,
+    // Rdb_iterator_base::key/value will be omitted
+    typedef rocksdb::Iterator Iter;
+    *get_key = (slice_ft)(Slice(*)(const Iter*))(m_scan_it->*(&Iter::key));
+    *get_val = (slice_ft)(Slice(*)(const Iter*))(m_scan_it->*(&Iter::value));
+    return m_scan_it;
+  }
+  else {
+    *get_key = *get_val = &BadSliceFunc;
+    return (void*)"Rdb_iterator_base::bind_get_kv";
+  }
+}
+void* Rdb_iterator_partial::bind_get_kv(slice_ft* get_key, slice_ft* get_val) {
+  // Rdb_iterator_proxy can not omit call to Rdb_iterator_partial::key/value
+  *get_key = (slice_ft)(Slice(*)(Rdb_iterator*))(this->*(&Rdb_iterator::key));
+  *get_val = (slice_ft)(Slice(*)(Rdb_iterator*))(this->*(&Rdb_iterator::value));
+  return this;
 }
 #endif
 
@@ -249,6 +281,9 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
     m_iter_key = (RocksIterSliceFN)(m_scan_it->*(&rocksdb::Iterator::key));
     m_iter_val = (RocksIterSliceFN)(m_scan_it->*(&rocksdb::Iterator::value));
     m_iter_is_valid = (RocksIterValidFN)(m_scan_it->*(&rocksdb::Iterator::Valid));
+    if (m_iter_proxy) {
+      m_iter_proxy->bind_get_kv(this);
+    }
    #endif
     m_scan_it_skips_bloom = skip_bloom;
     m_has_been_setup = true;

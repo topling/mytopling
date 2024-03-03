@@ -71,6 +71,10 @@ class Rdb_iterator {
   virtual void reset() = 0;
   virtual bool is_valid() = 0;
   virtual void release_snapshot() = 0;
+#if defined(_MSC_VER) || defined(__clang__)
+#else
+  virtual void* bind_get_kv(slice_ft*, slice_ft*) = 0;
+#endif
 };
 
 class Rdb_iterator_base : public Rdb_iterator {
@@ -112,6 +116,7 @@ class Rdb_iterator_base : public Rdb_iterator {
  #else
   rocksdb::Slice key  () override { return m_iter_key(m_scan_it); }
   rocksdb::Slice value() override { return m_iter_val(m_scan_it); }
+  void* bind_get_kv(slice_ft*, slice_ft*) override;
  #endif
 
   void reset() override {
@@ -203,6 +208,13 @@ class Rdb_iterator_base : public Rdb_iterator {
   bool m_ignore_killed;
   bool m_kd_has_ttl = false;
   bool m_pkd_has_ttl = false;
+
+ #if defined(_MSC_VER) || defined(__clang__)
+ #else
+ public:
+  // access is infrequent, lies here for cold cpu cache
+  Rdb_iterator_proxy* m_iter_proxy = nullptr;
+ #endif
 };
 
 #if defined(_MSC_VER) || defined(__clang__)
@@ -221,9 +233,8 @@ inline int Rdb_iterator_proxy::FatHandle::get(
 }
 inline int Rdb_iterator_proxy::FatHandle::next() { return m_next(m_iter); }
 inline int Rdb_iterator_proxy::FatHandle::prev() { return m_prev(m_iter); }
-using rocksdb::Slice;
-inline Slice Rdb_iterator_proxy::FatHandle::key() { return m_key(m_iter); }
-inline Slice Rdb_iterator_proxy::FatHandle::value() { return m_value(m_iter); }
+inline Slice Rdb_iterator_proxy::FatHandle::key() { return m_key(m_kv_iter); }
+inline Slice Rdb_iterator_proxy::FatHandle::value() { return m_value(m_kv_iter); }
 inline void Rdb_iterator_proxy::FatHandle::reset() { return m_iter->reset(); }
 inline bool Rdb_iterator_proxy::FatHandle::is_valid() {
   // this function is rarely used, not need optimization
@@ -328,6 +339,10 @@ class Rdb_iterator_partial : public Rdb_iterator_base {
     assert(false);
     return false;
   }
+#if defined(_MSC_VER) || defined(__clang__)
+#else
+  void* bind_get_kv(slice_ft*, slice_ft*) override;
+#endif
 };
 
 }  // namespace myrocks

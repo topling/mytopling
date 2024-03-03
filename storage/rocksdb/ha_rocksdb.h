@@ -77,18 +77,20 @@ class Rdb_transaction;
 class Rdb_transaction_impl;
 class Rdb_writebatch_impl;
 class Rdb_field_encoder;
+using rocksdb::Slice;
 
 #if defined(_MSC_VER) || defined(__clang__)
   using Rdb_iterator_proxy = std::unique_ptr<Rdb_iterator_base>;
 #else
+typedef rocksdb::Slice (*slice_ft)(void*); // key/value
 class Rdb_iterator_proxy {
   typedef int (*scan_ft)(Rdb_iterator*); // next/prev
   typedef bool (*is_valid_ft)(Rdb_iterator*);
-  typedef rocksdb::Slice (*slice_ft)(Rdb_iterator*); // key/value
   struct FatHandle {
     Rdb_iterator_base* m_iter = nullptr;
     scan_ft m_next, m_prev;
     //is_valid_ft m_is_valid;
+    void* m_kv_iter = nullptr; // be m_iter or rocksdb::Iterator
     slice_ft m_key, m_value;
     ~FatHandle();
     FatHandle() = default;
@@ -117,6 +119,7 @@ public:
   const FatHandle* operator->() const { return &m_fat; }
   void reset(Rdb_iterator_base* = nullptr); // == unique_ptr::reset()
   void swap(std::unique_ptr<Rdb_iterator_base>& y);
+  void bind_get_kv(Rdb_iterator_base*);
   void bind_iter(Rdb_iterator_base*);
   Rdb_iterator_base* get() const { return m_fat.m_iter; }
   explicit operator bool() const { return m_fat.m_iter != nullptr; }
