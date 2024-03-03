@@ -225,10 +225,9 @@ inline int Rdb_iterator_proxy::FatHandle::seek(
               const rocksdb::Slice end_key, bool read_current) {
   return m_iter->seek(find_flag, start_key, full_key_match, end_key, read_current);
 }
-template<class LockType>
 inline int Rdb_iterator_proxy::FatHandle::get(
               const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
-              LockType type, bool skip_ttl_check, bool skip_wait) {
+              Rdb_lock_type type, bool skip_ttl_check, bool skip_wait) {
   return m_iter->get(key, value, type, skip_ttl_check, skip_wait);
 }
 inline int Rdb_iterator_proxy::FatHandle::next() { return m_next(m_iter); }

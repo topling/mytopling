@@ -99,9 +99,8 @@ class Rdb_iterator_proxy {
     inline int seek(enum ha_rkey_function find_flag,
                     const rocksdb::Slice start_key, bool full_key_match,
                     const rocksdb::Slice end_key, bool read_current = false);
-    template<class LockType>
     inline int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
-                   LockType type, bool skip_ttl_check = false,
+                   Rdb_lock_type type, bool skip_ttl_check = false,
                    bool skip_wait = false);
     inline int next();
     inline int prev();
