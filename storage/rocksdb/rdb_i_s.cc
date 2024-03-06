@@ -1615,17 +1615,20 @@ static int rdb_i_s_bypass_rejected_query_history_init(void *p) {
 }
 
 /* Given a path to a file return just the filename portion. */
-static std::string rdb_filename_without_path(const std::string &path) {
+template<class AnyString>
+static std::string rdb_filename_without_path(const AnyString& apath) {
+  std::string_view path(apath.data(), apath.size());
+
   /* Find last slash in path */
   const size_t pos = path.rfind('/');
 
   /* None found?  Just return the original string */
   if (pos == std::string::npos) {
-    return std::string(path);
+    return rocksdb::stdstrof(path);
   }
 
   /* Return everything after the slash (or backslash) */
-  return path.substr(pos + 1);
+  return rocksdb::stdstrof(path.substr(pos + 1));
 }
 
 /*
