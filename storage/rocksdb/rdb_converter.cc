@@ -649,7 +649,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     other  HA_ERR error code (can be SE-specific)
 */
 int Rdb_converter::decode_value_header_for_pk(
-    Rdb_string_reader *reader, const std::shared_ptr<Rdb_key_def> &pk_def,
+    Rdb_string_reader *reader, const Rdb_key_def *pk_def,
     rocksdb::Slice *unpack_slice) {
   /* If it's a TTL record, skip the 8 byte TTL value */
   if (unlikely(pk_def->has_ttl())) {
@@ -698,7 +698,7 @@ int Rdb_converter::decode_value_header_for_pk(
 template<class ValueSliceReader>
 ROCKSDB_FLATTEN
 int Rdb_converter::decode_tpl(
-    const std::shared_ptr<Rdb_key_def> &pk_def,
+    const Rdb_key_def *pk_def,
     uchar *const dst,
     const rocksdb::Slice *key_slice,
     const rocksdb::Slice *value_slice,
@@ -819,13 +819,13 @@ int Rdb_converter::decode_tpl(
 }
 
 template int Rdb_converter::decode_tpl<Rdb_empty_reader>(
-    const std::shared_ptr<Rdb_key_def> &pk_def,
+    const Rdb_key_def *pk_def,
     uchar *const dst,
     const rocksdb::Slice *key_slice,
     const rocksdb::Slice *value_slice,
     bool decode_value);
 template int Rdb_converter::decode_tpl<Rdb_string_reader>(
-    const std::shared_ptr<Rdb_key_def> &pk_def,
+    const Rdb_key_def *pk_def,
     uchar *const dst,
     const rocksdb::Slice *key_slice,
     const rocksdb::Slice *value_slice,
@@ -842,7 +842,7 @@ template int Rdb_converter::decode_tpl<Rdb_string_reader>(
     other  HA_ERR error code (can be SE-specific)
 */
 int Rdb_converter::verify_row_debug_checksum(
-    const std::shared_ptr<Rdb_key_def> &pk_def, Rdb_string_reader *reader,
+    const Rdb_key_def *pk_def, Rdb_string_reader *reader,
     const rocksdb::Slice *key, const rocksdb::Slice *value) {
   if (reader->remaining_bytes() == RDB_CHECKSUM_CHUNK_SIZE &&
       reader->read(1)[0] == RDB_CHECKSUM_DATA_TAG) {
@@ -892,7 +892,7 @@ int Rdb_converter::verify_row_debug_checksum(
   @param value_slice          OUT       Data slice with record data.
 */
 int Rdb_converter::encode_value_slice(
-    const std::shared_ptr<Rdb_key_def> &pk_def,
+    const Rdb_key_def *pk_def,
     const rocksdb::Slice &pk_packed_slice, Rdb_string_writer *pk_unpack_info,
     bool is_update_row, bool store_row_debug_checksums, char *ttl_bytes,
     bool *is_ttl_bytes_updated, rocksdb::Slice *const value_slice) {

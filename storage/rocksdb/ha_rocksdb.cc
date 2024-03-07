@@ -13012,7 +13012,7 @@ int ha_rocksdb::update_write_pk(const Rdb_key_def &kd,
   rocksdb::Slice value_slice;
   /* Prepare the new record to be written into RocksDB */
   if ((rc = m_converter->encode_value_slice(
-           m_pk_descr, row_info.new_pk_slice, row_info.new_pk_unpack_info,
+           m_pk_descr.get(), row_info.new_pk_slice, row_info.new_pk_unpack_info,
            !row_info.old_pk_slice.empty(), should_store_row_debug_checksums(),
            m_ttl_bytes, &m_ttl_bytes_updated, &value_slice))) {
     return rc;

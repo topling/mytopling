@@ -171,16 +171,16 @@ class Rdb_converter {
              const rocksdb::Slice *key_slice, const rocksdb::Slice *value_slice,
              bool decode_value = true) {
     return value_slice->empty() && !m_has_instant_fields ?
-      decode_tpl<Rdb_empty_reader>(key_def, dst, key_slice, nullptr, decode_value) :
-      decode_tpl<Rdb_string_reader>(key_def, dst, key_slice, value_slice, decode_value);
+      decode_tpl<Rdb_empty_reader>(key_def.get(), dst, key_slice, nullptr, decode_value) :
+      decode_tpl<Rdb_string_reader>(key_def.get(), dst, key_slice, value_slice, decode_value);
   }
 
   template<class ValueSliceReader>
-  int decode_tpl(const std::shared_ptr<Rdb_key_def> &key_def, uchar *dst,
+  int decode_tpl(const Rdb_key_def *key_def, uchar *dst,
              const rocksdb::Slice *key_slice, const rocksdb::Slice *value_slice,
              bool decode_value);
 
-  int encode_value_slice(const std::shared_ptr<Rdb_key_def> &pk_def,
+  int encode_value_slice(const Rdb_key_def *pk_def,
                          const rocksdb::Slice &pk_packed_slice,
                          Rdb_string_writer *pk_unpack_info, bool is_update_row,
                          bool store_row_debug_checksums, char *ttl_bytes,
@@ -214,14 +214,14 @@ class Rdb_converter {
 
  private:
   int decode_value_header_for_pk(Rdb_string_reader *reader,
-                                 const std::shared_ptr<Rdb_key_def> &pk_def,
+                                 const Rdb_key_def *pk_def,
                                  rocksdb::Slice *unpack_slice);
 
   void setup_field_encoders(const dd::Table *dd_table);
 
   void get_storage_type(Rdb_field_encoder *const encoder, const uint kp);
 
-  int verify_row_debug_checksum(const std::shared_ptr<Rdb_key_def> &pk_def,
+  int verify_row_debug_checksum(const Rdb_key_def *pk_def,
                                 Rdb_string_reader *reader,
                                 const rocksdb::Slice *key,
                                 const rocksdb::Slice *value);
