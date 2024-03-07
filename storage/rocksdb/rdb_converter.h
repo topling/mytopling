@@ -29,6 +29,8 @@
 // MyRocks header files
 #include "./rdb_datadic.h"
 
+#include <terark/valvec32.hpp>
+
 namespace myrocks {
 class Rdb_field_encoder;
 class Rdb_tbl_def;
@@ -89,8 +91,8 @@ class Rdb_convert_to_record_value_decoder {
 template <typename value_field_decoder, typename dst_type>
 class Rdb_value_field_iterator {
  private:
-  std::vector<READ_FIELD>::const_iterator m_field_iter;
-  std::vector<READ_FIELD>::const_iterator m_field_end;
+  const READ_FIELD* m_field_iter;
+  const READ_FIELD* m_field_end;
   Rdb_string_reader *m_value_slice_reader;
   // null value map
   const char *m_null_bytes;
@@ -206,9 +208,7 @@ class Rdb_converter {
 
   char *get_ttl_bytes_buffer() { return m_ttl_bytes; }
 
-  const std::vector<READ_FIELD> *get_decode_fields() const {
-    return &m_decoders_vect;
-  }
+  auto get_decode_fields() const { return &m_decoders_vect; }
 
   const MY_BITMAP *get_lookup_bitmap() { return &m_lookup_bitmap; }
 
@@ -274,7 +274,7 @@ class Rdb_converter {
   /*
     Array of request fields telling how to decode data in RocksDB format
   */
-  std::vector<READ_FIELD> m_decoders_vect;
+  terark::valvec32<READ_FIELD> m_decoders_vect;
   /*
     A counter of how many row checksums were checked for this table. Note that
     this does not include checksums for secondary index entries.

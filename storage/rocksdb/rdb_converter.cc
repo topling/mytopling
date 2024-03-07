@@ -274,8 +274,8 @@ Rdb_value_field_iterator<value_field_decoder, dst_type>::
   m_table = table;
   m_value_slice_reader = value_slice_reader;
   auto fields = rdb_converter->get_decode_fields();
-  m_field_iter = fields->begin();
-  m_field_end = fields->end();
+  m_field_iter = fields->data();
+  m_field_end = fields->size() + m_field_iter;
   m_null_bytes = rdb_converter->get_null_bytes();
 }
 
@@ -491,8 +491,7 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
 
   // It could be that the last few elements are varchars that just do
   // skipping. Remove them.
-  m_decoders_vect.erase(m_decoders_vect.begin() + last_useful,
-                        m_decoders_vect.end());
+  m_decoders_vect.resize(last_useful);
   m_has_instant_fields = false;
   for (auto& field : m_decoders_vect) {
     if (field.m_field_enc->m_is_instant_field) {
