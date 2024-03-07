@@ -4505,9 +4505,11 @@ class Rdb_transaction {
       tmp_dbname += "-XXXXXX";
       mkdtemp(tmp_dbname.data());
       std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
+      auto default_memtab_fac = cfo[0].options.memtable_factory;
       auto s = cf->GetDescriptor(&cfo[0]);
       ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
       FixMergeTableCFO(&cfo[0].options);
+      cfo[0].options.memtable_factory = default_memtab_fac; // do not use CSPP
       std::vector<std::string> outputs;
       s = rocksdb::MergeTables(files.external_files, tmp_dbname, dbo, cfo, &outputs);
       ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
