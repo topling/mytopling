@@ -1196,7 +1196,9 @@ ENDIF()
 # Also works for gcc on Debian/Ubuntu. Do 'apt install lld'.
 # LTO build fails with lld, so turn it off by default.
 IF(LINUX AND NOT WITH_LTO AND NOT CMAKE_COMPILER_FLAG_WITH_LTO)
-  OPTION(USE_LD_LLD "Use llvm lld linker" ON)
+  IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    OPTION(USE_LD_LLD "Use llvm lld linker" ON)
+  ENDIF()
 ELSE()
   OPTION(USE_LD_LLD "Use llvm lld linker" OFF)
 ENDIF()
