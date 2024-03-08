@@ -6060,7 +6060,7 @@ static Rdb_ha_data *&get_ha_data_or_null(THD *const thd) {
 __always_inline
 static Rdb_ha_data *&get_ha_data(THD *const thd) {
   auto *&ha_data = get_ha_data_or_null(thd);
-  if (ha_data == nullptr) {
+  if (unlikely(ha_data == nullptr)) {
     ha_data = new Rdb_ha_data();
   }
   return ha_data;
