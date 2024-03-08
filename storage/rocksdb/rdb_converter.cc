@@ -35,6 +35,8 @@
 #include "./rdb_utils.h"
 #include "./sql_dd.h"
 
+#include <terark/bitmap.hpp>
+
 namespace myrocks {
 
 void dbug_modify_key_varchar8(String *on_disk_rec) {
@@ -439,7 +441,9 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
   // We also have to load the fields that are required to decode the requested
   // virtual fields.
 
-  std::vector<bool> bases(m_table->s->fields);
+  //std::vector<bool> bases(m_table->s->fields);
+  assert(m_table->s->fields <= MAX_FIELDS);
+  terark::static_bitmap<MAX_FIELDS> bases(false);
 
   for (uint i = 0; i < m_table->s->fields; i++) {
     const bool field_requested =
@@ -449,7 +453,7 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
     if (field_requested && m_table->field[i]->is_virtual_gcol()) {
       for (uint j = 0; j < m_table->s->fields; j++) {
         if (bitmap_is_set(&m_table->field[i]->gcol_info->base_columns_map, j)) {
-          bases[j] = true;
+          bases.set1(j);
         }
       }
     }
