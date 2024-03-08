@@ -714,14 +714,12 @@ int Rdb_converter::decode_tpl(
   rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
   key_slice = &rowkey_slice;
 #endif
-  bool skip_value = std::is_same_v<ValueSliceReader, Rdb_empty_reader> ||
-                    !decode_value || m_decoders_vect.empty();
-  if (unlikely(!m_key_requested && skip_value)) {
-    return HA_EXIT_SUCCESS;
-  }
-
   ValueSliceReader value_slice_reader(value_slice);
   if constexpr (!std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
+    bool skip_value = !decode_value || m_decoders_vect.empty();
+    if (unlikely(!m_key_requested && skip_value)) {
+      return HA_EXIT_SUCCESS;
+    }
     rocksdb::Slice unpack_slice;
     if (int err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice)) {
       return err;
@@ -737,6 +735,10 @@ int Rdb_converter::decode_tpl(
         return err;
       }
     }
+    if (skip_value) {
+      // We are done
+      return HA_EXIT_SUCCESS;
+    }
   }
   else {
     if (m_key_requested) {
@@ -746,11 +748,11 @@ int Rdb_converter::decode_tpl(
         return err;
       }
     }
-  }
-
-  if (skip_value) {
-    // We are done
-    return HA_EXIT_SUCCESS;
+    bool skip_value = !decode_value || m_decoders_vect.empty();
+    if (skip_value) {
+      // We are done
+      return HA_EXIT_SUCCESS;
+    }
   }
 
   if constexpr (!std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
