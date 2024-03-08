@@ -431,7 +431,7 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
                                          uint active_index, bool keyread_only,
                                          bool decode_all_fields) {
   m_key_requested = false;
-  m_decoders_vect.clear();
+  m_decoders_vect.resize(0);
   bitmap_free(&m_lookup_bitmap);
   int last_useful = 0;
   int skip_size = 0;
@@ -455,6 +455,7 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
     }
   }
 
+  m_decoders_vect.reserve(m_table->s->fields);
   for (uint i = 0; i < m_table->s->fields; i++) {
     bool field_requested =
         decode_all_fields || m_verify_row_debug_checksums ||
