@@ -132,6 +132,7 @@ class Rdb_iterator_base : public Rdb_iterator {
   void init(THD *thd, const std::shared_ptr<Rdb_key_def>& kd,
             const std::shared_ptr<Rdb_key_def>& pkd, const Rdb_tbl_def *tbl_def);
 
+  bool is_partial_iter() const { return m_is_partial_iter; }
   bool is_valid() override { return m_valid; }
   void set_ignore_killed(bool flag) { m_ignore_killed = flag; }
 
@@ -212,6 +213,7 @@ class Rdb_iterator_base : public Rdb_iterator {
   bool m_ignore_killed;
   bool m_kd_has_ttl = false;
   bool m_pkd_has_ttl = false;
+  bool m_is_partial_iter = false;
 
  #if defined(_MSC_VER) || defined(__clang__)
  #else

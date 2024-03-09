@@ -13587,7 +13587,7 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
   } else {
     if (rocksdb_reuse_iter && tx->m_iter_cache) {
       auto& kd = m_key_descr_arr[active_index_pos()];
-      ROCKSDB_VERIFY(dynamic_cast<Rdb_iterator_partial*>(tx->m_iter_cache.get()) == nullptr);
+      ROCKSDB_VERIFY(!tx->m_iter_cache->is_partial_iter());
       ROCKSDB_VERIFY_EQ(kd->get_cf_id(), 0); // 0 is default cf id
       tx->m_iter_cache->init(thd, kd, m_pk_descr, m_tbl_def);
       m_iterator = std::move(tx->m_iter_cache);
