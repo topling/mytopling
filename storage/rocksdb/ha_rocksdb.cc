@@ -283,7 +283,7 @@ std::unordered_map<ulonglong, std::weak_ptr<Rdb_explicit_snapshot>>
 /**
   Updates row counters based on the table type and operation type.
 */
-void ha_rocksdb::update_row_stats(const operation_type &type, ulonglong count) {
+void ha_rocksdb::update_row_stats(operation_type type, ulonglong count) {
   assert(type < ROWS_MAX);
   // Find if we are modifying system databases.
   if (m_is_mysql_system_table) {
@@ -11911,7 +11911,14 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
     /* TODO(yzha) - row stats are gone in 8.0
     stats.rows_read++;
     stats.rows_index_next++; */
+  #if 0
     update_row_stats(ROWS_READ);
+  #else
+    if (unlikely(++m_rows_read >= 128)) {
+      update_row_stats(ROWS_READ, m_rows_read);
+      m_rows_read = 0;
+    }
+  #endif
     table->m_status = 0;
   }
 
@@ -13535,6 +13542,11 @@ int ha_rocksdb::rnd_end() {
     ROCKSDB_VERIFY(nullptr != rocksdb::TopTableSetSeqScan);
     rocksdb::TopTableSetSeqScan(false);
     m_iter_is_scan = false;
+  }
+
+  if (m_rows_read) {
+    update_row_stats(ROWS_READ, m_rows_read);
+    m_rows_read = 0;
   }
 
   DBUG_RETURN(index_end());

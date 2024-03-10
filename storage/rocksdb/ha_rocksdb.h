@@ -189,6 +189,9 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   */
   bool m_ttl_bytes_updated;
 
+  // speed update_row_stats(ROWS_READ) in index_next_with_direction_intern
+  uint32_t m_rows_read = 0;
+
   uchar *m_pk_packed_tuple; /* Buffer for storing PK in StorageFormat */
   // ^^ todo: change it to 'char*'? TODO: ^ can we join this with last_rowkey?
 
@@ -366,7 +369,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
       MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
   [[nodiscard]] static bool has_hidden_pk(const TABLE &t);
 
-  void update_row_stats(const operation_type &type, ulonglong count = 1);
+  void update_row_stats(operation_type type, ulonglong count = 1);
 
   void set_last_rowkey(const uchar *const old_data);
   void set_last_rowkey(const char *str, size_t len);
