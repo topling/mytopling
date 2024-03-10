@@ -156,7 +156,7 @@ class blob_buffer {
   Class definition for ROCKSDB storage engine plugin handler
 */
 
-class ha_rocksdb : public my_core::handler, public blob_buffer {
+class ha_rocksdb final : public my_core::handler, public blob_buffer {
   Rdb_table_handler *m_table_handler;  ///< Open table handler
 
   Rdb_tbl_def *m_tbl_def;
