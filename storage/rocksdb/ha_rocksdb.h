@@ -61,6 +61,8 @@
 #include "./rdb_sst_info.h"
 #include "./rdb_utils.h"
 
+#include <terark/sso.hpp>
+
 /**
   @note MyRocks Coding Conventions:
   MyRocks code follows the baseline MySQL coding conventions, available at
@@ -230,7 +232,14 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   Rdb_iterator_proxy m_pk_iterator;
 
   /* rowkey of the last record we've read, in StorageFormat. */
-  String m_last_rowkey;
+  struct RowKeyStr : public terark::minimal_sso<64, false> {
+    char* ptr() { return this->data(); }
+    void copy(const char* s, size_t n, const CHARSET_INFO*) {
+      this->assign(s, n);
+    }
+    void mem_free() { this->destroy(); }
+  };
+  RowKeyStr m_last_rowkey;
 
   /*
     Last retrieved record, in table->record[0] data format.
