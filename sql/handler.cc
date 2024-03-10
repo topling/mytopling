@@ -2936,7 +2936,10 @@ void handler::ha_statistic_increment(
       (thd->status_var.*offset)++;
       thd->check_limit_rows_examined();
       thd->update_sql_stats_periodic();
-      thd->check_yield([t = table] { return yield_condition(t); });
+      if (unlikely(thd->m_check_yield_counting++ >= 200)) {
+        thd->m_check_yield_counting = 0;
+        thd->check_yield([t = table] { return yield_condition(t); });
+      }
     }
   }
 }
