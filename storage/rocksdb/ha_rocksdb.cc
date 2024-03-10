@@ -11945,8 +11945,7 @@ void ha_rocksdb::ha_statistic_increment(ulonglong System_status_var::*offset) {
   (thd->status_var.*offset)++;
   thd->check_limit_rows_examined();
   thd->update_sql_stats_periodic();
-  if (unlikely(thd->m_check_yield_counting++ >= 200)) {
-    thd->m_check_yield_counting = 0;
+  if (unlikely(m_rows_read % 64 == 0)) {
     thd->check_yield([t = table] { return yield_condition(t); });
   }
 }
