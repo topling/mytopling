@@ -234,6 +234,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   /* rowkey of the last record we've read, in StorageFormat. */
   struct RowKeyStr : public terark::minimal_sso<64, false> {
     char* ptr() { return this->data(); }
+    __always_inline ROCKSDB_FLATTEN
     void copy(const char* s, size_t n, const CHARSET_INFO*) {
       this->assign(s, n);
     }
