@@ -6086,12 +6086,17 @@ void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler) {
 
 __always_inline
 Rdb_transaction *inline_get_tx_from_thd(THD *const thd) {
+#if 0
   return get_ha_data(thd)->get_trx();
+#else
+  return thd->m_rdb_trx;
+#endif
 }
 // use inline in this translation unit
 #define get_tx_from_thd inline_get_tx_from_thd
 
 static void set_tx_on_thd(THD *const thd, Rdb_transaction *trx) {
+  thd->m_rdb_trx = trx;
   return get_ha_data(thd)->set_trx(trx);
 }
 
@@ -11784,7 +11789,6 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
   assert(ha_thd() == table->in_use);
 //THD *thd = ha_thd();
   THD* thd = table->in_use;
-  Rdb_transaction* tx = get_tx_from_thd(thd);
   int rc = 0;
   const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
 
@@ -11837,6 +11841,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
             continue;
           }
         } else {
+          Rdb_transaction* tx = get_tx_from_thd(thd);
           const rocksdb::Slice key = m_iterator->key();
           const rocksdb::Slice value = m_iterator->value();
           tx->acquire_snapshot(false, m_tbl_def->get_table_type());

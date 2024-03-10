@@ -913,6 +913,10 @@ class Transactional_ddl_context {
 
 struct PS_PARAM;
 
+namespace myrocks {
+  class Rdb_transaction; // add Rdb_transaction ptr to speed up
+} // namespace myrocks
+
 /**
   @class THD
   For each client connection we create a separate thread with THD serving as
@@ -944,6 +948,9 @@ class THD : public MDL_context_owner,
   }
 
  public:
+
+  myrocks::Rdb_transaction* m_rdb_trx = nullptr;
+
   MDL_context mdl_context;
 
   /**
@@ -1143,6 +1150,7 @@ class THD : public MDL_context_owner,
   struct System_status_var *initial_status_var; /* used by show status */
   // has status_var already been added to global_status_var?
   bool status_var_aggregated;
+  uint32_t m_check_yield_counting = 0;
 
   /**
     Session's connection attributes for the connected client
