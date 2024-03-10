@@ -2923,7 +2923,7 @@ static bool check_if_system_table(const char *db, const char *table_name,
   return true;
 }
 
-static bool yield_condition(TABLE *table) {
+bool yield_condition(TABLE *table) {
   bool unused;
   return !check_if_system_table(table->s->db.str, table->s->table_name.str,
                                 &unused);

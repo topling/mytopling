@@ -402,6 +402,9 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
   static int update_stats(ha_statistics *ha_stats, Rdb_tbl_def *tbl_def,
                           bool from_handler = false);
 
+  // intentional hide handler::ha_statistic_increment
+  void ha_statistic_increment(ulonglong System_status_var::*);
+
   /*
     Controls whether writes include checksums. This is updated from the session
     variable

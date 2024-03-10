@@ -131,6 +131,7 @@ extern "C" {
 void thd_mark_transaction_to_rollback(MYSQL_THD thd, int all);
 }
 
+extern bool yield_condition(TABLE*);
 extern bool opt_binlog_ddl_only_follower; // defined in mysqld.cc
 
 /**
@@ -11938,6 +11939,18 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
   DBUG_RETURN(rc);
 }
 
+__always_inline
+void ha_rocksdb::ha_statistic_increment(ulonglong System_status_var::*offset) {
+  THD* thd = m_converter->get_thd() ? : ha_thd();
+  (thd->status_var.*offset)++;
+  thd->check_limit_rows_examined();
+  thd->update_sql_stats_periodic();
+  if (unlikely(thd->m_check_yield_counting++ >= 200)) {
+    thd->m_check_yield_counting = 0;
+    thd->check_yield([t = table] { return yield_condition(t); });
+  }
+}
+
 Rdb_iterator_base *ha_rocksdb::get_pk_iterator() {
   if (!m_pk_iterator) {
     m_pk_iterator.reset(new Rdb_iterator_base(ha_thd(), nullptr, m_pk_descr,
@@ -13558,6 +13571,7 @@ void ha_rocksdb::build_decoder() {
                                     m_lock_rows != RDB_LOCK_NONE);
 }
 
+__always_inline
 void ha_rocksdb::check_build_decoder() {
   if (UNLIKELY(m_need_build_decoder)) {
     build_decoder();
