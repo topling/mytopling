@@ -199,8 +199,7 @@ class Rdb_iterator_base : public Rdb_iterator {
 #else
   static constexpr bool m_kd_is_reverse_cf = false;
 #endif
-  bool m_forward_needs_prefix_check : 1;
-  bool m_backward_needs_prefix_check : 1;
+  bool m_scan_check_prefix = true;
 
   const rocksdb::Snapshot *m_scan_it_snapshot;
 

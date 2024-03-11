@@ -121,8 +121,6 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
 #endif
   m_kd_has_ttl = kd->has_ttl();
   m_pkd_has_ttl = pkd->has_ttl();
-  m_forward_needs_prefix_check = true; // safe
-  m_backward_needs_prefix_check = true; // safe
 }
 
 Rdb_iterator_base::~Rdb_iterator_base() {
@@ -435,8 +433,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
     const rocksdb::Slice key = InvokeRocksIter_key();
 
-    if ((move_forward && m_forward_needs_prefix_check) ||
-        (!move_forward && m_backward_needs_prefix_check)) {
+    if (m_scan_check_prefix) {
       // Outside our range, return EOF.
       if (!m_kd->value_matches_prefix(key, m_prefix_tuple)) {
         rc = HA_ERR_END_OF_FILE;
@@ -517,8 +514,8 @@ int Rdb_iterator_base::seek(enum ha_rkey_function find_flag,
   */
   setup_scan_iterator(&start_key, eq_cond_len, read_current);
 
-  m_forward_needs_prefix_check = m_scan_it_upper_bound_slice.starts_with(m_prefix_tuple);
-  m_backward_needs_prefix_check = m_scan_it_lower_bound_slice.starts_with(m_prefix_tuple);
+  m_scan_check_prefix = !m_check_iterate_bounds ||
+    m_prefix_tuple.size() > Rdb_key_def::INDEX_NUMBER_SIZE;
 
   /*
     Once we are positioned on from above, move to the position we really
@@ -809,8 +806,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
     // Restore m_prefix_tuple
     memcpy(m_prefix_buf, prefix_buf_copy, prefix_buf_len);
     m_prefix_tuple = rocksdb::Slice((char *)m_prefix_buf, prefix_buf_len);
-    m_forward_needs_prefix_check = true; // seek prefix is not same with scan
-    m_backward_needs_prefix_check = true; // prefix, so prefix check is needed
+    m_scan_check_prefix = true; // be safe
   }
 
   return rc;
