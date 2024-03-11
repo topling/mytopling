@@ -110,9 +110,9 @@ class Rdb_iterator_base : public Rdb_iterator {
           Rdb_lock_type type, bool skip_ttl_check = false,
           bool skip_wait = false) override;
 
-  int next() override { return next_with_direction(true, false); }
+  int next() override;
 
-  int prev() override { return next_with_direction(false, false); }
+  int prev() override;
 
  #if defined(_MSC_VER) || defined(__clang__)
   rocksdb::Slice key() override { return m_scan_it->key(); }

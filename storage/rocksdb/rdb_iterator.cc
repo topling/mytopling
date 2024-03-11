@@ -379,6 +379,14 @@ int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
   return Rdb_key_def::INDEX_NUMBER_SIZE;
 }
 
+ROCKSDB_FLATTEN int Rdb_iterator_base::next() {
+  return next_with_direction(true, false);
+}
+
+ROCKSDB_FLATTEN int Rdb_iterator_base::prev() {
+  return next_with_direction(false, false);
+}
+
 int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   int rc = 0;
   const auto &kd = *m_kd;
