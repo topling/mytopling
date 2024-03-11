@@ -11363,6 +11363,7 @@ int ha_rocksdb::check(THD *const thd MY_ATTRIBUTE((__unused__)),
   bool save_verify_row_debug_checksums =
       m_converter->get_verify_row_debug_checksums();
   m_converter->set_verify_row_debug_checksums(true);
+  m_converter->set_thd(thd);
   /* For each secondary index, check that we can get a PK value from it */
   // NO_LINT_DEBUG
   sql_print_information("CHECKTABLE %s: Checking table %s", table_name,
@@ -13746,6 +13747,7 @@ int ha_rocksdb::reset() {
   m_iterator.reset(nullptr);
   m_pk_iterator.reset(nullptr);
   m_converter->reset_buffer();
+  m_converter->set_thd(nullptr);
   DBUG_RETURN(HA_EXIT_SUCCESS);
 }
 
@@ -14334,6 +14336,7 @@ THR_LOCK_DATA **ha_rocksdb::store_lock(THD *const thd, THR_LOCK_DATA **to,
   DBUG_ENTER_FUNC();
 
   assert(thd != nullptr);
+  m_converter->set_thd(thd);
 
   /* Make a decision about MyRocks's internal locking */
   if (lock_type >= TL_WRITE_ALLOW_WRITE) {
@@ -14402,6 +14405,7 @@ THR_LOCK_DATA **ha_rocksdb::store_lock(THD *const thd, THR_LOCK_DATA **to,
 
 void ha_rocksdb::read_thd_vars(THD *const thd) {
   m_store_row_debug_checksums = THDVAR(thd, store_row_debug_checksums);
+  m_converter->set_thd(thd);
   m_converter->set_verify_row_debug_checksums(
       THDVAR(thd, verify_row_debug_checksums));
   m_checksums_pct = THDVAR(thd, checksums_pct);

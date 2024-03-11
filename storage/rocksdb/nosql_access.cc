@@ -2117,6 +2117,7 @@ void INLINE_ATTR select_exec::scan_value() {
     m_key_def->get_lookup_bitmap(m_table, &m_lookup_bitmap);
   }
 
+  m_converter->set_thd(m_thd);
   m_converter->setup_field_decoders(m_table->read_set, m_index,
                                     false /* keyread_only */);
 }
