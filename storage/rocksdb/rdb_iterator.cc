@@ -411,11 +411,9 @@ ROCKSDB_FLATTEN int Rdb_iterator_base::prev() {
 
 int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   int rc = 0;
-  const auto &kd = *m_kd;
-  Rdb_transaction* tx = nullptr;
 
   if (!m_valid) return HA_ERR_END_OF_FILE;
-  assert(kd.get_cf()->GetComparator()->IsForwardBytewise());
+  assert(m_kd->get_cf()->GetComparator()->IsForwardBytewise());
 
   const uint32_t refresh_interval = 10000;
   if (unlikely(++m_call_cnt >= refresh_interval)) {
@@ -456,7 +454,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     if ((move_forward && m_forward_needs_prefix_check) ||
         (!move_forward && m_backward_needs_prefix_check)) {
       // Outside our range, return EOF.
-      if (!kd.value_matches_prefix(key, m_prefix_tuple)) {
+      if (!m_kd->value_matches_prefix(key, m_prefix_tuple)) {
         rc = HA_ERR_END_OF_FILE;
         break;
       }
@@ -489,10 +487,8 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     // Record is not visible due to TTL, move to next record.
     if (m_pkd_has_ttl) {
       const rocksdb::Slice value = InvokeRocksIter_val();
-      if (!tx) {
-        tx = get_tx_from_thd(m_thd);
-      }
-      if (rdb_should_hide_ttl_rec(kd, &value, tx)) {
+      auto tx = m_thd->m_rdb_trx;
+      if (rdb_should_hide_ttl_rec(*m_kd, &value, tx)) {
         continue;
       }
     }
