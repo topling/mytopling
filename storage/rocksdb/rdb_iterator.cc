@@ -437,13 +437,20 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     // in rev cf, lower_bound: 0078 and uppper bound: 0076
     //     revcf->Compare(0077, 0076) > 0 ==> False
     //     revcf->Compare(0077, 0078) < 0 ==> False
-    if (m_check_iterate_bounds &&
-        ((!m_scan_it_upper_bound_slice.empty() &&
-          key > m_scan_it_upper_bound_slice) ||
-         (!m_scan_it_lower_bound_slice.empty() &&
-          key < m_scan_it_lower_bound_slice))) {
-      rc = HA_ERR_END_OF_FILE;
-      break;
+    if (m_check_iterate_bounds) {
+      if (m_kd_is_reverse_cf ^ move_forward) {
+        if (!m_scan_it_upper_bound_slice.empty() &&
+            key > m_scan_it_upper_bound_slice) {
+          rc = HA_ERR_END_OF_FILE;
+          break;
+        }
+      } else {
+        if (!m_scan_it_lower_bound_slice.empty() &&
+            key < m_scan_it_lower_bound_slice) {
+          rc = HA_ERR_END_OF_FILE;
+          break;
+        }
+      }
     }
 
     // Record is not visible due to TTL, move to next record.
