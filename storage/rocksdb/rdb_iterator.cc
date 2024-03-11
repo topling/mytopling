@@ -107,6 +107,8 @@ public:
   }
 };
 
+static inline bool thd_killed(const THD* thd) { return thd->killed; }
+
 Rdb_iterator::~Rdb_iterator() {}
 
 Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
