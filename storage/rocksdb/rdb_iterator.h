@@ -194,7 +194,11 @@ class Rdb_iterator_base : public Rdb_iterator {
   /* Whether m_scan_it was created with skip_bloom=true */
   bool m_scan_it_skips_bloom;
   bool m_has_been_setup = false;
+#if defined(MYTOPLING_WITH_REVERSE_CF)
   bool m_kd_is_reverse_cf = false;
+#else
+  static constexpr bool m_kd_is_reverse_cf = false;
+#endif
   bool m_forward_needs_prefix_check : 1;
   bool m_backward_needs_prefix_check : 1;
   class ScanSetupPrefixCheck;

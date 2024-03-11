@@ -136,7 +136,9 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
       add_tmp_table_handler(m_thd, m_rocksdb_handler);
     }
   }
+#if defined(MYTOPLING_WITH_REVERSE_CF)
   m_kd_is_reverse_cf = kd->m_is_reverse_cf;
+#endif
   m_kd_has_ttl = kd->has_ttl();
   m_pkd_has_ttl = pkd->has_ttl();
   m_forward_needs_prefix_check = true; // safe
