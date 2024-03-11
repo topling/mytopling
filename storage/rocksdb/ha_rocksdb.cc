@@ -9005,6 +9005,7 @@ ulonglong ha_rocksdb::load_auto_incr_value_from_index() {
   const bool save_keyread_only = m_keyread_only;
   m_keyread_only = true;
   m_converter->set_is_key_requested(true);
+  SetActiveIndexType();
 
   if (!index_last(table->record[0])) {
     Field *field =
@@ -9044,6 +9045,8 @@ ulonglong ha_rocksdb::load_auto_incr_value_from_index() {
     as private, for some reason).
     */
   std::swap(m_iterator, save_iterator);
+
+  SetActiveIndexType();
 
   return last_val;
 }
@@ -9087,6 +9090,7 @@ void ha_rocksdb::update_auto_incr_val_from_field(Rdb_transaction* tx) {
 int ha_rocksdb::load_hidden_pk_value() {
   const int save_active_index = active_index;
   active_index = MAX_KEY;
+  SetActiveIndexType();
   const uint8 save_table_status = table->m_status;
 
   std::unique_ptr<Rdb_iterator_base> save_iterator(new Rdb_iterator_base(
@@ -9097,6 +9101,7 @@ int ha_rocksdb::load_hidden_pk_value() {
   Rdb_transaction *const tx =
       get_or_create_tx(table->in_use, m_tbl_def->get_table_type());
   const bool is_new_snapshot = !tx->has_snapshot(m_tbl_def->get_table_type());
+  SetActiveIndexType();
 
   longlong hidden_pk_id = 1;
   longlong old = 0;
@@ -9127,6 +9132,7 @@ exit:
   table->m_status = save_table_status;
   active_index = save_active_index;
   std::swap(m_iterator, save_iterator);
+  SetActiveIndexType();
 
   return rc;
 }
@@ -11787,11 +11793,9 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
                                                  bool skip_next) {
   DBUG_ENTER_FUNC();
 
-  assert(ha_thd() == table->in_use);
-//THD *thd = ha_thd();
-  THD* thd = table->in_use;
+  assert(ha_thd() == m_converter->get_thd());
+  THD* thd = m_converter->get_thd(); // embeded field
   int rc = 0;
-  const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
 
   table->m_status = STATUS_NOT_FOUND;
   /* TODO(yzha) - row stats are gone in 8.0
@@ -11827,7 +11831,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
     if (m_iteration_only) {
       table->m_status = 0;
       rc = 0;
-    } else if (active_index == table->s->primary_key) {
+    } else if (ActiveIndexType::Primary == m_active_index_type) {
       if (m_lock_rows != RDB_LOCK_NONE) {
         DEBUG_SYNC(thd, "rocksdb_concurrent_delete");
         if (ALWAYS_LOCK_BY_GET ||
@@ -11847,6 +11851,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
           const rocksdb::Slice value = m_iterator->value();
           tx->acquire_snapshot(false, m_tbl_def->get_table_type());
           // We need to put a lock, no need to re-read
+          const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
           rc = tx->try_acquire_lock(kd, m_tbl_def, key, true);
           if (rc != HA_EXIT_SUCCESS) {
             if (should_skip_locked_record(rc)) {
@@ -11863,9 +11868,12 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
         m_last_rowkey.copy(key.data(), key.size(), &my_charset_bin);
         rc = convert_record_from_storage_format(&key, &value, buf);
       }
+    } else if (unlikely(ActiveIndexType::Unknown == m_active_index_type)) {
+      ROCKSDB_DIE("m_active_index_type is unknown");
     } else {
       const rocksdb::Slice key = m_iterator->key();
       const rocksdb::Slice value = m_iterator->value();
+      const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
       rc = kd.unpack_record(table, buf, &key, &value,
                             m_converter->get_verify_row_debug_checksums());
       if (UNLIKELY(rc != HA_EXIT_SUCCESS)) {
@@ -13507,6 +13515,7 @@ int ha_rocksdb::rnd_init(bool scan MY_ATTRIBUTE((__unused__))) {
   } else {
     m_iter_is_scan = false;
   }
+  m_active_index_type = ActiveIndexType::Unknown;
   m_need_build_decoder = true;
   m_rnd_scan_started = false;
   DBUG_RETURN(
@@ -13564,7 +13573,20 @@ int ha_rocksdb::rnd_end() {
   DBUG_RETURN(index_end());
 }
 
+void ha_rocksdb::SetActiveIndexType() {
+  if (active_index == table->s->primary_key) {
+    // may be hidden primary key
+    m_active_index_type = ActiveIndexType::Primary;
+  } else {
+    m_active_index_type = ActiveIndexType::Secondary;
+  }
+  if (unlikely(m_converter->get_thd() == nullptr)) {
+    m_converter->set_thd(ha_thd());
+  }
+}
+
 void ha_rocksdb::build_decoder() {
+  SetActiveIndexType();
   m_converter->setup_field_decoders(table->read_set, active_index,
                                     m_keyread_only,
                                     m_lock_rows != RDB_LOCK_NONE);
@@ -13595,6 +13617,7 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
       get_or_create_tx(thd, m_tbl_def->get_table_type());
   assert(tx != nullptr);
 
+  m_active_index_type = ActiveIndexType::Unknown;
   m_need_build_decoder = true;
 
   active_index = idx;
@@ -13627,6 +13650,8 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
           thd, this, m_key_descr_arr[active_index_pos()], m_pk_descr, m_tbl_def));
     }
   }
+
+  SetActiveIndexType();
 
   // If m_lock_rows is not RDB_LOCK_NONE then we will be doing a get_for_update
   // when accessing the index, so don't acquire the snapshot right away.
@@ -19622,6 +19647,7 @@ int ha_rocksdb::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                       uint n_ranges, uint mode,
                                       HANDLER_BUFFER *buf) {
   m_need_build_decoder = true;
+  m_active_index_type = ActiveIndexType::Unknown;
 
   int res;
 

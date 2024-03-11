@@ -267,6 +267,12 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
 
   thr_locked_row_action m_locked_row_action;
 
+  enum class ActiveIndexType : unsigned char {
+    Primary, Secondary, Unknown
+  };
+  ActiveIndexType m_active_index_type = ActiveIndexType::Unknown;
+  void SetActiveIndexType();
+
   /* true means we're doing an index-only read. false means otherwise. */
   bool m_keyread_only;
 

@@ -213,6 +213,7 @@ class Rdb_converter {
   const MY_BITMAP *get_lookup_bitmap() { return &m_lookup_bitmap; }
 
   THD* get_thd() const { return const_cast<THD*>(m_thd); }
+  void set_thd(THD* thd) { m_thd = thd; }
 
  private:
   int decode_value_header_for_pk(Rdb_string_reader *reader,
