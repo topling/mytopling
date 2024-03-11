@@ -405,13 +405,13 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
   for (;;) {
     DEBUG_SYNC(m_thd, "rocksdb.check_flags_nwd");
-    if (!m_ignore_killed && thd_killed(m_thd)) {
+    if (unlikely(!m_ignore_killed && thd_killed(m_thd))) {
       rc = HA_ERR_QUERY_INTERRUPTED;
       break;
     }
 
     assert(m_scan_it != nullptr);
-    if (m_scan_it == nullptr) {
+    if (unlikely(m_scan_it == nullptr)) {
       rc = HA_ERR_INTERNAL_ERROR;
       break;
     }
@@ -426,7 +426,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
       }
     }
 
-    if (!is_valid_iterator(m_scan_it)) {
+    if (unlikely(!is_valid_iterator(m_scan_it))) {
       rc = HA_ERR_END_OF_FILE;
       break;
     }
