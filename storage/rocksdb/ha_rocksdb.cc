@@ -11949,7 +11949,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
 
 __always_inline
 void ha_rocksdb::ha_statistic_increment(ulonglong System_status_var::*offset) {
-  THD* thd = m_converter->get_thd() ? : ha_thd();
+  THD* thd = m_converter->get_thd();
   (thd->status_var.*offset)++;
   thd->check_limit_rows_examined();
   thd->update_sql_stats_periodic();
@@ -13580,9 +13580,7 @@ void ha_rocksdb::SetActiveIndexType() {
   } else {
     m_active_index_type = ActiveIndexType::Secondary;
   }
-  if (unlikely(m_converter->get_thd() == nullptr)) {
-    m_converter->set_thd(ha_thd());
-  }
+  m_converter->set_thd(ha_thd());
 }
 
 void ha_rocksdb::build_decoder() {
