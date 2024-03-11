@@ -201,8 +201,6 @@ class Rdb_iterator_base : public Rdb_iterator {
 #endif
   bool m_forward_needs_prefix_check : 1;
   bool m_backward_needs_prefix_check : 1;
-  class ScanSetupPrefixCheck;
-  friend class ScanSetupPrefixCheck;
 
   const rocksdb::Snapshot *m_scan_it_snapshot;
 
