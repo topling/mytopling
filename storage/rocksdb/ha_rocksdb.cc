@@ -13544,7 +13544,11 @@ int ha_rocksdb::rnd_next(uchar *const buf) {
     Since order does not matter, the scan will occur go with natural index
     order.
   */
+#if defined(MYTOPLING_WITH_REVERSE_CF)
   bool is_reverse_cf = m_key_descr_arr[active_index_pos()]->m_is_reverse_cf;
+#else
+  constexpr bool is_reverse_cf = false;
+#endif
   if (!m_rnd_scan_started) {
     rc = index_read_intern(buf, !is_reverse_cf /* first */);
     m_rnd_scan_started = true;
