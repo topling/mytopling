@@ -11951,10 +11951,12 @@ void ha_rocksdb::ha_statistic_increment(ulonglong System_status_var::*offset) {
   THD* thd = table->in_use ? : current_thd;
   if (unlikely(!thd))
     return;
+  auto cnt = thd->m_check_yield_counting++;
   (thd->status_var.*offset)++;
   thd->check_limit_rows_examined();
   thd->update_sql_stats_periodic();
-  if (unlikely(m_rows_read % 64 == 0)) {
+  if (unlikely(cnt >= 200)) {
+    thd->m_check_yield_counting = 0;
     thd->check_yield([t = table] { return yield_condition(t); });
   }
 }
