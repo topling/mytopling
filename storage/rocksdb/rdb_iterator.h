@@ -195,6 +195,10 @@ class Rdb_iterator_base : public Rdb_iterator {
   bool m_scan_it_skips_bloom;
   bool m_has_been_setup = false;
   bool m_kd_is_reverse_cf = false;
+  bool m_forward_needs_prefix_check : 1;
+  bool m_backward_needs_prefix_check : 1;
+  class ScanSetupPrefixCheck;
+  friend class ScanSetupPrefixCheck;
 
   const rocksdb::Snapshot *m_scan_it_snapshot;
 

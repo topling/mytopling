@@ -87,6 +87,26 @@ void* Rdb_iterator_partial::bind_get_kv(slice_ft* get_key, slice_ft* get_val) {
 }
 #endif
 
+class Rdb_iterator_base::ScanSetupPrefixCheck {
+public:
+  Rdb_iterator_base* m_p;
+  __always_inline ScanSetupPrefixCheck(Rdb_iterator_base* p) {
+    m_p = p;
+    p->m_forward_needs_prefix_check = true; // safe
+    p->m_backward_needs_prefix_check = true; // safe
+  }
+  __always_inline ~ScanSetupPrefixCheck() {
+    auto p = m_p;
+    if (p->m_check_iterate_bounds) { // optimal
+      p->m_forward_needs_prefix_check = !p->m_scan_it_upper_bound_slice.starts_with(p->m_prefix_tuple);
+      p->m_backward_needs_prefix_check = !p->m_scan_it_lower_bound_slice.starts_with(p->m_prefix_tuple);
+    } else {
+      p->m_forward_needs_prefix_check = true;
+      p->m_backward_needs_prefix_check = true;
+    }
+  }
+};
+
 Rdb_iterator::~Rdb_iterator() {}
 
 Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
@@ -117,6 +137,8 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
   m_kd_is_reverse_cf = kd->m_is_reverse_cf;
   m_kd_has_ttl = kd->has_ttl();
   m_pkd_has_ttl = pkd->has_ttl();
+  m_forward_needs_prefix_check = true; // safe
+  m_backward_needs_prefix_check = true; // safe
 }
 
 Rdb_iterator_base::~Rdb_iterator_base() {
@@ -431,10 +453,13 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
     const rocksdb::Slice key = InvokeRocksIter_key();
 
-    // Outside our range, return EOF.
-    if (!kd.value_matches_prefix(key, m_prefix_tuple)) {
-      rc = HA_ERR_END_OF_FILE;
-      break;
+    if ((move_forward && m_forward_needs_prefix_check) ||
+        (!move_forward && m_backward_needs_prefix_check)) {
+      // Outside our range, return EOF.
+      if (!kd.value_matches_prefix(key, m_prefix_tuple)) {
+        rc = HA_ERR_END_OF_FILE;
+        break;
+      }
     }
 
     // Check specified lower/upper bounds
@@ -487,6 +512,7 @@ int Rdb_iterator_base::seek(enum ha_rkey_function find_flag,
                             const rocksdb::Slice end_key, bool read_current) {
   int rc = 0;
   int bytes_changed_by_succ = 0;
+  ScanSetupPrefixCheck setup_prefix_check(this); // guard
 
   setup_prefix_buffer(find_flag, start_key);
 
@@ -751,6 +777,8 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
   // Fetch next prefix using PK.
   int rc = get_next_prefix(direction);
   if (rc) return rc;
+
+  ScanSetupPrefixCheck setup_prefix_check(this); // guard
 
   // First try reading from SK in the current prefix.
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
