@@ -343,47 +343,6 @@ Rdb_key_def::Rdb_key_def(
   m_cf_id = cf_handle_arg->GetID();
 }
 
-Rdb_key_def::Rdb_key_def(const Rdb_key_def &k)
-    : m_index_number(k.get_index_number()),
-      m_cf_handle(k.m_cf_handle),
-      m_is_reverse_cf(k.m_is_reverse_cf),
-      m_is_per_partition_cf(k.m_is_per_partition_cf),
-      m_name(k.m_name),
-      m_stats(k.m_stats),
-      m_index_flags_bitmap(k.m_index_flags_bitmap),
-      m_ttl_rec_offset(k.m_ttl_rec_offset),
-      m_ttl_duration(k.m_ttl_duration),
-      m_ttl_column(k.m_ttl_column),
-      m_pk_part_no(k.m_pk_part_no),
-      m_pack_info(k.m_pack_info),
-      m_keyno(k.m_keyno),
-      m_key_parts(k.m_key_parts),
-      m_ttl_pk_key_part_offset(k.m_ttl_pk_key_part_offset),
-      m_ttl_field_index(UINT_MAX),
-      m_partial_index_keyparts(k.m_partial_index_keyparts),
-      m_partial_index_threshold(k.m_partial_index_threshold),
-      m_prefix_extractor(k.m_prefix_extractor),
-      m_maxlength(k.m_maxlength) {
-  mysql_mutex_init(0, &m_mutex, MY_MUTEX_INIT_FAST);
-  rdb_netbuf_store_index(m_index_number_storage_form, get_index_number());
-  m_total_index_flags_length =
-      calculate_index_flag_offset(m_index_flags_bitmap, MAX_FLAG);
-  if (k.m_pack_info) {
-    const size_t size = sizeof(Rdb_field_packing) * k.m_key_parts;
-    void *buf = my_malloc(PSI_NOT_INSTRUMENTED, size, MYF(0));
-    m_pack_info = new (buf) Rdb_field_packing(*k.m_pack_info);
-  }
-
-  if (k.m_pk_part_no) {
-    const size_t size = sizeof(uint) * m_key_parts;
-    m_pk_part_no =
-        reinterpret_cast<uint *>(my_malloc(PSI_NOT_INSTRUMENTED, size, MYF(0)));
-    memcpy(m_pk_part_no, k.m_pk_part_no, size);
-  }
-  assert(m_cf_handle->GetID() == k.m_cf_id);
-  m_cf_id = k.m_cf_id;
-}
-
 Rdb_key_def::~Rdb_key_def() {
   mysql_mutex_destroy(&m_mutex);
 
