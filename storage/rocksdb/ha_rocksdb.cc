@@ -13572,11 +13572,6 @@ int ha_rocksdb::rnd_end() {
     m_iter_is_scan = false;
   }
 
-  if (m_rows_read) {
-    update_row_stats(ROWS_READ, m_rows_read);
-    m_rows_read = 0;
-  }
-
   DBUG_RETURN(index_end());
 }
 
@@ -13692,6 +13687,10 @@ int ha_rocksdb::index_end() {
     }
   } else {
     m_iterator.reset(nullptr);
+  }
+  if (m_rows_read) {
+    update_row_stats(ROWS_READ, m_rows_read);
+    m_rows_read = 0;
   }
 
   active_index = MAX_KEY;
