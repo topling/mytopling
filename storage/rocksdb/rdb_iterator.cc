@@ -95,42 +95,27 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
                                      const std::shared_ptr<Rdb_key_def> kd,
                                      const std::shared_ptr<Rdb_key_def> pkd,
                                      const Rdb_tbl_def *tbl_def)
-    : m_kd(kd),
-      m_pkd(pkd),
-      m_tbl_def(tbl_def),
-      m_thd(thd),
-      m_rocksdb_handler(rocksdb_handler),
-      m_scan_it(nullptr),
-      m_scan_it_skips_bloom(false),
-      m_scan_it_snapshot(nullptr),
-      m_scan_it_lower_bound(nullptr),
-      m_scan_it_upper_bound(nullptr),
-      m_packed_buf_len(0),
-      m_prefix_buf(nullptr),
-      m_table_type(tbl_def->get_table_type()),
-      m_valid(false),
-      m_check_iterate_bounds(false),
-      m_ignore_killed(false) {
+{
+  m_rocksdb_handler = rocksdb_handler;
   if (tbl_def->get_table_type() == INTRINSIC_TMP) {
+    ROCKSDB_DIE("MyTopling does not support INTRINSIC_TMP table");
     if (m_rocksdb_handler) {
       add_tmp_table_handler(m_thd, m_rocksdb_handler);
     }
   }
-#if defined(MYTOPLING_WITH_REVERSE_CF)
-  m_kd_is_reverse_cf = kd->m_is_reverse_cf;
-#endif
-  m_kd_has_ttl = kd->has_ttl();
-  m_pkd_has_ttl = pkd->has_ttl();
+  init(thd, kd, pkd, tbl_def);
 }
 
 Rdb_iterator_base::~Rdb_iterator_base() {
   release_scan_iterator();
-  my_free(m_scan_it_lower_bound);
-  m_scan_it_lower_bound = nullptr;
-  my_free(m_scan_it_upper_bound);
-  m_scan_it_upper_bound = nullptr;
-  my_free(m_prefix_buf);
-  m_prefix_buf = nullptr;
+  if (m_packed_buf_len > sizeof(m_prefix_sso)) {
+    my_free(m_scan_it_lower_bound);
+    m_scan_it_lower_bound = nullptr;
+    my_free(m_scan_it_upper_bound);
+    m_scan_it_upper_bound = nullptr;
+    my_free(m_prefix_buf);
+    m_prefix_buf = nullptr;
+  }
   if (m_table_type == INTRINSIC_TMP) {
     if (m_rocksdb_handler) {
       remove_tmp_table_handler(m_thd, m_rocksdb_handler);
@@ -147,14 +132,30 @@ void Rdb_iterator_base::init(THD *thd,
   m_pkd = pkd;
   m_tbl_def = tbl_def;
   m_table_type = tbl_def->get_table_type();
+  m_valid = false;
+  m_check_iterate_bounds = false;
+  m_ignore_killed = false;
+  m_scan_it_skips_bloom = false;
+  m_scan_check_prefix = true;
+#if defined(MYTOPLING_WITH_REVERSE_CF)
+  m_kd_is_reverse_cf = kd->m_is_reverse_cf;
+#endif
+  m_kd_has_ttl = kd->has_ttl();
+  m_pkd_has_ttl = pkd->has_ttl();
+  m_index_number_storage_form = kd->get_index_number_storage_form();
 
+  static_assert(sizeof(m_prefix_sso) == sizeof(m_scan_it_lower_bound_sso));
+  static_assert(sizeof(m_prefix_sso) == sizeof(m_scan_it_upper_bound_sso));
+  static_assert(offsetof(Rdb_iterator_base, m_prefix_tuple) % 64 == 0);
   const size_t packed_len = m_kd->max_storage_fmt_length();
   if (m_prefix_buf && m_packed_buf_len != packed_len) {
-    my_free(m_scan_it_lower_bound);
+    if (m_packed_buf_len > sizeof(m_prefix_sso)) {
+      my_free(m_scan_it_lower_bound);
+      my_free(m_scan_it_upper_bound);
+      my_free(m_prefix_buf);
+    }
     m_scan_it_lower_bound = nullptr;
-    my_free(m_scan_it_upper_bound);
     m_scan_it_upper_bound = nullptr;
-    my_free(m_prefix_buf);
     m_prefix_buf = nullptr;
     m_packed_buf_len = 0;
   }
@@ -183,7 +184,7 @@ int Rdb_iterator_base::read_before_key(const bool full_key_match,
       We are using full key and we've hit an exact match.
       */
     if ((full_key_match &&
-         m_kd->value_matches_prefix(InvokeRocksIter_key(), key_slice))) {
+         this->value_matches_prefix(InvokeRocksIter_key(), key_slice))) {
       rocksdb_smart_next(!m_kd_is_reverse_cf, m_scan_it);
       continue;
     }
@@ -328,13 +329,22 @@ void Rdb_iterator_base::setup_prefix_buffer(enum ha_rkey_function find_flag,
 
   if (!m_prefix_buf) {
     const uint packed_len = m_kd->max_storage_fmt_length();
-    m_scan_it_lower_bound = reinterpret_cast<uchar *>(
-        my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
-    m_scan_it_upper_bound = reinterpret_cast<uchar *>(
-        my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
-    m_prefix_buf = reinterpret_cast<uchar *>(
-        my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
+    if (packed_len > sizeof(m_prefix_sso)) {
+      m_scan_it_lower_bound = reinterpret_cast<uchar *>(
+          my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
+      m_scan_it_upper_bound = reinterpret_cast<uchar *>(
+          my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
+      m_prefix_buf = reinterpret_cast<uchar *>(
+          my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
+    } else {
+      m_scan_it_lower_bound = m_scan_it_lower_bound_sso;
+      m_scan_it_upper_bound = m_scan_it_upper_bound_sso;
+      m_prefix_buf = m_prefix_sso;
+    }
     m_packed_buf_len = packed_len;
+  }
+  else {
+    ROCKSDB_VERIFY_EQ(m_kd->max_storage_fmt_length(), m_packed_buf_len);
   }
 
   if (find_flag == HA_READ_KEY_EXACT || find_flag == HA_READ_PREFIX_LAST) {
@@ -344,6 +354,7 @@ void Rdb_iterator_base::setup_prefix_buffer(enum ha_rkey_function find_flag,
     m_kd->get_infimum_key(m_prefix_buf, &prefix_key_len);
   }
   m_prefix_tuple = rocksdb::Slice((char *)m_prefix_buf, prefix_key_len);
+  assert(m_kd->get_index_number_storage_form() == m_index_number_storage_form);
 }
 
 int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
@@ -381,6 +392,17 @@ int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
      WHERE id1>=1 AND id2 >= 2 and id2 <= 5 => eq_cond_len= 4
   */
   return Rdb_key_def::INDEX_NUMBER_SIZE;
+}
+
+__always_inline
+bool Rdb_iterator_base::value_matches_prefix(const Slice &value,
+                                             const Slice &prefix) const {
+  // same symantic with Rdb_key_def::value_matches_prefix, this reduces
+  // a memory read (m_kd->get_index_number() has 2 memory read)
+  return value.size() >= Rdb_key_def::INDEX_NUMBER_SIZE &&
+    *(const uint32*)value.data() == m_index_number_storage_form &&
+    memcmp(value.data(), prefix.data(),
+           std::min(value.size(), prefix.size())) == 0;
 }
 
 ROCKSDB_FLATTEN int Rdb_iterator_base::next() {
@@ -435,7 +457,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
     if (m_scan_check_prefix) {
       // Outside our range, return EOF.
-      if (!m_kd->value_matches_prefix(key, m_prefix_tuple)) {
+      if (!this->value_matches_prefix(key, m_prefix_tuple)) {
         rc = HA_ERR_END_OF_FILE;
         break;
       }

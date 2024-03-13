@@ -400,6 +400,9 @@ class Rdb_key_def {
     assert(m_index_number != INVALID_INDEX_NUMBER);
     return m_index_number;
   }
+  uint32 get_index_number_storage_form() const {
+    return *(const uint32*)(m_index_number_storage_form);
+  }
 
   GL_INDEX_ID get_gl_index_id() const {
     const GL_INDEX_ID gl_index_id = {m_cf_id, m_index_number};

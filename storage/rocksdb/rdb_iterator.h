@@ -146,14 +146,10 @@ class Rdb_iterator_base : public Rdb_iterator {
   // Rdb_key_def of the primary key
   std::shared_ptr<Rdb_key_def> m_pkd;
 
-  const Rdb_tbl_def *m_tbl_def;
-
   THD *m_thd;
 
-  ha_rocksdb *m_rocksdb_handler;
-
   /* Iterator used for range scans and for full table/index scans */
-  rocksdb::Iterator *m_scan_it;
+  rocksdb::Iterator *m_scan_it = nullptr;
 
  #if defined(_MSC_VER) || defined(__clang__)
   rocksdb::Slice InvokeRocksIter_key() const { return m_scan_iter->key(); }
@@ -201,17 +197,11 @@ class Rdb_iterator_base : public Rdb_iterator {
 #endif
   bool m_scan_check_prefix = true;
 
-  const rocksdb::Snapshot *m_scan_it_snapshot;
+  __always_inline
+  bool value_matches_prefix(const rocksdb::Slice &value,
+                            const rocksdb::Slice &prefix) const;
 
-  /* Buffers used for upper/lower bounds for m_scan_it. */
-  uchar *m_scan_it_lower_bound;
-  uchar *m_scan_it_upper_bound;
-  size_t m_packed_buf_len;
-  rocksdb::Slice m_scan_it_lower_bound_slice;
-  rocksdb::Slice m_scan_it_upper_bound_slice;
-
-  uchar *m_prefix_buf;
-  rocksdb::Slice m_prefix_tuple;
+  const rocksdb::Snapshot *m_scan_it_snapshot = nullptr;
   TABLE_TYPE m_table_type;
   bool m_valid;
   bool m_check_iterate_bounds;
@@ -219,6 +209,21 @@ class Rdb_iterator_base : public Rdb_iterator {
   bool m_kd_has_ttl = false;
   bool m_pkd_has_ttl = false;
   bool m_is_partial_iter = false;
+
+  uint32 m_packed_buf_len = 0;
+  uint32 m_index_number_storage_form = UINT32_MAX;
+  rocksdb::Slice m_prefix_tuple;
+  uchar          m_prefix_sso[48];
+  rocksdb::Slice m_scan_it_lower_bound_slice;
+  uchar          m_scan_it_lower_bound_sso[48];
+  rocksdb::Slice m_scan_it_upper_bound_slice;
+  uchar          m_scan_it_upper_bound_sso[48];
+
+  const Rdb_tbl_def *m_tbl_def = nullptr;
+  ha_rocksdb *m_rocksdb_handler = nullptr;
+  uchar *m_scan_it_lower_bound = nullptr;
+  uchar *m_scan_it_upper_bound = nullptr;
+  uchar *m_prefix_buf = nullptr;
 
  #if defined(_MSC_VER) || defined(__clang__)
  #else
