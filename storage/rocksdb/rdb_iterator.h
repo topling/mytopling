@@ -196,7 +196,6 @@ class Rdb_iterator_base : public Rdb_iterator {
 #else
   static constexpr bool m_kd_is_reverse_cf = false;
 #endif
-  bool m_scan_check_prefix = true;
 
   __always_inline
   bool value_matches_prefix(const rocksdb::Slice &value,

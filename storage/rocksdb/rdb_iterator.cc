@@ -136,7 +136,6 @@ void Rdb_iterator_base::init(THD *thd,
   m_check_iterate_bounds = false;
   m_ignore_killed = false;
   m_scan_it_skips_bloom = false;
-  m_scan_check_prefix = true;
 #if defined(MYTOPLING_WITH_REVERSE_CF)
   m_kd_is_reverse_cf = kd->m_is_reverse_cf;
 #endif
@@ -457,12 +456,10 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
     const rocksdb::Slice key = InvokeRocksIter_key();
 
-    if (m_scan_check_prefix) {
-      // Outside our range, return EOF.
-      if (!this->value_matches_prefix(key, m_prefix_tuple)) {
-        rc = HA_ERR_END_OF_FILE;
-        break;
-      }
+    // Outside our range, return EOF.
+    if (!this->value_matches_prefix(key, m_prefix_tuple)) {
+      rc = HA_ERR_END_OF_FILE;
+      break;
     }
 
     // Check specified lower/upper bounds
@@ -549,9 +546,6 @@ int Rdb_iterator_base::seek(enum ha_rkey_function find_flag,
     greater than the lookup tuple.
   */
   setup_scan_iterator(&start_key, eq_cond_len, read_current);
-
-  m_scan_check_prefix = !m_check_iterate_bounds ||
-    m_prefix_tuple.size() > Rdb_key_def::INDEX_NUMBER_SIZE;
 
   /*
     Once we are positioned on from above, move to the position we really
@@ -842,7 +836,6 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
     // Restore m_prefix_tuple
     memcpy(m_prefix_buf, prefix_buf_copy, prefix_buf_len);
     m_prefix_tuple = rocksdb::Slice((char *)m_prefix_buf, prefix_buf_len);
-    m_scan_check_prefix = true; // be safe
   }
 
   return rc;
