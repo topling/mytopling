@@ -234,6 +234,8 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
   Rdb_iterator_proxy m_iterator;
   Rdb_iterator_proxy m_pk_iterator;
 
+  rocksdb::Slice iter_value();
+
   /* rowkey of the last record we've read, in StorageFormat. */
   struct RowKeyStr : public terark::minimal_sso<64, false> {
     char* ptr() { return this->data(); }

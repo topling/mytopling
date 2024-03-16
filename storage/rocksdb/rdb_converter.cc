@@ -511,6 +511,7 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
   }
 
   m_needs_kv_value = m_null_bytes_length_in_record || m_maybe_unpack_info
+                  || m_has_instant_fields || !m_decoders_vect.empty()
                   || m_verify_row_debug_checksums;
 }
 

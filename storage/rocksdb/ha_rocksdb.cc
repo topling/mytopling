@@ -11766,6 +11766,18 @@ int ha_rocksdb::index_prev(uchar *const buf) {
   DBUG_RETURN(index_next_with_direction_intern(buf, false, false));
 }
 
+inline rocksdb::Slice ha_rocksdb::iter_value() {
+#ifdef NDEBUG
+  return m_converter->needs_kv_value() ? m_iterator->value() : Slice();
+#else
+  rocksdb::Slice value = m_iterator->value();
+  if (m_converter->needs_kv_value()) {
+    ROCKSDB_ASSERT_NE(value.size(), 0);
+  }
+  return value;
+#endif
+}
+
 static bool ALWAYS_LOCK_BY_GET = terark::getEnvBool("ALWAYS_LOCK_BY_GET", 1);
 
 /**
@@ -11862,7 +11874,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
         }
       } else {
         const rocksdb::Slice key = m_iterator->key();
-        const rocksdb::Slice value = m_iterator->value();
+        const rocksdb::Slice value = iter_value();
         /* Unpack from the row we've read */
         m_last_rowkey.copy(key.data(), key.size(), &my_charset_bin);
         rc = convert_record_from_storage_format(&key, &value, buf);
