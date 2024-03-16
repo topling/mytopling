@@ -154,6 +154,7 @@ class Rdb_iterator_base : public Rdb_iterator {
  #if defined(_MSC_VER) || defined(__clang__)
   rocksdb::Slice InvokeRocksIter_key() const { return m_scan_iter->key(); }
   rocksdb::Slice InvokeRocksIter_val() const { return m_scan_iter->value(); }
+  size_t m_paddings[5] = {0};
  #else
   typedef void (*RocksIterScanFN)(rocksdb::Iterator*);
   typedef bool (*RocksIterValidFN)(const rocksdb::Iterator*);
