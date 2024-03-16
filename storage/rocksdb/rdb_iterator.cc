@@ -415,7 +415,7 @@ ROCKSDB_FLATTEN int Rdb_iterator_base::prev() {
 int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   int rc = 0;
 
-  if (!m_valid) return HA_ERR_END_OF_FILE;
+  if (unlikely(!m_valid)) return HA_ERR_END_OF_FILE;
   assert(m_kd->get_cf()->GetComparator()->IsForwardBytewise());
 
   const uint32_t refresh_interval = 10000;
