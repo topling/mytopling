@@ -428,11 +428,6 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
   for (;;) {
     DEBUG_SYNC(m_thd, "rocksdb.check_flags_nwd");
-    if (unlikely(!m_ignore_killed && thd_killed(m_thd))) {
-      rc = HA_ERR_QUERY_INTERRUPTED;
-      break;
-    }
-
     assert(m_scan_it != nullptr);
     if (unlikely(m_scan_it == nullptr)) {
       rc = HA_ERR_INTERNAL_ERROR;
@@ -500,6 +495,10 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
     // Record is not visible due to TTL, move to next record.
     if (m_pkd_has_ttl) {
+      if (unlikely(!m_ignore_killed && thd_killed(m_thd))) {
+        rc = HA_ERR_QUERY_INTERRUPTED;
+        break;
+      }
       const rocksdb::Slice value = InvokeRocksIter_val();
       auto tx = m_thd->m_rdb_trx;
       if (rdb_should_hide_ttl_rec(*m_kd, &value, tx)) {
