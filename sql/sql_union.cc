@@ -1309,7 +1309,10 @@ bool Query_expression::ExecuteIteratorQuery(THD *thd) {
         return true;
       }
 
-      thd->check_yield();
+      if (thd->m_check_yield_counting++ >= 200) {
+        thd->m_check_yield_counting = 0;
+        thd->check_yield();
+      }
 
       ++*send_records_ptr;
 
