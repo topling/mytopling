@@ -276,6 +276,8 @@ public:
   ~Rdb_iterator_proxy();
   Rdb_iterator_proxy() = default;
   Rdb_iterator_proxy(Rdb_iterator_base* p) { reset(p); }
+  Rdb_iterator_proxy(const Rdb_iterator_proxy&) = delete;
+  Rdb_iterator_proxy& operator=(const Rdb_iterator_proxy&) = delete;
         FatHandle* operator->()       { return &m_fat; }
   const FatHandle* operator->() const { return &m_fat; }
   void reset(Rdb_iterator_base* = nullptr); // == unique_ptr::reset()
