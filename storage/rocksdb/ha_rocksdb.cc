@@ -3515,8 +3515,7 @@ rocksdb_bulk_load_ingest_external_file_options(THD *const thd) {
 
   opts.move_files = true;
   opts.snapshot_consistency = false;
-  opts.allow_global_seqno = false;
-  opts.allow_blocking_flush = false;
+  opts.allow_blocking_flush = true;
   opts.allow_global_seqno = true; // topling specific
   opts.write_global_seqno = false; // topling specific
   opts.sync_file = false; // topling specific
@@ -12979,9 +12978,11 @@ int ha_rocksdb::finalize_bulk_load(bool print_client_error) {
         auto dbo = MergeTableDBOptions();
         {
           std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
+          auto default_memtab_fac = cfo[0].options.memtable_factory;
           auto s = cf->GetDescriptor(&cfo[0]);
           ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
           FixMergeTableCFO(&cfo[0].options);
+          cfo[0].options.memtable_factory = default_memtab_fac; // do not use CSPP
           std::vector<std::string> outputs;
           s = rocksdb::MergeTables(files, tmp_dbname, dbo, cfo, &outputs);
           ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
