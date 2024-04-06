@@ -395,27 +395,6 @@ int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
   return Rdb_key_def::INDEX_NUMBER_SIZE;
 }
 
-__always_inline bool MemoryEqual(const void* vx, const void* vy, size_t n) {
-  auto px = (const unsigned char*)vx;
-  auto py = (const unsigned char*)vy;
-  size_t i = 0;
-  for (; i + 8 <= n; i += 8) {
-    if (*(const uint64_t*)(px + i) != *(const uint64_t*)(py + i))
-      return false;
-  }
-  if (n % sizeof(uint64_t) >= 4) {
-    if (*(const uint32_t*)(px + i) != *(const uint32_t*)(py + i))
-      return false;
-    else
-      i += 4;
-  }
-  for (; i < n; i++) {
-    if (px[i] != py[i])
-      return false;
-  }
-  return true;
-}
-
 __always_inline
 bool Rdb_iterator_base::value_matches_prefix(const Slice &value,
                                              const Slice &prefix) const {
@@ -423,7 +402,7 @@ bool Rdb_iterator_base::value_matches_prefix(const Slice &value,
   // a memory read (m_kd->get_index_number() has 2 memory read)
   return value.size() >= Rdb_key_def::INDEX_NUMBER_SIZE &&
     // *(const uint32*)value.data() == m_index_number_storage_form &&
-    MemoryEqual(value.data(), prefix.data(),
+    rocksdb::MemoryEqual(value.data(), prefix.data(),
            std::min(value.size(), prefix.size()));
 }
 
