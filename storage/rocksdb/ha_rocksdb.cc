@@ -208,6 +208,9 @@ using  rocksdb::json;
 static rocksdb::SidePluginRepo g_repo;
 bool g_svr_read_only = false;
 
+template<class T>
+inline T& NoAtomic(std::atomic<T>& x) { return reinterpret_cast<T&>(x); }
+
 static int mysql_value_to_bool(struct st_mysql_value *value,
                                bool *return_value);
 
@@ -11674,7 +11677,7 @@ static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
   ha_rows rows = 0;
   rocksdb::Iterator* iter = rdb->NewIterator(rocksdb::ReadOptions());
   iter->Seek(Slice((char*)&index_id_storage_form, 4));
-  while (iter->Valid() && !thd->killed) {
+  while (iter->Valid() && !NoAtomic(thd->killed)) {
     Slice key = iter->key();
     uint32_t index_id_prefix = unaligned_load<uint32_t>(key.data());
     if (index_id_prefix != index_id_storage_form) {
@@ -11872,7 +11875,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
 
   for (;;) {
     DEBUG_SYNC(thd, "rocksdb.check_flags_inwdi");
-    if (UNLIKELY(thd && thd->killed)) {
+    if (UNLIKELY(thd && NoAtomic(thd->killed))) {
       rc = HA_ERR_QUERY_INTERRUPTED;
       break;
     }
@@ -12937,7 +12940,7 @@ int ha_rocksdb::bulk_load_key(Rdb_transaction *const tx, const Rdb_key_def &kd,
   int res;
   assert(tx->get_thd() == ha_thd());
   THD *thd = tx->get_thd();
-  if (unlikely(thd && thd->killed)) {
+  if (unlikely(thd && NoAtomic(thd->killed))) {
     DBUG_RETURN(HA_ERR_QUERY_INTERRUPTED);
   }
 
