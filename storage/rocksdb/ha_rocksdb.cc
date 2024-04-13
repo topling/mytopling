@@ -11656,13 +11656,44 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
   DBUG_RETURN(rc);
 }
 
+static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
+  uint32_t index_id_storage_form = __bswap_32(index_id);
+  ha_rows rows = 0;
+  rocksdb::Iterator* iter = rdb->NewIterator(rocksdb::ReadOptions());
+  iter->Seek(Slice((char*)&index_id_storage_form, 4));
+  while (iter->Valid() && !thd->killed) {
+    Slice key = iter->key();
+    uint32_t index_id_prefix = unaligned_load<uint32_t>(key.data());
+    if (index_id_prefix != index_id_storage_form) {
+      break;
+    }
+    iter->Next();
+    rows++;
+  }
+  delete iter;
+  return rows;
+}
+
 int ha_rocksdb::records(ha_rows *num_rows) {
+  if (ha_table_flags() & HA_COUNT_ROWS_INSTANT) {
+    *num_rows = stats.records;
+    return 0;
+  }
   if (m_lock_rows == RDB_LOCK_NONE) {
     // SELECT COUNT(*) without locking, fast path
-    m_iteration_only = true;
-    auto iteration_guard =
-        create_scope_guard([this]() { m_iteration_only = false; });
-    return handler::records(num_rows);
+    Rdb_key_def& kd = *m_key_descr_arr[pk_index(*table, *m_tbl_def)];
+    THD* thd = ha_thd();
+    auto table_type = m_tbl_def->get_table_type();
+    Rdb_transaction* tx = get_tx_from_thd(thd);
+    if (kd.has_ttl() || (tx && tx->get_write_count(table_type))) {
+      m_iteration_only = true;
+      auto iteration_guard =
+          create_scope_guard([this]() { m_iteration_only = false; });
+      return handler::records(num_rows);
+    } else { // MyTopling fast path
+      *num_rows = scan_records_num(thd, kd.get_index_number());
+      return 0;
+    }
   } else {
     // SELECT COUNT(*) with locking, slow path
     return handler::records(num_rows);
@@ -11670,12 +11701,27 @@ int ha_rocksdb::records(ha_rows *num_rows) {
 }
 
 int ha_rocksdb::records_from_index(ha_rows *num_rows, uint index) {
+  if (ha_table_flags() & HA_COUNT_ROWS_INSTANT) {
+    *num_rows = stats.records;
+    return 0;
+  }
   if (m_lock_rows == RDB_LOCK_NONE) {
     // SELECT COUNT(*) without locking, fast path
+    THD* thd = ha_thd();
+    auto table_type = m_tbl_def->get_table_type();
+    Rdb_transaction* tx = get_tx_from_thd(thd);
+    if ((tx && tx->get_write_count(table_type)) ||
+        m_key_descr_arr[pk_index(*table, *m_tbl_def)]->has_ttl() ||
+        m_key_descr_arr[index]->is_partial_index()) {
     m_iteration_only = true;
     auto iteration_guard =
         create_scope_guard([this]() { m_iteration_only = false; });
     return handler::records_from_index(num_rows, index);
+    } else {
+      auto index_id = m_key_descr_arr[index]->get_index_number();
+      *num_rows = scan_records_num(thd, index_id);
+      return 0;
+    }
   } else {
     // SELECT COUNT(*) with locking, slow path
     return handler::records_from_index(num_rows, index);
