@@ -75,6 +75,7 @@
 #include "rocksdb/persistent_cache.h"
 #include "rocksdb/rate_limiter.h"
 #include "rocksdb/slice_transform.h"
+#include <rocksdb/threadpool.h>
 #include "rocksdb/thread_status.h"
 #include "rocksdb/trace_reader_writer.h"
 #include "rocksdb/utilities/checkpoint.h"
@@ -1012,6 +1013,7 @@ bool rocksdb_write_reduce_cpu = true;
 bool rocksdb_enable_auto_sort_sst = true;
 bool rocksdb_reuse_iter = false;
 std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
+static uint32_t rocksdb_parallel_read_threads = 8;
 static uint32_t rocksdb_async_queue_depth = 64;
 static uint32_t rocksdb_bulk_load_subcompactions = 7;
 
@@ -1214,8 +1216,10 @@ static MYSQL_SYSVAR_BOOL(reuse_iter, rocksdb_reuse_iter,
                          PLUGIN_VAR_RQCMDARG,
                          "Allow rocksdb reuse iterator across txn",
                          nullptr, nullptr, false);
+static std::shared_ptr<rocksdb::ThreadPool> g_paralell_read_threadpool;
 static const char* side_conf = getenv("TOPLING_SIDEPLUGIN_CONF");
 static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
+  //g_paralell_read_threadpool.reset(rocksdb::NewThreadPool(rocksdb_parallel_read_threads));
   std::shared_ptr<rocksdb::DBOptions> o;
   auto listener = std::make_shared<Rdb_event_listener>(&ddl_manager);
   if (side_conf) {
@@ -2959,6 +2963,14 @@ static MYSQL_SYSVAR_UINT(
     nullptr, nullptr, 0, /* min */ 0, /* max */ INT_MAX, 0);
 
 static MYSQL_SYSVAR_UINT(
+    parallel_read_threads, rocksdb_parallel_read_threads,
+    PLUGIN_VAR_RQCMDARG,
+    "rocksdb::ReadOptions::async_queue_depth for MultiGet, if > 1, "
+    "async_io will be set to true",
+    nullptr, nullptr, rocksdb_parallel_read_threads,
+    /* min */ 0, /* max */ 8192, 0);
+
+static MYSQL_SYSVAR_UINT(
     async_queue_depth, rocksdb_async_queue_depth,
     PLUGIN_VAR_RQCMDARG,
     "rocksdb::ReadOptions::async_queue_depth for MultiGet, if > 1, "
@@ -3319,6 +3331,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(bypass_rpc_rejected_log_ts_interval_secs),
     MYSQL_SYSVAR(bypass_rpc_on),
     MYSQL_SYSVAR(bypass_rpc_log_rejected),
+    MYSQL_SYSVAR(parallel_read_threads),
     MYSQL_SYSVAR(async_queue_depth),
     MYSQL_SYSVAR(bulk_load_subcompactions),
     MYSQL_SYSVAR(skip_locks_if_skip_unique_check),
@@ -11713,10 +11726,10 @@ int ha_rocksdb::records_from_index(ha_rows *num_rows, uint index) {
     if ((tx && tx->get_write_count(table_type)) ||
         m_key_descr_arr[pk_index(*table, *m_tbl_def)]->has_ttl() ||
         m_key_descr_arr[index]->is_partial_index()) {
-    m_iteration_only = true;
-    auto iteration_guard =
-        create_scope_guard([this]() { m_iteration_only = false; });
-    return handler::records_from_index(num_rows, index);
+      m_iteration_only = true;
+      auto iteration_guard =
+          create_scope_guard([this]() { m_iteration_only = false; });
+      return handler::records_from_index(num_rows, index);
     } else {
       auto index_id = m_key_descr_arr[index]->get_index_number();
       *num_rows = scan_records_num(thd, index_id);
