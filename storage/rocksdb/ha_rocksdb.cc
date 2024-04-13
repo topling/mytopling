@@ -11675,7 +11675,9 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
 static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
   uint32_t index_id_storage_form = __bswap_32(index_id);
   ha_rows rows = 0;
-  rocksdb::Iterator* iter = rdb->NewIterator(rocksdb::ReadOptions());
+  rocksdb::ReadOptions ro;
+  ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
+  auto iter = rdb->NewIterator(ro);
   iter->Seek(Slice((char*)&index_id_storage_form, 4));
   while (iter->Valid() && !NoAtomic(thd->killed)) {
     Slice key = iter->key();
