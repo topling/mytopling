@@ -11672,7 +11672,7 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
   DBUG_RETURN(rc);
 }
 
-static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
+static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
   uint32_t index_id_storage_form = __bswap_32(index_id);
   ha_rows rows = 0;
   rocksdb::ReadOptions ro;
@@ -11690,6 +11690,107 @@ static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
   }
   delete iter;
   return rows;
+}
+
+class ScanRecordsParallel {
+  THD* m_thd;
+  uint32_t m_index_id;
+  std::vector<rocksdb::Anchor> m_bounds;
+  std::vector<ha_rows> m_range_rows;
+  std::atomic<size_t> m_next_range_idx{0};
+  void thread_proc();
+public:
+  ScanRecordsParallel(THD* thd, uint32_t index_id);
+  ha_rows run_scan();
+};
+ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id) {
+  m_thd = thd;
+  m_index_id = index_id;
+  uint32_t start = __bswap_32(index_id);
+  uint32_t limit = __bswap_32(index_id + 1);
+  rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
+  rocksdb::ReadOptions ro;
+  ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
+  auto cfh = rdb->DefaultColumnFamily();
+  rocksdb::Status s = rdb->ApproximateKeyAnchors(cfh, &rng, &m_bounds);
+  s.PermitUncheckedError();
+  using rocksdb::Anchor;
+  if (!m_bounds.empty()) {
+    m_bounds.erase(std::remove_if(m_bounds.begin(), m_bounds.end(),
+      [start](const Anchor& a) {
+        return *(const uint32_t*)a.user_key.data() != start;
+      }), m_bounds.end());
+    if (!m_bounds.empty()) {
+      uint64_t sum = 0;
+      for (auto& x : m_bounds) sum += x.range_size;
+      size_t estimate_size = sum / m_bounds.size();
+      m_bounds.insert(m_bounds.begin(), {rng.start, estimate_size});
+      m_bounds.push_back({rng.limit, estimate_size});
+      m_range_rows.resize(m_bounds.size() - 1);
+    }
+    m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end(),
+      [](const Anchor& x, const Anchor& y) { return x.user_key == y.user_key; }),
+      m_bounds.end());
+    std::sort(m_bounds.begin(), m_bounds.end(),
+      [](const Anchor& x, const Anchor& y) { return x.user_key < y.user_key; });
+  }
+}
+void ScanRecordsParallel::thread_proc() {
+  rocksdb::ReadOptions ro;
+  ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
+  auto iter = rdb->NewIterator(ro);
+  while (true) {
+    size_t rng_idx = m_next_range_idx++;
+    if (rng_idx >= m_bounds.size() - 1) {
+      break;
+    }
+    THD* thd = m_thd;
+    ha_rows rows = 0;
+    Slice start = m_bounds[rng_idx + 0].user_key;
+    Slice limit = m_bounds[rng_idx + 1].user_key;
+    iter->Seek(start);
+    while (iter->Valid() && !NoAtomic(thd->killed)) {
+      Slice key = iter->key();
+      if (key >= limit) {
+        break;
+      }
+      iter->Next();
+      rows++;
+    }
+    m_range_rows[rng_idx] += rows;
+  }
+  delete iter;
+}
+ha_rows ScanRecordsParallel::run_scan() {
+  if (m_bounds.size() <= 2) {
+    return scan_records_num_st(m_thd, m_index_id);
+  }
+  size_t num_threads = rocksdb_parallel_read_threads;
+  if (num_threads <= 1) {
+    return scan_records_num_st(m_thd, m_index_id);
+  }
+  std::vector<std::thread> threads; threads.reserve(num_threads);
+  for (size_t i = 0; i < num_threads; i++) {
+    threads.emplace_back(&ScanRecordsParallel::thread_proc, this);
+  }
+  for (auto& thr : threads) {
+    thr.join();
+  }
+  ha_rows total_rows = 0;
+  for (auto rows : m_range_rows) {
+    total_rows += rows;
+  }
+  return total_rows;
+}
+static ha_rows scan_records_num_mt(THD* thd, uint32_t index_id) {
+  ScanRecordsParallel scan_ctx(thd, index_id);
+  return scan_ctx.run_scan();
+}
+static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
+  if (rocksdb_parallel_read_threads)
+    return scan_records_num_mt(thd, index_id);
+  else
+    return scan_records_num_st(thd, index_id);
 }
 
 int ha_rocksdb::records(ha_rows *num_rows) {
