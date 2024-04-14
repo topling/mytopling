@@ -11695,6 +11695,7 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
 class ScanRecordsParallel {
   THD* m_thd;
   uint32_t m_index_id;
+  size_t m_num_threads;
   std::vector<rocksdb::Anchor> m_bounds;
   std::vector<ha_rows> m_range_rows;
   std::atomic<size_t> m_next_range_idx{0};
@@ -11706,6 +11707,7 @@ public:
 ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id) {
   m_thd = thd;
   m_index_id = index_id;
+  m_num_threads = rocksdb_parallel_read_threads;
   uint32_t start = __bswap_32(index_id);
   uint32_t limit = __bswap_32(index_id + 1);
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
@@ -11721,6 +11723,12 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id) {
         return *(const uint32_t*)a.user_key.data() != start;
       }), m_bounds.end());
     if (!m_bounds.empty()) {
+      size_t max_bounds = m_num_threads * 200;
+      if (m_bounds.size() > max_bounds) {
+        size_t seed = m_bounds.size();
+        std::shuffle(m_bounds.begin(), m_bounds.end(), std::mt19937_64(seed));
+        m_bounds.erase(m_bounds.begin() + max_bounds, m_bounds.end());
+      }
       uint64_t sum = 0;
       for (auto& x : m_bounds) sum += x.range_size;
       size_t estimate_size = sum / m_bounds.size();
@@ -11765,12 +11773,11 @@ ha_rows ScanRecordsParallel::run_scan() {
   if (m_bounds.size() <= 2) {
     return scan_records_num_st(m_thd, m_index_id);
   }
-  size_t num_threads = rocksdb_parallel_read_threads;
-  if (num_threads <= 1) {
+  if (m_num_threads <= 1) {
     return scan_records_num_st(m_thd, m_index_id);
   }
-  std::vector<std::thread> threads; threads.reserve(num_threads);
-  for (size_t i = 0; i < num_threads; i++) {
+  std::vector<std::thread> threads; threads.reserve(m_num_threads);
+  for (size_t i = 0; i < m_num_threads; i++) {
     threads.emplace_back(&ScanRecordsParallel::thread_proc, this);
   }
   for (auto& thr : threads) {
@@ -11787,7 +11794,7 @@ static ha_rows scan_records_num_mt(THD* thd, uint32_t index_id) {
   return scan_ctx.run_scan();
 }
 static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
-  if (rocksdb_parallel_read_threads)
+  if (rocksdb_parallel_read_threads >= 2)
     return scan_records_num_mt(thd, index_id);
   else
     return scan_records_num_st(thd, index_id);
