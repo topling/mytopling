@@ -75,7 +75,6 @@
 #include "rocksdb/persistent_cache.h"
 #include "rocksdb/rate_limiter.h"
 #include "rocksdb/slice_transform.h"
-#include <rocksdb/threadpool.h>
 #include "rocksdb/thread_status.h"
 #include "rocksdb/trace_reader_writer.h"
 #include "rocksdb/utilities/checkpoint.h"
@@ -1016,7 +1015,6 @@ bool rocksdb_write_reduce_cpu = true;
 bool rocksdb_enable_auto_sort_sst = true;
 bool rocksdb_reuse_iter = false;
 std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
-static uint32_t rocksdb_parallel_read_threads = 8;
 static uint32_t rocksdb_async_queue_depth = 64;
 static uint32_t rocksdb_bulk_load_subcompactions = 7;
 
@@ -1219,10 +1217,8 @@ static MYSQL_SYSVAR_BOOL(reuse_iter, rocksdb_reuse_iter,
                          PLUGIN_VAR_RQCMDARG,
                          "Allow rocksdb reuse iterator across txn",
                          nullptr, nullptr, false);
-static std::shared_ptr<rocksdb::ThreadPool> g_paralell_read_threadpool;
 static const char* side_conf = getenv("TOPLING_SIDEPLUGIN_CONF");
 static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
-  //g_paralell_read_threadpool.reset(rocksdb::NewThreadPool(rocksdb_parallel_read_threads));
   std::shared_ptr<rocksdb::DBOptions> o;
   auto listener = std::make_shared<Rdb_event_listener>(&ddl_manager);
   if (side_conf) {
@@ -2965,13 +2961,10 @@ static MYSQL_SYSVAR_UINT(
     "for each row sent",
     nullptr, nullptr, 0, /* min */ 0, /* max */ INT_MAX, 0);
 
-static MYSQL_SYSVAR_UINT(
-    parallel_read_threads, rocksdb_parallel_read_threads,
-    PLUGIN_VAR_RQCMDARG,
-    "rocksdb::ReadOptions::async_queue_depth for MultiGet, if > 1, "
-    "async_io will be set to true",
-    nullptr, nullptr, rocksdb_parallel_read_threads,
-    /* min */ 0, /* max */ 8192, 0);
+static MYSQL_THDVAR_UINT(parallel_read_threads, PLUGIN_VAR_RQCMDARG,
+    "parallel read threads, ex: ha_rocksdb::records, default is NumCPU/2",
+    nullptr, nullptr, std::thread::hardware_concurrency() / 2,
+    /* min */ 0, /* max */ std::thread::hardware_concurrency() * 2, 0);
 
 static MYSQL_SYSVAR_UINT(
     async_queue_depth, rocksdb_async_queue_depth,
@@ -11701,13 +11694,14 @@ class ScanRecordsParallel {
   std::atomic<size_t> m_next_range_idx{0};
   void thread_proc();
 public:
-  ScanRecordsParallel(THD* thd, uint32_t index_id);
+  ScanRecordsParallel(THD* thd, uint32_t index_id, size_t num_threads);
   ha_rows run_scan();
 };
-ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id) {
+ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
+                                         size_t num_threads) {
   m_thd = thd;
   m_index_id = index_id;
-  m_num_threads = rocksdb_parallel_read_threads;
+  m_num_threads = num_threads;
   uint32_t start = __bswap_32(index_id);
   uint32_t limit = __bswap_32(index_id + 1);
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
@@ -11773,9 +11767,6 @@ ha_rows ScanRecordsParallel::run_scan() {
   if (m_bounds.size() <= 2) {
     return scan_records_num_st(m_thd, m_index_id);
   }
-  if (m_num_threads <= 1) {
-    return scan_records_num_st(m_thd, m_index_id);
-  }
   std::vector<std::thread> threads; threads.reserve(m_num_threads);
   for (size_t i = 0; i < m_num_threads; i++) {
     threads.emplace_back(&ScanRecordsParallel::thread_proc, this);
@@ -11789,15 +11780,13 @@ ha_rows ScanRecordsParallel::run_scan() {
   }
   return total_rows;
 }
-static ha_rows scan_records_num_mt(THD* thd, uint32_t index_id) {
-  ScanRecordsParallel scan_ctx(thd, index_id);
-  return scan_ctx.run_scan();
-}
 static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
-  if (rocksdb_parallel_read_threads >= 2)
-    return scan_records_num_mt(thd, index_id);
-  else
-    return scan_records_num_st(thd, index_id);
+  size_t num_threads = THDVAR(thd, parallel_read_threads);
+  if (num_threads >= 2) {
+    ScanRecordsParallel scan_ctx(thd, index_id, num_threads);
+    return scan_ctx.run_scan();
+  }
+  return scan_records_num_st(thd, index_id);
 }
 
 int ha_rocksdb::records(ha_rows *num_rows) {
