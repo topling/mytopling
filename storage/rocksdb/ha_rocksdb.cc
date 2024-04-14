@@ -66,6 +66,7 @@
 #include "sql/strfunc.h"
 
 /* RocksDB includes */
+#include "db/dbformat.h"
 #include "env/composite_env_wrapper.h"
 #include "monitoring/histogram.h"
 #include "rocksdb/compaction_filter.h"
@@ -11753,7 +11754,7 @@ void ScanRecordsParallel::thread_proc() {
     iter->Seek(start);
     while (iter->Valid() && !NoAtomic(thd->killed)) {
       Slice key = iter->key();
-      if (key >= limit) {
+      if (!rocksdb::SliceBytewiseLess(key, limit)) { // key >= limit
         break;
       }
       iter->Next();
