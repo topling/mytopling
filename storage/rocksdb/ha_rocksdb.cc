@@ -2963,8 +2963,12 @@ static MYSQL_SYSVAR_UINT(
     nullptr, nullptr, 0, /* min */ 0, /* max */ INT_MAX, 0);
 
 static MYSQL_THDVAR_UINT(parallel_read_threads, PLUGIN_VAR_RQCMDARG,
-    "parallel read threads, ex: ha_rocksdb::records, default is NumCPU/2",
-    nullptr, nullptr, std::thread::hardware_concurrency() / 2,
+    "parallel read threads, ex: ha_rocksdb::records, default is NumCPU/2 "
+    "if set to 0, fallback to plain old myrocks behavior, because the new "
+    "fast approach (include parallel read) has some subtle issues causing "
+    "mtr fail",
+    nullptr, nullptr,
+    0, // default disable parallel, fallback to myrocks behavior
     /* min */ 0, /* max */ std::thread::hardware_concurrency() * 2, 0);
 
 static MYSQL_SYSVAR_UINT(
@@ -11671,7 +11675,14 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
   ha_rows rows = 0;
   rocksdb::ReadOptions ro;
   ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
+  auto tx = get_or_create_tx(thd, USER_TABLE);
+  ro.snapshot = tx->m_read_opts[USER_TABLE].snapshot;
+ #if 1
   auto iter = rdb->NewIterator(ro);
+ #else
+  auto cf = rdb->DefaultColumnFamily();
+  auto iter = tx->get_iterator(ro, cf, USER_TABLE);
+ #endif
   iter->Seek(Slice((char*)&index_id_storage_form, 4));
   while (iter->Valid() && !NoAtomic(thd->killed)) {
     Slice key = iter->key();
@@ -11690,6 +11701,7 @@ class ScanRecordsParallel {
   THD* m_thd;
   uint32_t m_index_id;
   size_t m_num_threads;
+  Rdb_transaction* m_tx;
   std::vector<rocksdb::Anchor> m_bounds;
   std::vector<ha_rows> m_range_rows;
   std::atomic<size_t> m_next_range_idx{0};
@@ -11703,6 +11715,7 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
   m_thd = thd;
   m_index_id = index_id;
   m_num_threads = num_threads;
+  m_tx = get_or_create_tx(thd, USER_TABLE);
   uint32_t start = __bswap_32(index_id);
   uint32_t limit = __bswap_32(index_id + 1);
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
@@ -11741,7 +11754,13 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
 void ScanRecordsParallel::thread_proc() {
   rocksdb::ReadOptions ro;
   ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
+  ro.snapshot = m_tx->m_read_opts[USER_TABLE].snapshot;
+ #if 1
   auto iter = rdb->NewIterator(ro);
+ #else
+  auto cf = rdb->DefaultColumnFamily();
+  auto iter = m_tx->get_iterator(ro, cf, USER_TABLE);
+ #endif
   while (true) {
     size_t rng_idx = m_next_range_idx++;
     if (rng_idx >= m_bounds.size() - 1) {
@@ -11800,14 +11819,18 @@ int ha_rocksdb::records(ha_rows *num_rows) {
     Rdb_key_def& kd = *m_key_descr_arr[pk_index(*table, *m_tbl_def)];
     THD* thd = ha_thd();
     auto table_type = m_tbl_def->get_table_type();
-    Rdb_transaction* tx = get_tx_from_thd(thd);
-    if (kd.has_ttl() || (tx && tx->get_write_count(table_type))) {
+    assert(USER_TABLE == table_type);
+    Rdb_transaction* tx = get_or_create_tx(thd, table_type);
+    size_t num_threads = THDVAR(thd, parallel_read_threads);
+    if (kd.has_ttl() || tx->get_write_count(table_type) || 0 == num_threads) {
       m_iteration_only = true;
       auto iteration_guard =
           create_scope_guard([this]() { m_iteration_only = false; });
       return handler::records(num_rows);
     } else { // MyTopling fast path
+      tx->acquire_snapshot(true, table_type);
       *num_rows = scan_records_num(thd, kd.get_index_number());
+      tx->release_snapshot(table_type);
       return 0;
     }
   } else {
@@ -11825,8 +11848,11 @@ int ha_rocksdb::records_from_index(ha_rows *num_rows, uint index) {
     // SELECT COUNT(*) without locking, fast path
     THD* thd = ha_thd();
     auto table_type = m_tbl_def->get_table_type();
-    Rdb_transaction* tx = get_tx_from_thd(thd);
+    assert(USER_TABLE == table_type);
+    size_t num_threads = THDVAR(thd, parallel_read_threads);
+    Rdb_transaction* tx = get_or_create_tx(thd, table_type);
     if ((tx && tx->get_write_count(table_type)) ||
+        0 == num_threads || // fallback to plain old rocksdb behavior
         m_key_descr_arr[pk_index(*table, *m_tbl_def)]->has_ttl() ||
         m_key_descr_arr[index]->is_partial_index()) {
       m_iteration_only = true;
@@ -11835,7 +11861,9 @@ int ha_rocksdb::records_from_index(ha_rows *num_rows, uint index) {
       return handler::records_from_index(num_rows, index);
     } else {
       auto index_id = m_key_descr_arr[index]->get_index_number();
+      tx->acquire_snapshot(true, table_type);
       *num_rows = scan_records_num(thd, index_id);
+      tx->release_snapshot(table_type);
       return 0;
     }
   } else {
