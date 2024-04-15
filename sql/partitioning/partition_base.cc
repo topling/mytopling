@@ -3851,6 +3851,21 @@ int Partition_base::records(ha_rows *num_rows) {
   DBUG_RETURN(0);
 }
 
+int Partition_base::records_from_index(ha_rows *num_rows, uint index) {
+  ha_rows tot_rows = 0;
+  uint i;
+  DBUG_ENTER("Partition_base::records_from_index");
+
+  for (i = m_part_info->get_first_used_partition(); i < m_tot_parts;
+       i = m_part_info->get_next_used_partition(i)) {
+    int error = m_file[i]->ha_records(num_rows, index);
+    if (error != 0) DBUG_RETURN(error);
+    tot_rows += *num_rows;
+  }
+  *num_rows = tot_rows;
+  DBUG_RETURN(0);
+}
+
 /****************************************************************************
                 MODULE print messages
 ****************************************************************************/
