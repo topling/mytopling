@@ -11740,10 +11740,10 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
       size_t estimate_size = sum / m_bounds.size();
       m_bounds.insert(m_bounds.begin(), {rng.start, estimate_size});
       m_bounds.push_back({rng.limit, estimate_size});
-      m_range_rows.resize(m_bounds.size() - 1);
     }
     std::sort(m_bounds.begin(), m_bounds.end());
     m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end()), m_bounds.end());
+    m_range_rows.resize(m_bounds.size() - 1);
   }
 }
 void ScanRecordsParallel::thread_proc() {
