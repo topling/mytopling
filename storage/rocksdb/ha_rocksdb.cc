@@ -11733,7 +11733,8 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
       size_t max_bounds = m_num_threads * 200;
       if (m_bounds.size() > max_bounds) {
         size_t seed = m_bounds.size();
-        std::shuffle(m_bounds.begin() + 1, m_bounds.end(), std::mt19937_64(seed));
+        std::mt19937_64 rand(seed);
+        std::shuffle(m_bounds.begin() + 1, m_bounds.end(), rand);
         m_bounds.erase(m_bounds.begin() + max_bounds, m_bounds.end());
       }
       uint64_t sum = 0;
