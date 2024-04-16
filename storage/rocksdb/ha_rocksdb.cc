@@ -11720,29 +11720,31 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
   uint32_t limit = __bswap_32(index_id + 1);
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
   auto cfh = rdb->DefaultColumnFamily();
+  m_bounds.reserve(m_num_threads * 400);
+  m_bounds.push_back({rng.start, 0});
   rocksdb::Status s = rdb->ApproximateKeyAnchors(cfh, &rng, &m_bounds);
   s.PermitUncheckedError();
-  using rocksdb::Anchor;
-  if (!m_bounds.empty()) {
+  if (m_bounds.size() >= 1) {
     m_bounds.erase(std::remove_if(m_bounds.begin(), m_bounds.end(),
-      [start](const Anchor& a) {
+      [start](const rocksdb::Anchor& a) {
         return *(const uint32_t*)a.user_key.data() != start;
       }), m_bounds.end());
-    if (!m_bounds.empty()) {
+    if (m_bounds.size() >= 1) {
       size_t max_bounds = m_num_threads * 200;
       if (m_bounds.size() > max_bounds) {
         size_t seed = m_bounds.size();
-        std::shuffle(m_bounds.begin(), m_bounds.end(), std::mt19937_64(seed));
+        std::shuffle(m_bounds.begin() + 1, m_bounds.end(), std::mt19937_64(seed));
         m_bounds.erase(m_bounds.begin() + max_bounds, m_bounds.end());
       }
       uint64_t sum = 0;
       for (auto& x : m_bounds) sum += x.range_size;
       size_t estimate_size = sum / m_bounds.size();
-      m_bounds.insert(m_bounds.begin(), {rng.start, estimate_size});
       m_bounds.push_back({rng.limit, estimate_size});
     }
     std::sort(m_bounds.begin(), m_bounds.end());
     m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end()), m_bounds.end());
+    TERARK_VERIFY_S_EQ(Slice(m_bounds.front().user_key), rng.start);
+    TERARK_VERIFY_S_EQ(Slice(m_bounds.back ().user_key), rng.limit);
     m_range_rows.resize(m_bounds.size() - 1);
   }
 }
