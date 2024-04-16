@@ -11744,11 +11744,8 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
       m_bounds.push_back({rng.limit, estimate_size});
       m_range_rows.resize(m_bounds.size() - 1);
     }
-    m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end(),
-      [](const Anchor& x, const Anchor& y) { return x.user_key == y.user_key; }),
-      m_bounds.end());
-    std::sort(m_bounds.begin(), m_bounds.end(),
-      [](const Anchor& x, const Anchor& y) { return x.user_key < y.user_key; });
+    std::sort(m_bounds.begin(), m_bounds.end());
+    m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end()), m_bounds.end());
   }
 }
 void ScanRecordsParallel::thread_proc() {
