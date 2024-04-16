@@ -1952,10 +1952,6 @@ int Rdb_key_def::decode_unpack_info(Rdb_string_reader *unp_reader,
     HA_EXIT_SUCCESS    OK
     other              HA_ERR error code
 */
-#pragma GCC push_options
-#if defined(NDEBUG)
-  #pragma GCC optimize ("-Ofast")
-#endif
 template<class ValueSliceReader>
 ROCKSDB_FLATTEN
 int Rdb_key_def::unpack_record_tpl(TABLE *const table, uchar *const buf,
@@ -1980,6 +1976,7 @@ int Rdb_key_def::unpack_record_tpl(TABLE *const table, uchar *const buf,
   bool has_unpack_info;
   if (unp_reader.is_empty()) {
     has_unpack_info = false;
+    unpack_header = nullptr;
   } else {
    #if 0
     int err = decode_unpack_info(&unp_reader, &has_unpack_info, &unpack_header);
@@ -2138,8 +2135,6 @@ template int Rdb_key_def::unpack_record_tpl<Rdb_string_reader>
                                const rocksdb::Slice *const packed_key,
                                const rocksdb::Slice *const unpack_info,
                                const bool verify_row_debug_checksums) const;
-
-#pragma GCC pop_options
 
 void Rdb_key_def::report_checksum_mismatch(const bool is_key,
                                            const char *const data,
