@@ -11719,8 +11719,6 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
   uint32_t start = __bswap_32(index_id);
   uint32_t limit = __bswap_32(index_id + 1);
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
-  rocksdb::ReadOptions ro;
-  ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
   auto cfh = rdb->DefaultColumnFamily();
   rocksdb::Status s = rdb->ApproximateKeyAnchors(cfh, &rng, &m_bounds);
   s.PermitUncheckedError();
