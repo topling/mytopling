@@ -11782,10 +11782,11 @@ ha_rows ScanRecordsParallel::run_scan() {
   if (m_bounds.size() <= 2) {
     return scan_records_num_st(m_thd, m_index_id);
   }
-  std::vector<std::thread> threads; threads.reserve(m_num_threads);
-  for (size_t i = 0; i < m_num_threads; i++) {
+  std::vector<std::thread> threads; threads.reserve(m_num_threads-1);
+  for (size_t i = 0; i < m_num_threads-1; i++) {
     threads.emplace_back(&ScanRecordsParallel::thread_proc, this);
   }
+  this->thread_proc(); // use current thread
   for (auto& thr : threads) {
     thr.join();
   }
