@@ -11677,6 +11677,7 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
   ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
   auto tx = get_or_create_tx(thd, USER_TABLE);
   ro.snapshot = tx->m_read_opts[USER_TABLE].snapshot;
+  ro.cache_sst_file_iter = false;
  #if 1
   auto iter = rdb->NewIterator(ro);
  #else
@@ -11758,6 +11759,7 @@ void ScanRecordsParallel::thread_proc() {
   rocksdb::ReadOptions ro;
   ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
   ro.snapshot = m_tx->m_read_opts[USER_TABLE].snapshot;
+  ro.cache_sst_file_iter = false;
  #if 1
   auto iter = rdb->NewIterator(ro);
  #else
