@@ -11755,6 +11755,9 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
     m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end()), m_bounds.end());
     TERARK_VERIFY_S_EQ(Slice(m_bounds.front().user_key), rng.start);
     TERARK_VERIFY_S_EQ(Slice(m_bounds.back ().user_key), rng.limit);
+    if (m_fixed_user_key_len) {
+      m_bounds.back().user_key.append(m_fixed_user_key_len - 4, '\0');
+    }
     m_range_rows.resize(m_bounds.size() - 1);
   }
 }
@@ -11764,6 +11767,8 @@ void ScanRecordsParallel::thread_proc() {
   ro.snapshot = m_tx->m_read_opts[USER_TABLE].snapshot;
   ro.cache_sst_file_iter = false;
   ro.fixed_user_key_len = m_fixed_user_key_len;
+  Slice limit;
+  ro.iterate_upper_bound = &limit;
  #if 1
   auto iter = rdb->NewIterator(ro);
  #else
@@ -11778,13 +11783,15 @@ void ScanRecordsParallel::thread_proc() {
     THD* thd = m_thd;
     ha_rows rows = 0;
     Slice start = m_bounds[rng_idx + 0].user_key;
-    Slice limit = m_bounds[rng_idx + 1].user_key;
+    limit = m_bounds[rng_idx + 1].user_key;
     iter->Seek(start);
     while (iter->Valid() && !NoAtomic(thd->killed)) {
+     #if 0
       Slice key = iter->key();
       if (!rocksdb::SliceBytewiseLess(key, limit)) { // key >= limit
         break;
       }
+     #endif
       iter->Next();
       rows++;
     }
