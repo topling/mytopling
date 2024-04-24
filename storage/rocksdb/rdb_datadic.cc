@@ -873,6 +873,63 @@ void Rdb_key_def::serde_read(NonOwnerFileStream& fs) {
   }
 }
 
+static bool is_fixed_len_type(enum_field_types real_type) {
+  switch (real_type) {
+  default:
+    return false;
+  case MYSQL_TYPE_DECIMAL:
+  case MYSQL_TYPE_BOOL:
+  case MYSQL_TYPE_TINY:
+  case MYSQL_TYPE_SHORT:
+  case MYSQL_TYPE_LONG:
+  case MYSQL_TYPE_FLOAT:
+  case MYSQL_TYPE_DOUBLE:
+  case MYSQL_TYPE_TIMESTAMP:
+  case MYSQL_TYPE_LONGLONG:
+  case MYSQL_TYPE_INT24:
+  case MYSQL_TYPE_DATE:
+  case MYSQL_TYPE_TIME:
+  case MYSQL_TYPE_DATETIME:
+  case MYSQL_TYPE_YEAR:
+  case MYSQL_TYPE_NEWDATE:
+  case MYSQL_TYPE_BIT:
+  case MYSQL_TYPE_TIMESTAMP2:
+  case MYSQL_TYPE_DATETIME2:
+  case MYSQL_TYPE_TIME2:
+  case MYSQL_TYPE_ENUM:
+  case MYSQL_TYPE_NEWDECIMAL:
+    return true;
+  case MYSQL_TYPE_SET:
+  case MYSQL_TYPE_NULL:
+    return false;
+  case MYSQL_TYPE_VAR_STRING:
+  case MYSQL_TYPE_VARCHAR:
+  case MYSQL_TYPE_STRING:
+  case MYSQL_TYPE_GEOMETRY:
+  case MYSQL_TYPE_JSON:
+  case MYSQL_TYPE_TINY_BLOB:
+  case MYSQL_TYPE_MEDIUM_BLOB:
+  case MYSQL_TYPE_LONG_BLOB:
+  case MYSQL_TYPE_BLOB:
+    return false;
+  case MYSQL_TYPE_INVALID:      // Should not occur
+  case MYSQL_TYPE_TYPED_ARRAY:  // Type only used for replication
+    assert(false);
+    return false;
+  }
+  return false;
+}
+
+bool Rdb_key_def::is_fixed_len() const {
+  for (uint i = 0; i < m_key_parts; i++) {
+    if (m_pack_info[i].m_field_is_nullable)
+      return false;
+    if (!is_fixed_len_type(m_pack_info[i].m_field_real_type))
+      return false;
+  }
+  return true;
+}
+
 /*
   Determine if the table has TTL enabled by parsing the table comment.
 

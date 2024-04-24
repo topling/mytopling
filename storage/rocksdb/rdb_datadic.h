@@ -617,6 +617,7 @@ class Rdb_key_def {
 
   void serde_write(NonOwnerFileStream&) const;
   void serde_read(NonOwnerFileStream&);
+  bool is_fixed_len() const;
   inline uint32_t get_cf_id() const { return m_cf_id; }
 
   [[nodiscard]] static uint extract_ttl_duration(const TABLE &table_arg,

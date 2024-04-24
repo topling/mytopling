@@ -11670,7 +11670,7 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
   DBUG_RETURN(rc);
 }
 
-static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
+static ha_rows scan_records_num_st(THD* thd, uint32_t index_id, uint8_t fixlen) {
   uint32_t index_id_storage_form = __bswap_32(index_id);
   ha_rows rows = 0;
   rocksdb::ReadOptions ro;
@@ -11678,6 +11678,7 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
   auto tx = get_or_create_tx(thd, USER_TABLE);
   ro.snapshot = tx->m_read_opts[USER_TABLE].snapshot;
   ro.cache_sst_file_iter = false;
+  ro.fixed_user_key_len = fixlen;
  #if 1
   auto iter = rdb->NewIterator(ro);
  #else
@@ -11701,6 +11702,7 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id) {
 class ScanRecordsParallel {
   THD* m_thd;
   uint32_t m_index_id;
+  uint8_t m_fixed_user_key_len;
   size_t m_num_threads;
   Rdb_transaction* m_tx;
   std::vector<rocksdb::Anchor> m_bounds;
@@ -11708,13 +11710,14 @@ class ScanRecordsParallel {
   std::atomic<size_t> m_next_range_idx{0};
   void thread_proc();
 public:
-  ScanRecordsParallel(THD* thd, uint32_t index_id, size_t num_threads);
+  ScanRecordsParallel(THD* thd, uint32_t index_id, size_t num_threads, uint8_t fixlen);
   ha_rows run_scan();
 };
 ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
-                                         size_t num_threads) {
+                                         size_t num_threads, uint8_t fixlen) {
   m_thd = thd;
   m_index_id = index_id;
+  m_fixed_user_key_len = fixlen;
   m_num_threads = num_threads;
   m_tx = get_or_create_tx(thd, USER_TABLE);
   uint32_t start = __bswap_32(index_id);
@@ -11760,6 +11763,7 @@ void ScanRecordsParallel::thread_proc() {
   ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
   ro.snapshot = m_tx->m_read_opts[USER_TABLE].snapshot;
   ro.cache_sst_file_iter = false;
+  ro.fixed_user_key_len = m_fixed_user_key_len;
  #if 1
   auto iter = rdb->NewIterator(ro);
  #else
@@ -11790,7 +11794,7 @@ void ScanRecordsParallel::thread_proc() {
 }
 ha_rows ScanRecordsParallel::run_scan() {
   if (m_bounds.size() <= 2) {
-    return scan_records_num_st(m_thd, m_index_id);
+    return scan_records_num_st(m_thd, m_index_id, m_fixed_user_key_len);
   }
   size_t use_threads = std::min(m_bounds.size()-1, m_num_threads);
   std::vector<std::thread> threads; threads.reserve(use_threads-1);
@@ -11807,13 +11811,18 @@ ha_rows ScanRecordsParallel::run_scan() {
   }
   return total_rows;
 }
-static ha_rows scan_records_num(THD* thd, uint32_t index_id) {
+static ha_rows scan_records_num(THD* thd, const Rdb_key_def& kd) {
+  uint32_t index_id = kd.get_index_number();
+  auto fixlen = kd.is_fixed_len() ? kd.max_storage_fmt_length() : 0;
+  if (fixlen >= 30) {
+    fixlen = 0;
+  }
   size_t num_threads = THDVAR(thd, parallel_read_threads);
   if (num_threads >= 2) {
-    ScanRecordsParallel scan_ctx(thd, index_id, num_threads);
+    ScanRecordsParallel scan_ctx(thd, index_id, num_threads, fixlen);
     return scan_ctx.run_scan();
   }
-  return scan_records_num_st(thd, index_id);
+  return scan_records_num_st(thd, index_id, fixlen);
 }
 
 int ha_rocksdb::records(ha_rows *num_rows) {
@@ -11836,7 +11845,7 @@ int ha_rocksdb::records(ha_rows *num_rows) {
       return handler::records(num_rows);
     } else { // MyTopling fast path
       tx->acquire_snapshot(true, table_type);
-      *num_rows = scan_records_num(thd, kd.get_index_number());
+      *num_rows = scan_records_num(thd, kd);
       tx->release_snapshot(table_type);
       return 0;
     }
@@ -11867,9 +11876,8 @@ int ha_rocksdb::records_from_index(ha_rows *num_rows, uint index) {
           create_scope_guard([this]() { m_iteration_only = false; });
       return handler::records_from_index(num_rows, index);
     } else {
-      auto index_id = m_key_descr_arr[index]->get_index_number();
       tx->acquire_snapshot(true, table_type);
-      *num_rows = scan_records_num(thd, index_id);
+      *num_rows = scan_records_num(thd, *m_key_descr_arr[index]);
       tx->release_snapshot(table_type);
       return 0;
     }
