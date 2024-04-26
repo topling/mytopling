@@ -11821,7 +11821,7 @@ ha_rows ScanRecordsParallel::run_scan() {
 static ha_rows scan_records_num(THD* thd, const Rdb_key_def& kd) {
   uint32_t index_id = kd.get_index_number();
   auto fixlen = kd.is_fixed_len() ? kd.max_storage_fmt_length() : 0;
-  if (fixlen >= 30) {
+  if (fixlen > 32) {
     fixlen = 0;
   }
   size_t num_threads = THDVAR(thd, parallel_read_threads);
