@@ -33,6 +33,8 @@
 #include "./rdb_utils.h"
 #include "./sql_dd.h"
 
+#include <terark/bitmap.hpp>
+
 namespace myrocks {
 
 void dbug_modify_key_varchar8(String *on_disk_rec) {
@@ -272,8 +274,8 @@ Rdb_value_field_iterator<value_field_decoder, dst_type>::
   m_table = table;
   m_value_slice_reader = value_slice_reader;
   auto fields = rdb_converter->get_decode_fields();
-  m_field_iter = fields->begin();
-  m_field_end = fields->end();
+  m_field_iter = fields->data();
+  m_field_end = fields->size() + m_field_iter;
   m_null_bytes = rdb_converter->get_null_bytes();
 }
 
@@ -328,31 +330,6 @@ int Rdb_value_field_iterator<value_field_decoder, dst_type>::next() {
   return err;
 }
 
-template <typename value_field_decoder, typename dst_type>
-bool Rdb_value_field_iterator<value_field_decoder, dst_type>::end_of_fields()
-    const {
-  return m_field_iter == m_field_end;
-}
-
-template <typename value_field_decoder, typename dst_type>
-uint16 Rdb_value_field_iterator<value_field_decoder,
-                                dst_type>::get_field_index() const {
-  assert(m_field_dec != nullptr);
-  return m_field_dec->m_field_index;
-}
-
-template <typename value_field_decoder, typename dst_type>
-enum_field_types Rdb_value_field_iterator<value_field_decoder,
-                                          dst_type>::get_field_type() const {
-  assert(m_field_dec != nullptr);
-  return m_field_dec->m_field_type;
-}
-
-template <typename value_field_decoder, typename dst_type>
-bool Rdb_value_field_iterator<value_field_decoder, dst_type>::is_null() const {
-  return m_is_null;
-}
-
 /*
   Initialize Rdb_converter with table data
   @param    thd        IN      Thread context
@@ -370,10 +347,40 @@ Rdb_converter::Rdb_converter(const THD *thd, const Rdb_tbl_def *tbl_def,
   m_maybe_unpack_info = false;
   m_row_checksums_checked = 0;
   m_null_bytes = nullptr;
+  m_needs_kv_value = true;
+  m_has_instant_fields = false;
   setup_field_encoders(dd_table);
 }
 
+Rdb_converter::Rdb_converter() {
+  m_thd = nullptr;
+  m_tbl_def = nullptr;
+  m_table = nullptr;
+  m_key_requested = false;
+  m_verify_row_debug_checksums = false;
+  m_maybe_unpack_info = false;
+  m_row_checksums_checked = 0;
+  m_null_bytes = nullptr;
+  m_needs_kv_value = true;
+  m_has_instant_fields = false;
+  m_encoder_arr = nullptr;
+}
+
+void Rdb_converter::reset(const THD *thd, const Rdb_tbl_def *tbl_def,
+                          TABLE *table, const dd::Table *dd_table) {
+  this->~Rdb_converter();
+  new(this)Rdb_converter(thd, tbl_def, table, dd_table);
+}
+
+void Rdb_converter::reset() {
+  this->~Rdb_converter();
+  new(this)Rdb_converter();
+}
+
 Rdb_converter::~Rdb_converter() {
+  if (nullptr == m_encoder_arr) {
+    return;
+  }
   for (uint i = 0; i < m_table->s->fields; i++) {
     my_free(m_encoder_arr[i].m_instant_default_value);
   }
@@ -423,7 +430,7 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
                                          uint active_index, bool keyread_only,
                                          bool decode_all_fields) {
   m_key_requested = false;
-  m_decoders_vect.clear();
+  m_decoders_vect.erase_all();
   bitmap_free(&m_lookup_bitmap);
   int last_useful = 0;
   int skip_size = 0;
@@ -431,7 +438,9 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
   // We also have to load the fields that are required to decode the requested
   // virtual fields.
 
-  std::vector<bool> bases(m_table->s->fields);
+  //std::vector<bool> bases(m_table->s->fields);
+  assert(m_table->s->fields <= MAX_FIELDS);
+  terark::static_bitmap<MAX_FIELDS> bases(false);
 
   for (uint i = 0; i < m_table->s->fields; i++) {
     const bool field_requested =
@@ -441,12 +450,13 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
     if (field_requested && m_table->field[i]->is_virtual_gcol()) {
       for (uint j = 0; j < m_table->s->fields; j++) {
         if (bitmap_is_set(&m_table->field[i]->gcol_info->base_columns_map, j)) {
-          bases[j] = true;
+          bases.set1(j);
         }
       }
     }
   }
 
+  m_decoders_vect.reserve(m_table->s->fields);
   for (uint i = 0; i < m_table->s->fields; i++) {
     bool field_requested =
         decode_all_fields || m_verify_row_debug_checksums ||
@@ -483,13 +493,23 @@ void Rdb_converter::setup_field_decoders(const MY_BITMAP *field_map,
 
   // It could be that the last few elements are varchars that just do
   // skipping. Remove them.
-  m_decoders_vect.erase(m_decoders_vect.begin() + last_useful,
-                        m_decoders_vect.end());
+  m_decoders_vect.resize(last_useful);
+  m_has_instant_fields = false;
+  for (auto& field : m_decoders_vect) {
+    if (field.m_field_enc->m_is_instant_field) {
+      m_has_instant_fields = true;
+      break;
+    }
+  }
 
   if (!keyread_only && active_index != m_table->s->primary_key) {
     m_tbl_def->m_key_descr_arr[active_index]->get_lookup_bitmap(
         m_table, &m_lookup_bitmap);
   }
+
+  m_needs_kv_value = m_null_bytes_length_in_record || m_maybe_unpack_info
+                  || m_has_instant_fields || !m_decoders_vect.empty()
+                  || m_verify_row_debug_checksums;
 }
 
 void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
@@ -516,6 +536,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     }
   }
 
+  m_has_instant_fields = false;
   for (uint i = 0; i < m_table->s->fields; i++) {
     Field *const field = m_table->field[i];
     m_encoder_arr[i].m_storage_type = Rdb_field_encoder::STORE_ALL;
@@ -574,6 +595,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     // currently instant ddl only support append column
     if (is_instant_table && i >= instant_cols) {
       m_encoder_arr[i].m_is_instant_field = true;
+      m_has_instant_fields = true;
       dd::Column *column =
           const_cast<dd::Column *>(dd_find_column(dd_table, field->field_name));
       dd_table_get_instant_default(
@@ -615,40 +637,10 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
              (uint)m_null_bytes_length_in_record);
 }
 
-/*
-  EntryPoint for Decode:
-  Decode key slice(if requested) and value slice using built-in field
-  decoders
-  @param     key_def        IN          key definition to decode
-  @param     dst            OUT         Mysql buffer to fill decoded content
-  @param     key_slice      IN          RocksDB key slice to decode
-  @param     value_slice    IN          RocksDB value slice to decode
-  @return
-    0      OK
-    other  HA_ERR error code (can be SE-specific)
-*/
-int Rdb_converter::decode(const Rdb_key_def &key_def,
-                          uchar *dst,  // address to fill data
-                          const rocksdb::Slice *key_slice,
-                          const rocksdb::Slice *value_slice,
-                          bool decode_value) {
-  // Currently only support decode primary key, Will add decode secondary
-  // later
-  assert(key_def.m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY ||
-         key_def.m_index_type == Rdb_key_def::INDEX_TYPE_HIDDEN_PRIMARY);
-
-  const rocksdb::Slice *updated_key_slice = key_slice;
-#ifndef NDEBUG
-  String last_rowkey;
-  last_rowkey.copy(key_slice->data(), key_slice->size(), &my_charset_bin);
-  DBUG_EXECUTE_IF("myrocks_simulate_bad_pk_read1",
-                  { dbug_modify_key_varchar8(&last_rowkey); });
-  rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
-  updated_key_slice = &rowkey_slice;
+#ifdef NDEBUG
+#pragma GCC push_options
+#pragma GCC optimize ("-Ofast")
 #endif
-  return convert_record_from_storage_format(key_def, updated_key_slice,
-                                            value_slice, dst, decode_value);
-}
 
 /*
   Decode value slice header for pk
@@ -663,7 +655,7 @@ int Rdb_converter::decode_value_header_for_pk(Rdb_string_reader *reader,
                                               const Rdb_key_def &pk_def,
                                               rocksdb::Slice *unpack_slice) {
   /* If it's a TTL record, skip the 8 byte TTL value */
-  if (pk_def.has_ttl()) {
+  if (unlikely(pk_def.has_ttl())) {
     const char *ttl_bytes;
     if ((ttl_bytes = reader->read(ROCKSDB_SIZEOF_TTL_RECORD))) {
       memcpy(m_ttl_bytes, ttl_bytes, ROCKSDB_SIZEOF_TTL_RECORD);
@@ -706,41 +698,68 @@ int Rdb_converter::decode_value_header_for_pk(Rdb_string_reader *reader,
     0      OK
     other  HA_ERR error code (can be SE-specific)
 */
-int Rdb_converter::convert_record_from_storage_format(
-    const Rdb_key_def &pk_def, const rocksdb::Slice *const key_slice,
-    const rocksdb::Slice *const value_slice, uchar *const dst,
-    bool decode_value = true) {
-  bool skip_value = !decode_value || get_decode_fields()->size() == 0;
-  if (!m_key_requested && skip_value) {
-    return HA_EXIT_SUCCESS;
-  }
+template<class ValueSliceReader>
+ROCKSDB_FLATTEN
+int Rdb_converter::decode_tpl(
+    const Rdb_key_def& pk_def,
+    uchar *const dst,
+    const rocksdb::Slice *key_slice,
+    const rocksdb::Slice *value_slice,
+    bool decode_value) {
+  assert(pk_def.m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY ||
+         pk_def.m_index_type == Rdb_key_def::INDEX_TYPE_HIDDEN_PRIMARY);
 
-  int err = HA_EXIT_SUCCESS;
-
-  Rdb_string_reader value_slice_reader(value_slice);
-  rocksdb::Slice unpack_slice;
-  err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice);
-  if (err != HA_EXIT_SUCCESS) {
-    return err;
-  }
-
-  /*
-    Decode PK fields from the key
-  */
-  if (m_key_requested) {
-    err = pk_def.unpack_record(m_table, dst, key_slice,
-                               !unpack_slice.empty() ? &unpack_slice : nullptr,
-                               false /* verify_checksum */);
-    if (err != HA_EXIT_SUCCESS) {
+#ifndef NDEBUG
+  String last_rowkey;
+  last_rowkey.copy(key_slice->data(), key_slice->size(), &my_charset_bin);
+  DBUG_EXECUTE_IF("myrocks_simulate_bad_pk_read1",
+                  { dbug_modify_key_varchar8(&last_rowkey); });
+  rocksdb::Slice rowkey_slice(last_rowkey.ptr(), last_rowkey.length());
+  key_slice = &rowkey_slice;
+#endif
+  ValueSliceReader value_slice_reader(value_slice);
+  if constexpr (!std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
+    bool skip_value = !decode_value || m_decoders_vect.empty();
+    if (unlikely(!m_key_requested && skip_value)) {
+      return HA_EXIT_SUCCESS;
+    }
+    rocksdb::Slice unpack_slice;
+    if (int err = decode_value_header_for_pk(&value_slice_reader, pk_def, &unpack_slice)) {
       return err;
+    }
+
+    /*
+      Decode PK fields from the key
+    */
+    if (m_key_requested) {
+      int err = pk_def.unpack_record_tpl<ValueSliceReader>(m_table, dst, key_slice, &unpack_slice,
+                                  false /* verify_checksum */);
+      if (err != HA_EXIT_SUCCESS) {
+        return err;
+      }
+    }
+    if (skip_value) {
+      // We are done
+      return HA_EXIT_SUCCESS;
+    }
+  }
+  else {
+    if (m_key_requested) {
+      int err = pk_def.unpack_record_tpl<ValueSliceReader>(m_table, dst, key_slice, nullptr,
+                                  false /* verify_checksum */);
+      if (err != HA_EXIT_SUCCESS) {
+        return err;
+      }
+    }
+    bool skip_value = !decode_value || m_decoders_vect.empty();
+    if (skip_value) {
+      // We are done
+      return HA_EXIT_SUCCESS;
     }
   }
 
-  if (skip_value) {
-    // We are done
-    return HA_EXIT_SUCCESS;
-  }
-
+  if constexpr (!std::is_same_v<ValueSliceReader, Rdb_empty_reader>) {
+#if 0
   Rdb_value_field_iterator<Rdb_convert_to_record_value_decoder, uchar *>
       value_field_iterator(m_table, &value_slice_reader, this, dst);
 
@@ -752,13 +771,70 @@ int Rdb_converter::convert_record_from_storage_format(
       return err;
     }
   }
+#else // manually inline
+{
+  auto null_bytes = m_null_bytes;
+  // get_decode_fields() returns m_decoders_vect
+  for (auto& field : m_decoders_vect) {
+    auto field_dec = field.m_field_enc;
+    bool decode = field.m_decode;
+    bool is_instant_field = field_dec->m_is_instant_field;
 
-  if (m_verify_row_debug_checksums) {
-    return verify_row_debug_checksum(pk_def, &value_slice_reader, key_slice,
-                                     value_slice);
+    // For non-instant cols, Skip the bytes we need to skip
+    if (int skip = field.m_skip) {
+      if (unlikely(!is_instant_field)) {
+        if (unlikely(!value_slice_reader.read(skip))) {
+          assert(false);
+          return HA_ERR_ROCKSDB_CORRUPT_DATA;
+        }
+      }
+      else {
+        // For instant cols, skip the bytes if record contains that cols data
+        value_slice_reader.safe_skip(skip);
+      }
+    }
+
+    // If a row is inserted after instant ddl, value_slice will contain instant
+    // column data
+    if (!is_instant_field || value_slice_reader.remaining_bytes() > 0) {
+      // This is_null value is bind to how stroage format store its value
+      bool is_null = field_dec->maybe_null() &&
+             (null_bytes[field_dec->m_null_offset] & field_dec->m_null_mask);
+
+      // Decode each field
+      int err = Rdb_convert_to_record_value_decoder::decode(
+          dst, m_table, field_dec, &value_slice_reader, decode, is_null);
+      if (unlikely(err))
+        return err;
+    } else if (is_instant_field && decode) {
+      int err = Rdb_convert_to_record_value_decoder::decode_instant(dst, field_dec);
+      if (unlikely(err))
+        return err;
+    }
+  }
+}
+#endif
+
+    if (m_verify_row_debug_checksums) {
+      return verify_row_debug_checksum(pk_def, &value_slice_reader, key_slice,
+                                      value_slice);
+    }
   }
   return HA_EXIT_SUCCESS;
 }
+
+template int Rdb_converter::decode_tpl<Rdb_empty_reader>(
+    const Rdb_key_def&,
+    uchar *const dst,
+    const rocksdb::Slice *key_slice,
+    const rocksdb::Slice *value_slice,
+    bool decode_value);
+template int Rdb_converter::decode_tpl<Rdb_string_reader>(
+    const Rdb_key_def&,
+    uchar *const dst,
+    const rocksdb::Slice *key_slice,
+    const rocksdb::Slice *value_slice,
+    bool decode_value);
 
 /*
   Verify checksum for row
@@ -915,14 +991,16 @@ int Rdb_converter::encode_value_slice(
     m_storage_record.append(reinterpret_cast<char *>(pk_unpack_info->ptr()),
                             pk_unpack_info->get_current_pos());
   }
-  for (uint i = 0; i < m_table->s->fields; i++) {
+  uint  num_fields = m_table->s->fields;
+  auto* tbl_fields = m_table->field;
+  for (uint i = 0; i < num_fields; i++) {
     Rdb_field_encoder &encoder = m_encoder_arr[i];
     /* Don't pack decodable PK key parts */
     if (encoder.m_storage_type != Rdb_field_encoder::STORE_ALL) {
       continue;
     }
 
-    Field *const field = m_table->field[i];
+    Field *const field = tbl_fields[i];
 
     if (field->is_virtual_gcol()) {
       continue;
@@ -1000,4 +1078,9 @@ int Rdb_converter::encode_value_slice(
 
 template class Rdb_value_field_iterator<Rdb_convert_to_record_value_decoder,
                                         uchar *>;
+
+#ifdef NDEBUG
+#pragma GCC pop_options
+#endif
+
 }  // namespace myrocks

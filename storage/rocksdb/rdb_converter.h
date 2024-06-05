@@ -21,13 +21,21 @@
 
 // MySQL header files
 #include "./sql_string.h"
+#include "./ut0counter.h"
+#include <field_types.h>
+#include <my_base.h>
 
 // MyRocks header files
-#include "./ha_rocksdb.h"
 #include "./rdb_datadic.h"
+
+#include <terark/valvec32.hpp>
 
 namespace myrocks {
 class Rdb_field_encoder;
+class Rdb_tbl_def;
+class Rdb_converter;
+class Rdb_key_def;
+extern unsigned long long rocksdb_converter_record_cached_length;
 
 uint32_t u64ToAsciiTable(uint64_t value, Rdb_string_writer *writer) noexcept;
 
@@ -82,9 +90,8 @@ class Rdb_convert_to_record_value_decoder {
 template <typename value_field_decoder, typename dst_type>
 class Rdb_value_field_iterator {
  private:
-  bool m_is_null;
-  std::vector<READ_FIELD>::const_iterator m_field_iter;
-  std::vector<READ_FIELD>::const_iterator m_field_end;
+  const READ_FIELD* m_field_iter;
+  const READ_FIELD* m_field_end;
   Rdb_string_reader *m_value_slice_reader;
   // null value map
   const char *m_null_bytes;
@@ -95,6 +102,7 @@ class Rdb_value_field_iterator {
   Rdb_field_encoder *m_field_dec;
   dst_type m_buf;
   uint m_offset;
+  bool m_is_null;
 
  public:
   Rdb_value_field_iterator(TABLE *table, Rdb_string_reader *value_slice_reader,
@@ -110,14 +118,19 @@ class Rdb_value_field_iterator {
   */
   int next();
   // Whether current field is the end of fields
-  bool end_of_fields() const;
-  uint get_length() const;
+  bool end_of_fields() const { return m_field_iter == m_field_end; }
   // Whether the value of current field is null
-  bool is_null() const;
+  bool is_null() const { return m_is_null; }
   // get current field index
-  uint16 get_field_index() const;
+  uint16 get_field_index() const {
+    assert(m_field_dec != nullptr);
+    return m_field_dec->m_field_index;
+  }
   // get current field type
-  enum_field_types get_field_type() const;
+  enum_field_types get_field_type() const {
+    assert(m_field_dec != nullptr);
+    return m_field_dec->m_field_type;
+  }
 };
 
 /**
@@ -130,11 +143,16 @@ class Rdb_converter {
   */
   Rdb_converter(const THD *thd, const Rdb_tbl_def *tbl_def, TABLE *table,
                 const dd::Table *dd_table);
+  Rdb_converter();
   Rdb_converter(const Rdb_converter &) = delete;
   Rdb_converter(Rdb_converter &&) = delete;
   Rdb_converter &operator=(const Rdb_converter &) = delete;
   Rdb_converter &operator=(Rdb_converter &&) = delete;
   ~Rdb_converter();
+
+  void reset(const THD *thd, const Rdb_tbl_def *tbl_def, TABLE *table,
+             const dd::Table *dd_table);
+  void reset();
 
   void setup_field_decoders(const MY_BITMAP *field_map, uint active_index,
                             bool keyread_only, bool decode_all_fields = false);
@@ -149,10 +167,20 @@ class Rdb_converter {
     }
   }
 
+  inline
   [[nodiscard]] int decode(const Rdb_key_def &key_def, uchar *dst,
                            const rocksdb::Slice *key_slice,
                            const rocksdb::Slice *value_slice,
-                           bool decode_value = true);
+                           bool decode_value = true) {
+    return value_slice->empty() && !m_has_instant_fields ?
+      decode_tpl<Rdb_empty_reader>(&key_def, dst, key_slice, nullptr, decode_value) :
+      decode_tpl<Rdb_string_reader>(&key_def, dst, key_slice, value_slice, decode_value);
+  }
+
+  template<class ValueSliceReader>
+  int decode_tpl(const Rdb_key_def& key_def, uchar *dst,
+             const rocksdb::Slice *key_slice, const rocksdb::Slice *value_slice,
+             bool decode_value);
 
   [[nodiscard]] int encode_value_slice(
       const Rdb_key_def &pk_def, const rocksdb::Slice &pk_packed_slice,
@@ -177,14 +205,16 @@ class Rdb_converter {
     m_key_requested = key_requested;
   }
   bool get_maybe_unpack_info() const { return m_maybe_unpack_info; }
+  bool needs_kv_value() const { return m_needs_kv_value; }
 
   char *get_ttl_bytes_buffer() { return m_ttl_bytes; }
 
-  const std::vector<READ_FIELD> *get_decode_fields() const {
-    return &m_decoders_vect;
-  }
+  auto get_decode_fields() const { return &m_decoders_vect; }
 
   const MY_BITMAP *get_lookup_bitmap() { return &m_lookup_bitmap; }
+
+  THD* get_thd() const { return const_cast<THD*>(m_thd); }
+  void set_thd(THD* thd) { m_thd = thd; }
 
  private:
   [[nodiscard]] int decode_value_header_for_pk(Rdb_string_reader *reader,
@@ -195,16 +225,24 @@ class Rdb_converter {
 
   void get_storage_type(Rdb_field_encoder *const encoder, const uint kp);
 
-  [[nodiscard]] int convert_record_from_storage_format(
-      const Rdb_key_def &pk_def, const rocksdb::Slice *const key,
-      const rocksdb::Slice *const value, uchar *const buf, bool decode_value);
-
   [[nodiscard]] int verify_row_debug_checksum(const Rdb_key_def &pk_def,
                                               Rdb_string_reader *reader,
                                               const rocksdb::Slice *key,
                                               const rocksdb::Slice *value);
 
  private:
+  /*
+    Number of bytes in on-disk (storage) record format that are used for
+    storing SQL NULL flags.
+  */
+  short m_null_bytes_length_in_record;
+  /*
+   true <=> Some fields in the PK may require unpack_info.
+  */
+  bool m_maybe_unpack_info;
+
+  bool m_needs_kv_value; // for optimize of omit call iter->value()
+
   /*
     This tells if any field which is part of the key needs to be unpacked and
     decoded.
@@ -215,6 +253,9 @@ class Rdb_converter {
   the session variable at the start of each query.
   */
   bool m_verify_row_debug_checksums;
+
+  bool m_has_instant_fields;
+
   // Thread handle
   const THD *m_thd;
   /* MyRocks table definition*/
@@ -222,18 +263,9 @@ class Rdb_converter {
   /* The current open table */
   TABLE *m_table;
   /*
-    Number of bytes in on-disk (storage) record format that are used for
-    storing SQL NULL flags.
-  */
-  int m_null_bytes_length_in_record;
-  /*
     Pointer to null bytes value
   */
   const char *m_null_bytes;
-  /*
-   true <=> Some fields in the PK may require unpack_info.
-  */
-  bool m_maybe_unpack_info;
   /*
     Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
   */
@@ -246,7 +278,7 @@ class Rdb_converter {
   /*
     Array of request fields telling how to decode data in RocksDB format
   */
-  std::vector<READ_FIELD> m_decoders_vect;
+  terark::valvec32<READ_FIELD> m_decoders_vect;
   /*
     A counter of how many row checksums were checked for this table. Note that
     this does not include checksums for secondary index entries.
