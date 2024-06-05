@@ -37,17 +37,28 @@
 #include "./ha_rocksdb_proto.h"
 #include "./rdb_psi.h"
 
+#include <rocksdb/threadpool.h>
+#include <terark/io/DataIO_Basic.hpp> // for NATIVE_OF_BIG_ENDIAN
+#include <topling/side_plugin_repo.h>
+
+#define m_sst_file  sst.sst_file
+#define m_curr_size sst.curr_size
+
 namespace myrocks {
+
+extern std::shared_ptr<rocksdb::TableFactory> rocksdb_auto_sort_sst_factory;
 
 Rdb_sst_file_ordered::Rdb_sst_file::Rdb_sst_file(
     rocksdb::DB *db, rocksdb::ColumnFamilyHandle &cf,
-    const rocksdb::DBOptions &db_options, const std::string &name, bool tracing,
+    const rocksdb::DBOptions &db_options, const std::string &name,
+    bool use_auto_sort_sst, bool tracing,
     uint32_t compression_parallel_threads)
     : m_db(db),
       m_cf(cf),
       m_db_options(db_options),
       m_sst_file_writer(nullptr),
       m_name(name),
+      m_use_auto_sort_sst(use_auto_sort_sst),
       m_tracing(tracing),
       m_comparator(cf.GetComparator()),
       m_compression_parallel_threads(compression_parallel_threads) {
@@ -70,6 +81,11 @@ rocksdb::Status Rdb_sst_file_ordered::Rdb_sst_file::open() {
     return s;
   }
 
+  if (m_use_auto_sort_sst) {
+    ROCKSDB_VERIFY(rocksdb_auto_sort_sst_factory != nullptr);
+    cf_descr.options.table_factory = rocksdb_auto_sort_sst_factory;
+  }
+
   // Create an sst file writer with the current options and comparator
   const rocksdb::EnvOptions env_options(m_db_options);
   rocksdb::Options options(m_db_options, cf_descr.options);
@@ -84,9 +100,8 @@ rocksdb::Status Rdb_sst_file_ordered::Rdb_sst_file::open() {
   s = m_sst_file_writer->Open(m_name);
   if (m_tracing) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "SST Tracing: Open(%s) returned %s", m_name.c_str(),
-                    s.ok() ? "ok" : "not ok");
+    sql_print_information("SST Tracing: Open(%s) returned %s", m_name.c_str(),
+                          s.ok() ? "ok" : "not ok");
   }
 
   if (!s.ok()) {
@@ -135,23 +150,22 @@ rocksdb::Status Rdb_sst_file_ordered::Rdb_sst_file::commit() {
   s = m_sst_file_writer->Finish(&fileinfo);
   if (m_tracing) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "SST Tracing: Finish returned %s",
-                    s.ok() ? "ok" : "not ok");
+    sql_print_information("SST Tracing: Finish returned %s",
+                          s.ok() ? "ok" : "not ok");
   }
 
   if (s.ok()) {
     if (m_tracing) {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                      "SST Tracing: Adding file %s, smallest key: %s, "
-                      "largest key: %s, file size: %" PRIu64
-                      ", "
-                      "num_entries: %" PRIu64,
-                      fileinfo.file_path.c_str(),
-                      generateKey(fileinfo.smallest_key).c_str(),
-                      generateKey(fileinfo.largest_key).c_str(),
-                      fileinfo.file_size, fileinfo.num_entries);
+      sql_print_information(
+          "SST Tracing: Adding file %s, smallest key: %s, "
+          "largest key: %s, file size: %" PRIu64
+          ", "
+          "num_entries: %" PRIu64,
+          fileinfo.file_path.c_str(),
+          generateKey(fileinfo.smallest_key).c_str(),
+          generateKey(fileinfo.largest_key).c_str(), fileinfo.file_size,
+          fileinfo.num_entries);
     }
   }
 
@@ -195,12 +209,14 @@ Rdb_sst_file_ordered::Rdb_sst_stack::top() {
 
 Rdb_sst_file_ordered::Rdb_sst_file_ordered(
     rocksdb::DB *db, rocksdb::ColumnFamilyHandle &cf,
-    const rocksdb::DBOptions &db_options, const std::string &name, bool tracing,
+    const rocksdb::DBOptions &db_options, const std::string &name,
+    bool use_auto_sort_sst, bool tracing,
     size_t max_size, uint32_t compression_parallel_threads)
     : m_use_stack(false),
       m_first(true),
       m_stack(max_size),
-      m_file(db, cf, db_options, name, tracing, compression_parallel_threads) {
+      m_file(db, cf, db_options, name, use_auto_sort_sst, tracing,
+             compression_parallel_threads) {
   m_stack.reset();
 }
 
@@ -229,6 +245,10 @@ rocksdb::Status Rdb_sst_file_ordered::apply_first() {
 
 rocksdb::Status Rdb_sst_file_ordered::put(const rocksdb::Slice &key,
                                           const rocksdb::Slice &value) {
+  if (m_file.use_auto_sort_sst()) {
+    return m_file.put(key, value);
+  }
+
   rocksdb::Status s;
 
   // If this is the first key, just store a copy of the key and value
@@ -265,6 +285,10 @@ rocksdb::Status Rdb_sst_file_ordered::put(const rocksdb::Slice &key,
 }
 
 rocksdb::Status Rdb_sst_file_ordered::commit() {
+  if (m_file.use_auto_sort_sst()) {
+    return m_file.commit();
+  }
+
   rocksdb::Status s;
 
   // Make sure we get the first key if it was the only key given to us.
@@ -305,16 +329,16 @@ rocksdb::Status Rdb_sst_file_ordered::commit() {
 Rdb_sst_info::Rdb_sst_info(rocksdb::DB *db, const std::string &tablename,
                            const std::string &indexname,
                            rocksdb::ColumnFamilyHandle &cf,
-                           const rocksdb::DBOptions &db_options, bool tracing,
+                           const rocksdb::DBOptions &db_options,
+                           bool use_auto_sort_sst, bool tracing,
                            uint32_t compression_parallel_threads)
     : m_db(db),
       m_cf(cf),
       m_db_options(db_options),
-      m_curr_size(0),
       m_sst_count(0),
       m_background_error(HA_EXIT_SUCCESS),
       m_done(false),
-      m_sst_file(nullptr),
+      m_use_auto_sort_sst(use_auto_sort_sst),
       m_tracing(tracing),
       m_print_client_error(true),
       m_compression_parallel_threads(compression_parallel_threads) {
@@ -350,11 +374,25 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *db, const std::string &tablename,
     // Set the maximum size to 3 times the cf's target size
     m_max_size = cf_descr.options.target_file_size_base * 3;
   }
+  extern long long rocksdb_bulk_sst_size;
+  if (rocksdb_bulk_sst_size) {
+    m_max_size = std::max(uint64_t(rocksdb_bulk_sst_size),
+                          cf_descr.options.target_file_size_base);
+  }
+  extern long long rocksdb_bulk_sst_parallel_num;
+  if (rocksdb_bulk_sst_parallel_num > 0) {
+    m_parallel_num = uint(rocksdb_bulk_sst_parallel_num);
+  } else {
+    m_parallel_num = uint(cf_descr.options.max_write_buffer_number);
+  }
+
   mysql_mutex_init(rdb_sst_commit_key, &m_commit_mutex, MY_MUTEX_INIT_FAST);
 }
 
 Rdb_sst_info::~Rdb_sst_info() {
-  assert(m_sst_file == nullptr);
+  for (auto& [index_id, sst] : m_sst_map) {
+    SHIP_ASSERT(m_sst_file == nullptr);
+  }
 
   for (const auto &sst_file : m_committed_files) {
     // In case something went wrong attempt to delete the temporary file.
@@ -367,7 +405,7 @@ Rdb_sst_info::~Rdb_sst_info() {
   mysql_mutex_destroy(&m_commit_mutex);
 }
 
-int Rdb_sst_info::open_new_sst_file() {
+int Rdb_sst_info::open_new_sst_file(OneFile& sst) {
   assert(m_sst_file == nullptr);
 
   // Create the new sst file's name
@@ -375,7 +413,8 @@ int Rdb_sst_info::open_new_sst_file() {
 
   // Create the new sst file object
   m_sst_file =
-      new Rdb_sst_file_ordered(m_db, m_cf, m_db_options, name, m_tracing,
+      new Rdb_sst_file_ordered(m_db, m_cf, m_db_options, name,
+                               m_use_auto_sort_sst, m_tracing,
                                m_max_size, m_compression_parallel_threads);
 
   // Open the sst file
@@ -392,8 +431,48 @@ int Rdb_sst_info::open_new_sst_file() {
   return HA_EXIT_SUCCESS;
 }
 
+static size_t g_busy_memory_bytes = 0;
+static size_t g_commiting_files_total = 0;
+static std::mutex g_commiting_threads_mutex;
+static std::condition_variable g_commiting_cond;
+
 void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
+  auto func = [](void* arg) {
+    auto sst = (Rdb_sst_file_ordered*)arg;
+    auto info = sst->m_sst_info;
+    info->commit_sst_file_func(sst);
+  };
+  sst_file->m_sst_info = this;
+  auto env = rocksdb::Env::Default();
+  uint64_t t0 = 0;
+  {
+    auto mem_limit = m_max_size * m_parallel_num;
+    std::unique_lock<std::mutex> lock(g_commiting_threads_mutex);
+    while (g_busy_memory_bytes >= mem_limit) {
+      if (t0 == 0) {
+        t0 = env->NowMicros();
+      }
+      sql_print_information(
+        "RocksDB: commit_sst_file: wait memory busy %s, limit %s, commiting %zd",
+        rocksdb::SizeToString(g_busy_memory_bytes).c_str(),
+        rocksdb::SizeToString(mem_limit).c_str(), g_commiting_files_total);
+      g_commiting_cond.wait(lock); // avoid OOM
+    }
+    g_busy_memory_bytes += sst_file->curr_size;
+    g_commiting_files_total++;
+    m_commiting_files++;
+  }
+  if (t0) {
+    double sec = (env->NowMicros() - t0) / 1e6;
+    sql_print_information("RocksDB: commit_sst_file: wait memory for %.3f sec", sec);
+  }
+  env->Schedule(func, sst_file);
+}
+
+void Rdb_sst_info::commit_sst_file_func(Rdb_sst_file_ordered* sst_file) {
   const rocksdb::Status s = sst_file->commit();
+
+  g_commiting_threads_mutex.lock();
   if (!s.ok()) {
     set_error_msg(sst_file->get_name(), s);
     set_background_error(HA_ERR_ROCKSDB_BULK_LOAD);
@@ -401,13 +480,20 @@ void Rdb_sst_info::commit_sst_file(Rdb_sst_file_ordered *sst_file) {
 
   m_committed_files.push_back(sst_file->get_name());
 
+  m_commiting_files--;
+  g_commiting_files_total--;
+  g_busy_memory_bytes -= sst_file->curr_size;
+  g_commiting_cond.notify_all();
+  g_commiting_threads_mutex.unlock();
+
   delete sst_file;
 }
 
-void Rdb_sst_info::close_curr_sst_file() {
+void Rdb_sst_info::close_curr_sst_file(OneFile& sst) {
   assert(m_sst_file != nullptr);
   assert(m_curr_size > 0);
 
+  m_sst_file->curr_size = sst.curr_size;
   commit_sst_file(m_sst_file);
 
   // Reset for next sst file
@@ -416,13 +502,22 @@ void Rdb_sst_info::close_curr_sst_file() {
 }
 
 int Rdb_sst_info::put(const rocksdb::Slice &key, const rocksdb::Slice &value) {
+  constexpr size_t INDEX_NUMBER_SIZE = 4;
+  ROCKSDB_VERIFY_GE(key.size(), INDEX_NUMBER_SIZE);
   int rc;
 
   assert(!m_done);
 
-  if (m_curr_size + key.size() + value.size() >= m_max_size) {
+  auto index_id = NATIVE_OF_BIG_ENDIAN(unaligned_load<uint32_t>(key.data_));
+  auto ib = m_sst_map.emplace(index_id, OneFile());
+  if (unlikely(ib.second)) {
+    m_avg_max_size = m_max_size / m_sst_map.size();
+  }
+  auto& sst = ib.first->second;
+
+  if (m_curr_size >= m_avg_max_size) {
     // The current sst file has reached its maximum, close it out
-    close_curr_sst_file();
+    close_curr_sst_file(sst);
 
     // While we are here, check to see if we have had any errors from the
     // background thread - we don't want to wait for the end to report them
@@ -433,7 +528,7 @@ int Rdb_sst_info::put(const rocksdb::Slice &key, const rocksdb::Slice &value) {
 
   if (m_curr_size == 0) {
     // We don't have an sst file open - open one
-    rc = open_new_sst_file();
+    rc = open_new_sst_file(sst);
     if (rc != 0) {
       return rc;
     }
@@ -475,9 +570,19 @@ int Rdb_sst_info::finish(Rdb_sst_commit_info *commit_info,
 
   m_print_client_error = print_client_error;
 
-  if (m_curr_size > 0) {
-    // Close out any existing files
-    close_curr_sst_file();
+  for (auto& [index_id, sst] : m_sst_map) {
+    if (m_curr_size > 0) {
+      // Close out any existing files
+      close_curr_sst_file(sst);
+    }
+  }
+
+  // wait for all commiting files to be committed
+  {
+    std::unique_lock<std::mutex> lock(g_commiting_threads_mutex);
+    while (m_commiting_files > 0) {
+      g_commiting_cond.wait(lock);
+    }
   }
 
   // This checks out the list of files so that the caller can collect/group
@@ -518,9 +623,10 @@ void Rdb_sst_info::report_error_msg(const rocksdb::Status &s,
              strcmp(s.getState(), "Global seqno is required, but disabled") ==
                  0) {
     my_printf_error(ER_OVERLAPPING_KEYS,
+                    "rocksdb = %s, myrocks = "
                     "Rows inserted during bulk load "
                     "must not overlap existing rows",
-                    MYF(0));
+                    MYF(0), s.ToString().c_str());
   } else {
     my_printf_error(ER_UNKNOWN_ERROR, "[%s] bulk load error: %s", MYF(0),
                     sst_file_name, s.ToString().c_str());
@@ -537,9 +643,8 @@ void Rdb_sst_info::init(const rocksdb::DB *const db) {
       fs->GetChildren(dir, rocksdb::IOOptions(), &files_in_dir, nullptr);
   if (!s.ok()) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "RocksDB: Could not access database directory: %s",
-                    dir.c_str());
+    sql_print_warning("RocksDB: Could not access database directory: %s",
+                      dir.c_str());
     return;
   }
 
