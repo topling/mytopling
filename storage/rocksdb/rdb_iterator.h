@@ -24,19 +24,18 @@
 #include "sql/handler.h"
 
 // MyRocks header files
-#include "./ha_rocksdb.h"
 #include "./ha_rocksdb_proto.h"
 #include "./rdb_converter.h"
 #include "./rdb_datadic.h"
 
 namespace myrocks {
 
-// If the iterator is not valid it might be because of EOF but might be due
-// to IOError or corruption. The good practice is always check it.
-// https://github.com/facebook/rocksdb/wiki/Iterator#error-handling
-[[nodiscard]] bool is_valid_rdb_iterator(const rocksdb::Iterator &it);
+using rocksdb::Slice;
+typedef rocksdb::Slice (*slice_ft)(void*); // key/value
+class ha_rocksdb;
+bool is_valid_iter_err(rocksdb::Iterator *scan_it);
 
-class Rdb_iterator {
+class Rdb_iterator : public rocksdb::CacheAlignedNewDelete {
  public:
   virtual ~Rdb_iterator() = 0;
 
@@ -79,6 +78,11 @@ class Rdb_iterator {
   virtual rocksdb::Slice value() = 0;
   virtual void reset() = 0;
   virtual bool is_valid() = 0;
+  virtual void release_snapshot() = 0;
+#if defined(_MSC_VER) || defined(__clang__)
+#else
+  virtual void* bind_get_kv(slice_ft*, slice_ft*) = 0;
+#endif
 };
 
 class Rdb_iterator_base : public Rdb_iterator {
@@ -119,19 +123,29 @@ class Rdb_iterator_base : public Rdb_iterator {
                  std::vector<rocksdb::PinnableSlice> &value_slices,
                  std::vector<int> &rtn_codes, bool sorted_input) override;
 
-  int next() override { return next_with_direction(true, false); }
+  int next() override;
 
-  int prev() override { return next_with_direction(false, false); }
+  int prev() override;
 
+ #if defined(_MSC_VER) || defined(__clang__)
   rocksdb::Slice key() override { return m_scan_it->key(); }
-
   rocksdb::Slice value() override { return m_scan_it->value(); }
+ #else
+  rocksdb::Slice key  () override { return m_iter_key(m_scan_it); }
+  rocksdb::Slice value() override { return m_iter_val(m_scan_it); }
+  void* bind_get_kv(slice_ft*, slice_ft*) override;
+ #endif
 
   void reset() override {
     release_scan_iterator();
     m_valid = false;
   }
+  void release_snapshot() override;
 
+  void init(THD *thd, const std::shared_ptr<Rdb_key_def>& kd,
+            const std::shared_ptr<Rdb_key_def>& pkd, const Rdb_tbl_def *tbl_def);
+
+  bool is_partial_iter() const { return m_is_partial_iter; }
   bool is_valid() override { return m_valid; }
   void set_ignore_killed(bool flag) { m_ignore_killed = flag; }
 
@@ -140,34 +154,67 @@ class Rdb_iterator_base : public Rdb_iterator {
 
   void setup_prefix_buffer(enum ha_rkey_function find_flag,
                            const rocksdb::Slice start_key);
-
-  const Rdb_key_def &m_kd;
+  Rdb_key_def* m_kd;
 
   // Rdb_key_def of the primary key
-  const Rdb_key_def &m_pkd;
-
-  const Rdb_tbl_def *m_tbl_def;
+  Rdb_key_def* m_pkd;
 
   THD *m_thd;
 
-  ha_rocksdb *m_rocksdb_handler;
-
   /* Iterator used for range scans and for full table/index scans */
-  std::unique_ptr<rocksdb::Iterator> m_scan_it;
+  rocksdb::Iterator *m_scan_it = nullptr;
+
+ #if defined(_MSC_VER) || defined(__clang__)
+  rocksdb::Slice InvokeRocksIter_key() const { return m_scan_it->key(); }
+  rocksdb::Slice InvokeRocksIter_val() const { return m_scan_it->value(); }
+  size_t m_paddings[5] = {0};
+ #else
+  typedef void (*RocksIterScanFN)(rocksdb::Iterator*);
+  typedef bool (*RocksIterValidFN)(const rocksdb::Iterator*);
+  typedef rocksdb::Slice (*RocksIterSliceFN)(const rocksdb::Iterator*);
+  RocksIterScanFN m_iter_next, m_iter_prev;
+  RocksIterSliceFN m_iter_key, m_iter_val;
+  RocksIterValidFN m_iter_is_valid;
+  inline void rocksdb_smart_next(bool seek_backward, rocksdb::Iterator* iter) {
+    if (seek_backward) {
+      m_iter_prev(iter); // iter->Prev();
+    } else {
+      m_iter_next(iter); // iter->Next();
+    }
+  }
+  inline void rocksdb_smart_prev(bool seek_backward, rocksdb::Iterator* iter) {
+    if (seek_backward) {
+      m_iter_next(iter); // iter->Next();
+    } else {
+      m_iter_prev(iter); // iter->Prev();
+    }
+  }
+  inline bool is_valid_iterator(rocksdb::Iterator* scan_it) {
+    if (likely(m_iter_is_valid(scan_it)))
+      return true;
+    else
+      return is_valid_iter_err(scan_it);
+  }
+  rocksdb::Slice InvokeRocksIter_key() const { return m_iter_key(m_scan_it); }
+  rocksdb::Slice InvokeRocksIter_val() const { return m_iter_val(m_scan_it); }
+ #endif
+  uint32_t m_call_cnt = 0; // for refresh_iter
+  void refresh_iter();
 
   /* Whether m_scan_it was created with skip_bloom=true */
   bool m_scan_it_skips_bloom;
+  bool m_has_been_setup = false;
+#if defined(MYTOPLING_WITH_REVERSE_CF)
+  bool m_kd_is_reverse_cf = false;
+#else
+  static constexpr bool m_kd_is_reverse_cf = false;
+#endif
 
-  const rocksdb::Snapshot *m_scan_it_snapshot;
+  __always_inline
+  bool value_matches_prefix(const rocksdb::Slice &value,
+                            const rocksdb::Slice &prefix) const;
 
-  /* Buffers used for upper/lower bounds for m_scan_it. */
-  uchar *m_scan_it_lower_bound;
-  uchar *m_scan_it_upper_bound;
-  rocksdb::Slice m_scan_it_lower_bound_slice;
-  rocksdb::Slice m_scan_it_upper_bound_slice;
-
-  uchar *m_prefix_buf;
-  rocksdb::Slice m_prefix_tuple;
+  const rocksdb::Snapshot *m_scan_it_snapshot = nullptr;
   TABLE_TYPE m_table_type;
   bool m_valid;
   bool m_check_iterate_bounds;
@@ -177,7 +224,108 @@ class Rdb_iterator_base : public Rdb_iterator {
   Rdb_iterator_base(Rdb_iterator_base &&) = delete;
   Rdb_iterator_base &operator=(const Rdb_iterator_base &) = delete;
   Rdb_iterator_base &operator=(Rdb_iterator_base &&) = delete;
+  bool m_kd_has_ttl = false;
+  bool m_pkd_has_ttl = false;
+  bool m_is_partial_iter = false;
+
+  uint32 m_packed_buf_len = 0;
+  uint32 m_index_number_storage_form = UINT32_MAX;
+  size_t         m_padding1[2];
+  rocksdb::Slice m_prefix_tuple;
+  uchar          m_prefix_sso[48];
+  rocksdb::Slice m_scan_it_lower_bound_slice;
+  uchar          m_scan_it_lower_bound_sso[48];
+  rocksdb::Slice m_scan_it_upper_bound_slice;
+  uchar          m_scan_it_upper_bound_sso[48];
+
+  const Rdb_tbl_def *m_tbl_def = nullptr;
+  ha_rocksdb *m_rocksdb_handler = nullptr;
+  uchar *m_scan_it_lower_bound = nullptr;
+  uchar *m_scan_it_upper_bound = nullptr;
+  uchar *m_prefix_buf = nullptr;
+
+ #if defined(_MSC_VER) || defined(__clang__)
+ #else
+ public:
+  // access is infrequent, lies here for cold cpu cache
+  class Rdb_iterator_proxy* m_iter_proxy = nullptr;
+ #endif
 };
+
+#if defined(_MSC_VER) || defined(__clang__)
+  using Rdb_iterator_proxy = std::unique_ptr<Rdb_iterator_base>;
+#else
+class Rdb_iterator_proxy {
+  typedef int (*scan_ft)(Rdb_iterator*); // next/prev
+  typedef bool (*is_valid_ft)(Rdb_iterator*);
+  struct FatHandle {
+    Rdb_iterator_base* m_iter = nullptr;
+    scan_ft m_next, m_prev;
+    //is_valid_ft m_is_valid;
+    void* m_kv_iter = nullptr; // be m_iter or rocksdb::Iterator
+    slice_ft m_key, m_value;
+    ~FatHandle();
+    FatHandle() = default;
+    FatHandle(const FatHandle&) = delete;
+    inline int seek(enum ha_rkey_function find_flag,
+                    const rocksdb::Slice start_key, bool full_key_match,
+                    const rocksdb::Slice end_key, bool read_current = false) {
+      return m_iter->seek(find_flag, start_key, full_key_match, end_key,
+                          read_current);
+    }
+    inline int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+                   Rdb_lock_type type, bool skip_ttl_check = false,
+                   bool skip_wait = false) {
+      return m_iter->get(key, value, type, skip_ttl_check, skip_wait);
+    }
+    inline int next() { return m_next(m_iter); }
+    inline int prev() { return m_prev(m_iter); }
+    inline rocksdb::Slice key() { return m_key(m_kv_iter); }
+    inline rocksdb::Slice value() { return m_value(m_kv_iter); }
+    inline void reset() { m_iter->reset(); }
+    inline bool is_valid() {
+      // this function is not on frequent path, not need optimization
+      // return m_is_valid(m_iter);
+      return m_iter->is_valid();
+    }
+    inline void release_snapshot() { m_iter->release_snapshot(); }
+  };
+  FatHandle m_fat;
+public:
+  ~Rdb_iterator_proxy();
+  Rdb_iterator_proxy() = default;
+  Rdb_iterator_proxy(Rdb_iterator_base* p) { reset(p); }
+  Rdb_iterator_proxy(const Rdb_iterator_proxy&) = delete;
+  Rdb_iterator_proxy& operator=(const Rdb_iterator_proxy&) = delete;
+        FatHandle* operator->()       { return &m_fat; }
+  const FatHandle* operator->() const { return &m_fat; }
+  void reset(Rdb_iterator_base* = nullptr); // == unique_ptr::reset()
+  void swap(std::unique_ptr<Rdb_iterator_base>& y);
+  void bind_get_kv(Rdb_iterator_base*);
+  void bind_iter(Rdb_iterator_base*);
+  Rdb_iterator_base* get() const { return m_fat.m_iter; }
+  explicit operator bool() const { return m_fat.m_iter != nullptr; }
+  void operator=(std::unique_ptr<Rdb_iterator_base>&& y) { reset(y.release()); }
+  bool operator!=(std::nullptr_t) const { return m_fat.m_iter != nullptr; }
+  bool operator==(std::nullptr_t) const { return m_fat.m_iter == nullptr; }
+  operator std::unique_ptr<Rdb_iterator_base>() && {
+    std::unique_ptr<Rdb_iterator_base> tmp(m_fat.m_iter);
+    m_fat.m_iter = nullptr;
+    return tmp;
+  }
+};
+
+} // namespace myrocks
+
+namespace std {
+  inline void swap(myrocks::Rdb_iterator_proxy& x,
+                   std::unique_ptr<myrocks::Rdb_iterator_base>& y) {
+    x.swap(y);
+  }
+}
+
+namespace myrocks {
+#endif
 
 class Rdb_iterator_partial : public Rdb_iterator_base {
  private:
@@ -277,6 +425,10 @@ class Rdb_iterator_partial : public Rdb_iterator_base {
   Rdb_iterator_partial(Rdb_iterator_partial &&) = delete;
   Rdb_iterator_partial &operator=(const Rdb_iterator_partial &) = delete;
   Rdb_iterator_partial &operator=(Rdb_iterator_partial &&) = delete;
+#if defined(_MSC_VER) || defined(__clang__)
+#else
+  void* bind_get_kv(slice_ft*, slice_ft*) override;
+#endif
 };
 
 }  // namespace myrocks
