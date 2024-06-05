@@ -1556,7 +1556,8 @@ void free_items(Item *item) {
     auto next = item->next_free;
     __builtin_prefetch(next);
     // This may be a long list. Yield every so often to avoid scheduler stalls.
-    if (thd) {
+    if (thd && thd->m_check_yield_counting++ >= 200) {
+      thd->m_check_yield_counting = 0;
       thd->check_yield();
     }
     item->delete_self();
@@ -1574,7 +1575,8 @@ void cleanup_items(Item *item) {
   while (item) {
     auto next = item->next_free;
     __builtin_prefetch(next);
-    if (thd) {
+    if (thd && thd->m_check_yield_counting++ >= 200) {
+      thd->m_check_yield_counting = 0;
       thd->check_yield();
     }
     item->cleanup();
@@ -1592,7 +1594,8 @@ void bind_fields(Item *first) {
   for (Item *item = first; item; ) {
     auto next = item->next_free;
     __builtin_prefetch(next);
-    if (thd) {
+    if (thd && thd->m_check_yield_counting++ >= 200) {
+      thd->m_check_yield_counting = 0;
       thd->check_yield();
     }
     item->bind_fields();
