@@ -34,6 +34,7 @@ using rocksdb::Slice;
 typedef rocksdb::Slice (*slice_ft)(void*); // key/value
 class ha_rocksdb;
 bool is_valid_iter_err(rocksdb::Iterator *scan_it);
+[[nodiscard]] bool is_valid_rdb_iterator(const rocksdb::Iterator &it);
 
 class Rdb_iterator : public rocksdb::CacheAlignedNewDelete {
  public:
@@ -142,22 +143,22 @@ class Rdb_iterator_base : public Rdb_iterator {
   }
   void release_snapshot() override;
 
-  void init(THD *thd, const std::shared_ptr<Rdb_key_def>& kd,
-            const std::shared_ptr<Rdb_key_def>& pkd, const Rdb_tbl_def *tbl_def);
+  void init(THD*, const Rdb_key_def&, const Rdb_key_def& pkd, const Rdb_tbl_def*);
 
   bool is_partial_iter() const { return m_is_partial_iter; }
   bool is_valid() override { return m_valid; }
   void set_ignore_killed(bool flag) { m_ignore_killed = flag; }
+  void finish_pin();
 
  protected:
   friend class Rdb_iterator;
 
   void setup_prefix_buffer(enum ha_rkey_function find_flag,
                            const rocksdb::Slice start_key);
-  Rdb_key_def* m_kd;
+  const Rdb_key_def* m_kd;
 
   // Rdb_key_def of the primary key
-  Rdb_key_def* m_pkd;
+  const Rdb_key_def* m_pkd;
 
   THD *m_thd;
 
@@ -230,7 +231,8 @@ class Rdb_iterator_base : public Rdb_iterator {
 
   uint32 m_packed_buf_len = 0;
   uint32 m_index_number_storage_form = UINT32_MAX;
-  size_t         m_padding1[2];
+  const Rdb_tbl_def *m_tbl_def = nullptr;
+  ha_rocksdb *m_rocksdb_handler = nullptr;
   rocksdb::Slice m_prefix_tuple;
   uchar          m_prefix_sso[48];
   rocksdb::Slice m_scan_it_lower_bound_slice;
@@ -238,8 +240,6 @@ class Rdb_iterator_base : public Rdb_iterator {
   rocksdb::Slice m_scan_it_upper_bound_slice;
   uchar          m_scan_it_upper_bound_sso[48];
 
-  const Rdb_tbl_def *m_tbl_def = nullptr;
-  ha_rocksdb *m_rocksdb_handler = nullptr;
   uchar *m_scan_it_lower_bound = nullptr;
   uchar *m_scan_it_upper_bound = nullptr;
   uchar *m_prefix_buf = nullptr;
@@ -306,6 +306,7 @@ public:
   Rdb_iterator_base* get() const { return m_fat.m_iter; }
   explicit operator bool() const { return m_fat.m_iter != nullptr; }
   void operator=(std::unique_ptr<Rdb_iterator_base>&& y) { reset(y.release()); }
+  void operator=(std::nullptr_t) { reset(); }
   bool operator!=(std::nullptr_t) const { return m_fat.m_iter != nullptr; }
   bool operator==(std::nullptr_t) const { return m_fat.m_iter == nullptr; }
   operator std::unique_ptr<Rdb_iterator_base>() && {
