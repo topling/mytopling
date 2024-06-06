@@ -278,6 +278,7 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
 
   thr_locked_row_action m_locked_row_action;
 
+  bool m_active_is_vector_index = false;
   enum class ActiveIndexType : unsigned char {
     Primary, Secondary, Unknown
   };
@@ -1244,6 +1245,8 @@ void rdb_tx_multi_get(Rdb_transaction *tx,
                       size_t num_keys, const rocksdb::Slice *keys,
                       rocksdb::PinnableSlice *values, TABLE_TYPE table_type,
                       rocksdb::Status *statuses, bool sorted_input);
+
+void rdb_tx_finish_pin(Rdb_transaction *tx, TABLE_TYPE);
 
 inline void rocksdb_smart_seek(bool seek_backward, rocksdb::Iterator &iter,
                                const rocksdb::Slice &key_slice) {
