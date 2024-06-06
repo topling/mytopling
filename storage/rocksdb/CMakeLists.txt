@@ -169,8 +169,9 @@ INCLUDE_DIRECTORIES(
   ${ROCKSDB_ROOT}/third-party/gtest-1.8.1/fused-src
 )
 
+# ha_rocksdb.cc must be the last item of list, to ensure global
+# object construction order for SidePlugin registering
 SET(ROCKSDB_SE_SOURCES
-  ha_rocksdb.cc ha_rocksdb.h ha_rocksdb_proto.h
   logger.h
   rdb_datadic.cc rdb_datadic.h
   rdb_iterator.cc rdb_iterator.h
@@ -178,6 +179,8 @@ SET(ROCKSDB_SE_SOURCES
   rdb_cf_options.cc rdb_cf_options.h
   rdb_cf_manager.cc rdb_cf_manager.h
   rdb_compact_filter.cc
+  rdb_logger.cc
+  rdb_show_git_info.cc
   rdb_converter.cc rdb_converter.h
   rdb_native_dd.cc rdb_native_dd.h
   properties_collector.cc properties_collector.h
@@ -198,6 +201,7 @@ SET(ROCKSDB_SE_SOURCES
   rdb_cmd_srv_helper.cc rdb_cmd_srv_helper.h
   rdb_vector_db.cc rdb_vector_db.h
   clone/common.h clone/common.cc clone/donor.h clone/donor.cc clone/client.cc
+  ha_rocksdb.cc ha_rocksdb.h ha_rocksdb_proto.h
 )
 
 IF(WITH_FB_TSAN OR ROCKSDB_DYNAMIC_PLUGIN)
