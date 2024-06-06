@@ -35,6 +35,7 @@
 
 #include "myisam.h"                                  // TT_FOR_UPGRADE
 #include "mysql/components/services/log_builtins.h"  // print error messages
+#include "sql/log.h"
 #include "sql/key.h"         // key_rec_cmp, field_unpack
 #include "sql/mysqld.h"      // opt_parthandler_allow_drop_partition
 #include "sql/sql_admin.h"   // SQL_ADMIN_MSG_TEXT_SIZE
