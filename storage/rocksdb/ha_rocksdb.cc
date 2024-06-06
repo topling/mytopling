@@ -1429,7 +1429,7 @@ static void rocksdb_set_reset_stats(
 int rocksdb_remove_checkpoint(std::string_view checkpoint_dir_raw) {
   const auto checkpoint_dir =
       std::string{rdb_normalize_dir(checkpoint_dir_raw)};
-  LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+  sql_print_information(
                   "deleting temporary checkpoint in directory : %s\n",
                   checkpoint_dir.c_str());
 
@@ -4524,8 +4524,7 @@ class Rdb_transaction {
               check_unique_index = false;
             }
           }
-          LogPluginErrMsg(
-              INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+          sql_print_information(
               "finish_bulk_load: key name: %s, check_unique_index: %d",
               keydef->get_name().c_str(), check_unique_index);
 
@@ -4932,7 +4931,7 @@ class Rdb_transaction {
   }
 
   [[nodiscard]] std::unique_ptr<rocksdb::Iterator> get_iterator(
-      rocksdb::ColumnFamilyHandle *const column_family, bool skip_bloom_filter,
+      rocksdb::ColumnFamilyHandle& column_family, bool skip_bloom_filter,
       const rocksdb::Slice &eq_cond_lower_bound,
       const rocksdb::Slice &eq_cond_upper_bound, TABLE_TYPE table_type,
       bool read_current = false, bool create_snapshot = true) {
@@ -5212,9 +5211,8 @@ class Rdb_transaction_impl : public Rdb_transaction {
     bool do_validate = my_core::thd_tx_isolation(m_thd) > ISO_READ_COMMITTED;
     bool exclusive = false;
     // bool assume_tracked = false;
-    auto cf = kd.get_cf();
     auto s = m_rocksdb_tx[TABLE_TYPE::USER_TABLE]->TryLock(
-        cf, rowkey, rdonly, exclusive, do_validate);
+        &kd.get_cf(), rowkey, rdonly, exclusive, do_validate);
     if (!s.ok()) {
       return this->set_status_error(m_thd, s, kd, tbl_def, nullptr);
     }
@@ -6347,7 +6345,7 @@ static int rocksdb_close_connection(
     rocksdb_remove_checkpoint(checkpoint_dir);
   }
   if (get_ha_data(thd)->get_disable_file_deletions()) {
-    rdb->EnableFileDeletions();
+    rdb->EnableFileDeletions(true/*force*/);
   }
   destroy_ha_data(thd);
   return HA_EXIT_SUCCESS;
@@ -6405,7 +6403,7 @@ static void rocksdb_disable_file_deletions_update(
     rdb->DisableFileDeletions();
     get_ha_data(thd)->set_disable_file_deletions(true);
   } else if (!val && old_val) {
-    rdb->EnableFileDeletions();
+    rdb->EnableFileDeletions(true/*force*/);
     get_ha_data(thd)->set_disable_file_deletions(false);
   }
 }
@@ -9170,8 +9168,6 @@ static int rocksdb_init_func(void *const p) {
 // https://github.com/facebook/rocksdb/wiki/Iterator#error-handling
 bool is_valid_iter_err(rocksdb::Iterator *scan_it) {
   rocksdb::Status s = scan_it->status();
-  DBUG_EXECUTE_IF("rocksdb_return_status_corrupted",
-                  dbug_change_status_to_corrupted(&s););
   if (s.IsIOError() || s.IsCorruption()) {
     if (s.IsCorruption()) {
       rdb_persist_corruption_marker();
@@ -11114,7 +11110,7 @@ int ha_rocksdb::create(const char *const name, TABLE *const table_arg,
       create_info->row_type != ROW_TYPE_DYNAMIC) {
     switch (rocksdb_invalid_create_option_action) {
       case invalid_create_option_action::LOG:
-        LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+        sql_print_information(
                         "RocksDB only uses DYNAMIC row format, will ignore "
                         "custom setting for row format");
         break;
@@ -12458,7 +12454,8 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
   /* TODO(yzha) - row stats are gone in 8.0
   stats.rows_requested++; */
 
-  if (kd.is_vector_index()) {
+  if (unlikely(m_active_is_vector_index)) {
+    const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
     auto vector_db_handler = get_vector_db_handler();
     vector_db_handler->next_result();
     if (!vector_db_handler->has_more_results()) {
@@ -14328,6 +14325,8 @@ void ha_rocksdb::SetActiveIndexType() {
   } else {
     m_active_index_type = ActiveIndexType::Secondary;
   }
+  const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
+  m_active_is_vector_index = kd.is_vector_index();
 }
 
 void ha_rocksdb::build_decoder() {
@@ -14386,7 +14385,7 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
       auto& kd = m_key_descr_arr[active_index_pos()];
       ROCKSDB_VERIFY(!tx->m_iter_cache->is_partial_iter());
       ROCKSDB_VERIFY_EQ(kd->get_cf_id(), 0); // 0 is default cf id
-      tx->m_iter_cache->init(thd, kd, m_pk_descr, m_tbl_def);
+      tx->m_iter_cache->init(thd, *kd, *m_pk_descr, m_tbl_def);
       m_iterator = std::move(tx->m_iter_cache);
     }
     if (!m_iterator) {
@@ -16105,7 +16104,7 @@ int ha_rocksdb::optimize(THD *const thd MY_ATTRIBUTE((__unused__)),
   for (uint i = 0; i < table->s->keys; i++) {
     uchar buf[Rdb_key_def::INDEX_NUMBER_SIZE * 2];
     auto range = get_range(i, buf);
-    const auto s = rdb->CompactRange(getCompactRangeOptions(),
+    const auto s = rdb->CompactRange(compact_options,
                                      &m_key_descr_arr[i]->get_cf(),
                                      &range.start, &range.limit);
     if (!s.ok()) {
