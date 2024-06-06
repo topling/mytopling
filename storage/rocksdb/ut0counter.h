@@ -29,6 +29,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 
 #include <string.h>
 #include <cassert>
+#include <terark/util/fast_getcpu.hpp>
 
 /** CPU cache line size */
 #define INNOBASE_CACHE_LINE_SIZE 64
@@ -66,12 +67,16 @@ struct get_sched_indexer_t : public generic_indexer_t<Type, N> {
 
   /* @return result from sched_getcpu(), the thread id if it fails. */
   size_t get_rnd_index() const {
+   #if 0
     size_t cpu = sched_getcpu();
     if (cpu == (size_t)-1) {
       cpu = get_curr_thread_id();
     }
 
     return (cpu);
+   #else
+    return terark::fast_getcpu();
+   #endif
   }
 };
 #endif /* HAVE_SCHED_GETCPU */
