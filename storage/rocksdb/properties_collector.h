@@ -241,7 +241,6 @@ class Rdb_tbl_prop_coll_factory
     m_skip_system_cf = skip_system_cf;
   }
 
- private:
   Rdb_ddl_manager *const m_ddl_manager;
   Rdb_cf_manager *const m_cf_manager;
   bool m_skip_system_cf = false;
