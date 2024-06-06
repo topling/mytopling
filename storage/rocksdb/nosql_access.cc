@@ -1523,16 +1523,12 @@ class select_exec {
       return rdb_tx_get(m_tx, cf, key_slice, value_slice, m_table_type);
     }
 
-    void multi_get(rocksdb::ColumnFamilyHandle *cf, size_t size,
+    void multi_get(rocksdb::ColumnFamilyHandle& cf, size_t size,
                    bool sorted_input, const rocksdb::Slice *key_slices,
                    rocksdb::PinnableSlice *value_slices,
                    rocksdb::Status *statuses) {
       rdb_tx_multi_get(m_tx, cf, size, key_slices, value_slices, m_table_type,
                        statuses, sorted_input);
-    }
-
-    void finish_pin() {
-      rdb_tx_finish_pin(m_tx, m_table_type);
     }
 
     void report_error(rocksdb::Status s) {
@@ -1658,7 +1654,7 @@ class select_exec {
   std::vector<std::pair<int, int>> m_field_index_to_where;
 
   // The iterator used in secondary index query or range query
-  std::unique_ptr<Rdb_iterator> m_iterator;
+  std::unique_ptr<Rdb_iterator_base> m_iterator;
 
   // The entire index (including extended keyparts) is used in query in equality
   // predicates - meaning it is a point query
@@ -2378,7 +2374,7 @@ bool INLINE_ATTR select_exec::run_pk_point_query() {
         (m_key_def->m_is_reverse_cf == m_parser.is_order_desc());
     std::vector<int> rtn_codes(size);
     m_iterator->multi_get(key_slices, value_slices, rtn_codes, sorted_input);
-    ROCKSDB_SCOPE_EXIT(txn->finish_pin());
+    ROCKSDB_SCOPE_EXIT(m_iterator->finish_pin());
 
     for (size_t i = 0; i < size; ++i) {
       if (unlikely(handle_killed())) {
