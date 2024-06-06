@@ -26,7 +26,7 @@
 #include "./sql_string.h"
 #include "my_compiler.h"
 #define LOG_COMPONENT_TAG "rocksdb"
-#include "mysql/components/services/log_builtins.h"
+//#include "mysql/components/services/log_builtins.h"
 #include "mysqld_error.h"
 
 #include "sql/log.h"
