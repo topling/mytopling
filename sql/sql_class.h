@@ -904,6 +904,10 @@ class Transactional_ddl_context {
 
 struct PS_PARAM;
 
+namespace myrocks {
+  class Rdb_transaction; // add Rdb_transaction ptr to speed up
+} // namespace myrocks
+
 /**
   @class THD
   For each client connection we create a separate thread with THD serving as
@@ -943,6 +947,9 @@ class THD : public MDL_context_owner,
   }
 
  public:
+
+  myrocks::Rdb_transaction* m_rdb_trx = nullptr;
+
   MDL_context mdl_context;
 
   /**
@@ -1145,6 +1152,7 @@ class THD : public MDL_context_owner,
   struct System_status_var *initial_status_var; /* used by show status */
   // has status_var already been added to global_status_var?
   bool status_var_aggregated;
+  uint32_t m_check_yield_counting = 0;
 
   /**
     Session's connection attributes for the connected client
@@ -2600,7 +2608,7 @@ class THD : public MDL_context_owner,
     Track the rows examined. TODO: not taking any action if they exceed a limit
     right now
   */
-  void check_limit_rows_examined();
+  void check_limit_rows_examined() { ++m_accessed_rows_and_keys; }
 
   ulonglong get_accessed_rows_and_keys() const {
     return m_accessed_rows_and_keys;
@@ -5316,12 +5324,22 @@ class THD : public MDL_context_owner,
   /**
     Check if we should exit and reenter admission control.
   */
-  void check_yield(std::function<bool()> cond = always_yield);
+  void check_yield(std::function<bool()>&& cond = always_yield);
 
   /**
     Periodic calls to update pfs stats on processing a number of rows.
   */
-  void update_sql_stats_periodic();
+  __always_inline
+  void update_sql_stats_periodic() {
+    ulong min_examined_row_limit_sql_stats =
+        variables.min_examined_row_limit_sql_stats;
+    if (m_statement_psi == nullptr || get_stmt_da() == nullptr ||
+        m_accessed_rows_and_keys == 0 || min_examined_row_limit_sql_stats == 0 ||
+        m_accessed_rows_and_keys % min_examined_row_limit_sql_stats != 0) {
+      return;
+    }
+    MYSQL_SNAPSHOT_STATEMENT(m_statement_psi, get_stmt_da());
+  }
 
   /**
     Callback for thd_wait_begin.
