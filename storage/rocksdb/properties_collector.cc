@@ -690,6 +690,7 @@ Rdb_tbl_prop_coll_factory::CreateTablePropertiesCollector(
   assert(UINT64_MAX != m_params.m_window);
   assert(UINT64_MAX != m_params.m_file_size);
   if (m_skip_system_cf) {
+    ROCKSDB_VERIFY(!rocksdb::IsCompactionWorker());
     auto cf_name = m_cf_manager->get_cf(context.column_family_id);
     if (cf_name->GetName() == DEFAULT_SYSTEM_CF_NAME) {
       return nullptr;
@@ -700,7 +701,9 @@ Rdb_tbl_prop_coll_factory::CreateTablePropertiesCollector(
                                m_table_stats_sampling_pct);
 }
 
-Rdb_tbl_prop_coll_factory::Rdb_tbl_prop_coll_factory(Rdb_ddl_manager* dm) {
+Rdb_tbl_prop_coll_factory::Rdb_tbl_prop_coll_factory(Rdb_ddl_manager* dm,
+                                                     Rdb_cf_manager* cfm)
+    : m_ddl_manager(dm), m_cf_manager(cfm) {
   m_find_key_def = [dm](GL_INDEX_ID iid) { return dm->safe_find(iid); };
   memset(&m_params, 0, sizeof(m_params));
 }
