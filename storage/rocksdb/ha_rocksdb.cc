@@ -13422,12 +13422,13 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
 
   for (;;) {
     DEBUG_SYNC(thd, "rocksdb.check_flags_inwdi");
-    if (thd) {
-      if (NoAtomic(thd->killed)) {
+    if (likely(thd)) {
+      auto cnt = thd->m_check_yield_counting++;
+      if (unlikely(NoAtomic(thd->killed))) {
         rc = HA_ERR_QUERY_INTERRUPTED;
         break;
       }
-      if (unlikely(++thd->m_check_yield_counting >= 200)) {
+      if (unlikely(cnt >= 200)) {
         thd->m_check_yield_counting = 0;
         thd->check_yield();
       }
@@ -14511,10 +14512,14 @@ int ha_rocksdb::bulk_load_key(Rdb_transaction *const tx, const Rdb_key_def &kd,
   assert(tx->get_thd() == ha_thd());
   THD *thd = tx->get_thd();
   if (likely(thd)) {
+    auto cnt = thd->m_check_yield_counting++;
     if (unlikely(NoAtomic(thd->killed))) {
       DBUG_RETURN(HA_ERR_QUERY_INTERRUPTED);
     }
-    thd->check_yield();
+    if (unlikely(cnt >= 200)) {
+      thd->m_check_yield_counting = 0;
+      thd->check_yield();
+    }
   }
 
   auto &cf = kd.get_cf();
