@@ -29,6 +29,8 @@
 /* MyRocks header files */
 #include "./rdb_global.h"
 
+#include "rdb_perf_context.h"
+
 namespace myrocks {
 
 class Rdb_perf_counters;
@@ -78,6 +80,7 @@ extern const std::string TRUNCATE_TABLE_PREFIX;
 rocksdb::TransactionDB *rdb_get_rocksdb_db();
 
 class Rdb_cf_manager;
+class Rdb_tbl_def;
 Rdb_cf_manager &rdb_get_cf_manager();
 
 const rocksdb::BlockBasedTableOptions &rdb_get_table_options();

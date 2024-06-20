@@ -360,29 +360,40 @@ using Index_id = uint32_t;
 constexpr size_t INDEX_NUMBER_SIZE = 4;
 
 typedef struct _gl_index_id_s {
-  uint32_t cf_id;
-  Index_id index_id;
+  union {
+    struct {
+#ifdef WORDS_BIGENDIAN
+      uint32_t cf_id;
+      uint32_t index_id;
+#else
+      uint32_t index_id;
+      uint32_t cf_id;
+#endif
+    };
+    uint64_t full_id;
+  };
+  _gl_index_id_s() = default;
+  _gl_index_id_s(uint32_t c, uint32_t i) {
+    cf_id = c;
+    index_id = i;
+  }
   bool operator==(const struct _gl_index_id_s &other) const {
-    return cf_id == other.cf_id && index_id == other.index_id;
+    return full_id == other.full_id;
   }
   bool operator!=(const struct _gl_index_id_s &other) const {
-    return cf_id != other.cf_id || index_id != other.index_id;
+    return full_id != other.full_id;
   }
   bool operator<(const struct _gl_index_id_s &other) const {
-    return cf_id < other.cf_id ||
-           (cf_id == other.cf_id && index_id < other.index_id);
+    return full_id < other.full_id;
   }
   bool operator<=(const struct _gl_index_id_s &other) const {
-    return cf_id < other.cf_id ||
-           (cf_id == other.cf_id && index_id <= other.index_id);
+    return full_id <= other.full_id;
   }
   bool operator>(const struct _gl_index_id_s &other) const {
-    return cf_id > other.cf_id ||
-           (cf_id == other.cf_id && index_id > other.index_id);
+    return full_id > other.full_id;
   }
   bool operator>=(const struct _gl_index_id_s &other) const {
-    return cf_id > other.cf_id ||
-           (cf_id == other.cf_id && index_id >= other.index_id);
+    return full_id >= other.full_id;
   }
 } GL_INDEX_ID;
 
@@ -487,7 +498,33 @@ struct st_io_stall_stats {
         total_stop(0),
         total_slowdown(0) {}
 };
+
+enum table_cardinality_scan_type {
+  SCAN_TYPE_NONE,
+  SCAN_TYPE_MEMTABLE_ONLY,
+  SCAN_TYPE_FULL_TABLE,
+};
+
+enum Rdb_lock_type { RDB_LOCK_NONE, RDB_LOCK_READ, RDB_LOCK_WRITE };
+
+enum TABLE_TYPE : unsigned char {
+  INTRINSIC_TMP = 0,
+  USER_TABLE = 1,
+};
+
 }  // namespace myrocks
+
+/* Provide hash function for GL_INDEX_ID so we can include it in sets */
+namespace std {
+template <>
+struct hash<myrocks::GL_INDEX_ID> {
+  std::size_t operator()(const myrocks::GL_INDEX_ID &gl_index_id) const {
+    const uint64_t val =
+        ((uint64_t)gl_index_id.cf_id << 32 | (uint64_t)gl_index_id.index_id);
+    return std::hash<uint64_t>()(val);
+  }
+};
+}  // namespace std
 
 // We define ROCKSDB_NAMESPACE = my_rocksdb to avoid symbol conflicts
 // But keep code with rocksdb for clarity

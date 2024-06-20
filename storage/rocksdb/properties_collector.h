@@ -24,8 +24,8 @@
 #include "rocksdb/db.h"
 
 /* MyRocks header files */
-#include "./ha_rocksdb.h"
 #include "rdb_psi.h"
+#include "rdb_global.h"
 
 namespace myrocks {
 
@@ -49,6 +49,7 @@ struct Rdb_index_stats {
   enum {
     INDEX_STATS_VERSION_INITIAL = 1,
     INDEX_STATS_VERSION_ENTRY_TYPES = 2,
+    INDEX_STATS_VERSION_WITH_NAME = 3,
   };
   GL_INDEX_ID m_gl_index_id;
   int64_t m_data_size, m_rows, m_actual_disk_size;
@@ -138,9 +139,11 @@ class Rdb_tbl_card_coll {
   unsigned int m_seed;
 };
 
+using find_key_def_func_t = std::function<std::shared_ptr<const Rdb_key_def>(GL_INDEX_ID)>;
+
 class Rdb_tbl_prop_coll : public rocksdb::TablePropertiesCollector {
  public:
-  Rdb_tbl_prop_coll(const Rdb_ddl_manager &ddl_manager,
+  Rdb_tbl_prop_coll(find_key_def_func_t find_key_def,
                     const Rdb_compact_params &params, const uint32_t cf_id,
                     const uint8_t table_stats_sampling_pct);
 
@@ -170,6 +173,7 @@ class Rdb_tbl_prop_coll : public rocksdb::TablePropertiesCollector {
       const rocksdb::TableProperties &table_props);
 
  private:
+  friend class Rdb_tbl_prop_coll_factory;
   static std::string GetReadableStats(const Rdb_index_stats &it);
 
   bool FilledWithDeletions() const;
@@ -184,7 +188,7 @@ class Rdb_tbl_prop_coll : public rocksdb::TablePropertiesCollector {
  private:
   uint32_t m_cf_id;
   std::shared_ptr<const Rdb_key_def> m_keydef;
-  const Rdb_ddl_manager &m_ddl_manager;
+  find_key_def_func_t m_find_key_def;
   std::vector<Rdb_index_stats> m_stats;
   Rdb_index_stats *m_last_stats;
   static const char *INDEXSTATS_KEY;
@@ -212,17 +216,8 @@ class Rdb_tbl_prop_coll_factory
   Rdb_tbl_prop_coll_factory(Rdb_tbl_prop_coll_factory &&) = delete;
   Rdb_tbl_prop_coll_factory &operator=(Rdb_tbl_prop_coll_factory &&) = delete;
 
-  Rdb_tbl_prop_coll_factory(const Rdb_ddl_manager &ddl_manager,
-                            const Rdb_cf_manager &cf_manager)
-      : m_ddl_manager(ddl_manager), m_cf_manager(cf_manager) {
-#ifdef HAVE_PSI_INTERFACE
-    mysql_rwlock_init(key_rwlock_tbl_prop_coll_factory_lock, &lock);
-#else
-    mysql_rwlock_init(nullptr, &lock);
-#endif
-  }
-
   ~Rdb_tbl_prop_coll_factory() override { mysql_rwlock_destroy(&lock); }
+  Rdb_tbl_prop_coll_factory(Rdb_ddl_manager*, Rdb_cf_manager*);
 
   /*
     Override parent class's virtual methods of interest.
@@ -233,6 +228,9 @@ class Rdb_tbl_prop_coll_factory
   virtual const char *Name() const override {
     return "Rdb_tbl_prop_coll_factory";
   }
+
+  std::string
+  UserPropToString(const rocksdb::UserCollectedProperties&) const override;
 
  public:
   void SetCompactionParams(const Rdb_compact_params &params) {
@@ -250,11 +248,11 @@ class Rdb_tbl_prop_coll_factory
     m_skip_system_cf = skip_system_cf;
   }
 
- private:
   mutable mysql_rwlock_t lock;
-  const Rdb_ddl_manager &m_ddl_manager;
-  const Rdb_cf_manager &m_cf_manager;
+  Rdb_ddl_manager* m_ddl_manager;
+  Rdb_cf_manager* m_cf_manager;
   bool m_skip_system_cf = false;
+  find_key_def_func_t  m_find_key_def;
   Rdb_compact_params m_params;
   uint8_t m_table_stats_sampling_pct;
 };

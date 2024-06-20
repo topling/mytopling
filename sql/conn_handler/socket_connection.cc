@@ -1347,7 +1347,7 @@ const Listen_socket *Mysqld_socket_listener::get_listen_socket() {
     if (m_poll_info.m_fds[i].revents & POLLIN)
 #else  // HAVE_POLL
     if (FD_ISSET(mysql_socket_getfd(m_socket_vector[i].m_socket),
-                 const_cast<fd_set *>(&m_select_info.m_read_fds))) {
+                 const_cast<fd_set *>(&m_select_info.m_read_fds)))
 #endif  // HAVE_POLL
     {
       return &m_socket_vector[i];

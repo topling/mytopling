@@ -447,7 +447,8 @@ void my_message_local_stderr(enum loglevel ll, uint ecode, va_list args) {
 
   len = snprintf(
       buff, sizeof(buff), "[%s] ",
-      (ll == ERROR_LEVEL ? "ERROR" : ll == WARNING_LEVEL ? "Warning" : "Note"));
+      (ll == ERROR_LEVEL ? "ERROR" : ll == WARNING_LEVEL ? "Warning" :
+       ll == INFORMATION_LEVEL ? "Note" : "Debug"));
   vsnprintf(buff + len, sizeof(buff) - len, EE(ecode), args);
 
   my_message_stderr(0, buff, MYF(0));

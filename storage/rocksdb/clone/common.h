@@ -612,8 +612,7 @@ class [[nodiscard]] session {
 
     mysql_mutex_lock(&m_error_mutex);
     if (m_error == 0 || is_restartable_error(m_error)) {
-      LogPluginErrMsg(
-          INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
           "MyRocks clone session setting error %d (file \"%.*s\", errno %d), "
           "previous error %d",
           new_error, static_cast<int>(new_error_path.length()),
@@ -640,7 +639,7 @@ class [[nodiscard]] session {
     mysql_mutex_unlock(&m_error_mutex);
 
     if (error_copy != 0) {
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks clone error in another thread: %d", error_copy);
     }
 

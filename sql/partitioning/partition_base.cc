@@ -35,6 +35,7 @@
 
 #include "myisam.h"                                  // TT_FOR_UPGRADE
 #include "mysql/components/services/log_builtins.h"  // print error messages
+#include "sql/log.h"
 #include "sql/key.h"         // key_rec_cmp, field_unpack
 #include "sql/mysqld.h"      // opt_parthandler_allow_drop_partition
 #include "sql/sql_admin.h"   // SQL_ADMIN_MSG_TEXT_SIZE
@@ -3844,6 +3845,21 @@ int Partition_base::records(ha_rows *num_rows) {
   for (i = m_part_info->get_first_used_partition(); i < m_tot_parts;
        i = m_part_info->get_next_used_partition(i)) {
     int error = m_file[i]->ha_records(num_rows);
+    if (error != 0) DBUG_RETURN(error);
+    tot_rows += *num_rows;
+  }
+  *num_rows = tot_rows;
+  DBUG_RETURN(0);
+}
+
+int Partition_base::records_from_index(ha_rows *num_rows, uint index) {
+  ha_rows tot_rows = 0;
+  uint i;
+  DBUG_ENTER("Partition_base::records_from_index");
+
+  for (i = m_part_info->get_first_used_partition(); i < m_tot_parts;
+       i = m_part_info->get_next_used_partition(i)) {
+    int error = m_file[i]->ha_records(num_rows, index);
     if (error != 0) DBUG_RETURN(error);
     tot_rows += *num_rows;
   }

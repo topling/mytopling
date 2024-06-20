@@ -1074,21 +1074,18 @@ static LEX_STRING get_quoted_token(Lex_input_stream *lip, uint skip,
   Return an unescaped text literal without quotes
   Fix sometimes to do only one scan of the string
 */
-
-static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
-  uchar c, sep;
+template<bool Echo, bool UseMB>
+static char *get_text_tpl(Lex_input_stream *lip, int pre_skip, int post_skip,
+                          const CHARSET_INFO *cs,
+                          decltype(cs->cset->ismbchar) my_ismbchar) {
   uint found_escape = 0;
-  const CHARSET_INFO *cs = lip->m_thd->charset();
-
-  lip->tok_bitmap = 0;
-  sep = lip->yyGetLast();  // String should end with this
+  uchar tok_bitmap = 0;
+  uchar sep = lip->yyGetLast();  // String should end with this
   while (!lip->eof()) {
-    c = lip->yyGet();
-    lip->tok_bitmap |= c;
-    {
-      int l;
-      if (use_mb(cs) &&
-          (l = my_ismbchar(cs, lip->get_ptr() - 1, lip->get_end_of_query()))) {
+    const uchar c = lip->yyGetFast<Echo>();
+    tok_bitmap |= c;
+    if (UseMB) {
+      if (int l = my_ismbchar(cs, lip->get_ptr() - 1, lip->get_end_of_query())) {
         lip->skip_binary(l - 1);
         continue;
       }
@@ -1096,10 +1093,11 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
     if (c == '\\' && !(lip->m_thd->variables.sql_mode &
                        MODE_NO_BACKSLASH_ESCAPES)) {  // Escaped character
       found_escape = 1;
+      lip->tok_bitmap = tok_bitmap;
       if (lip->eof()) return nullptr;
       lip->yySkip();
     } else if (c == sep) {
-      if (c == lip->yyGet())  // Check if two separators in a row
+      if (c == lip->yyGetFast<Echo>())  // Check if two separators in a row
       {
         found_escape = 1;  // duplicate. Remember for delete
         continue;
@@ -1117,6 +1115,7 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
       end -= post_skip;
       assert(end >= str);
 
+      lip->tok_bitmap = tok_bitmap;
       if (!(start =
                 static_cast<char *>(lip->m_thd->alloc((uint)(end - str) + 1))))
         return const_cast<char *>("");  // MEM_ROOT has set error flag
@@ -1133,7 +1132,7 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
 
         for (to = start; str != end; str++) {
           int l;
-          if (use_mb(cs) && (l = my_ismbchar(cs, str, end))) {
+          if (UseMB && (l = my_ismbchar(cs, str, end))) {
             while (l--) *to++ = *str++;
             str--;
             continue;
@@ -1178,7 +1177,22 @@ static char *get_text(Lex_input_stream *lip, int pre_skip, int post_skip) {
       return start;
     }
   }
+  lip->tok_bitmap = tok_bitmap;
   return nullptr;  // unexpected end of query
+}
+static char *get_text(Lex_input_stream *lip, const CHARSET_INFO *cs,
+                      int pre_skip, int post_skip) {
+  auto ismbchar = cs->cset->ismbchar;
+  if (lip->is_echo())
+    if (ismbchar)
+      return get_text_tpl<1,1>(lip, pre_skip, post_skip, cs, ismbchar);
+    else
+      return get_text_tpl<1,0>(lip, pre_skip, post_skip, cs, ismbchar);
+  else
+    if (ismbchar)
+      return get_text_tpl<0,1>(lip, pre_skip, post_skip, cs, ismbchar);
+    else
+      return get_text_tpl<0,0>(lip, pre_skip, post_skip, cs, ismbchar);
 }
 
 uint Lex_input_stream::get_lineno(const char *raw_ptr) const {
@@ -1187,9 +1201,10 @@ uint Lex_input_stream::get_lineno(const char *raw_ptr) const {
 
   uint ret = 1;
   const CHARSET_INFO *cs = m_thd->charset();
+  auto my_ismbchar = cs->cset->ismbchar;
   for (const char *c = m_buf; c < raw_ptr; c++) {
     uint mb_char_len;
-    if (use_mb(cs) && (mb_char_len = my_ismbchar(cs, c, m_end_of_query))) {
+    if (my_ismbchar && (mb_char_len = my_ismbchar(cs, c, m_end_of_query))) {
       c += mb_char_len - 1;  // skip the rest of the multibyte character
       continue;              // we don't expect '\n' there
     }
@@ -1493,7 +1508,7 @@ static int lex_one_token(Lexer_yystype *yylval, THD *thd) {
         }
         /* Found N'string' */
         lip->yySkip();  // Skip '
-        if (!(yylval->lex_str.str = get_text(lip, 2, 1))) {
+        if (!(yylval->lex_str.str = get_text(lip, cs, 2, 1))) {
           state = MY_LEX_CHAR;  // Read char by char
           break;
         }
@@ -1856,7 +1871,7 @@ static int lex_one_token(Lexer_yystype *yylval, THD *thd) {
         /* " used for strings */
         [[fallthrough]];
       case MY_LEX_STRING:  // Incomplete text string
-        if (!(yylval->lex_str.str = get_text(lip, 1, 1))) {
+        if (!(yylval->lex_str.str = get_text(lip, cs, 1, 1))) {
           state = MY_LEX_CHAR;  // Read char by char
           break;
         }

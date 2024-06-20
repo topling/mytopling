@@ -34,6 +34,7 @@
 #include "my_config.h"
 #include "my_inttypes.h"
 #include "my_macros.h"
+#include <terark/bitmanip.hpp>
 
 extern const char _my_bits_nbits[256];
 extern const uchar _my_bits_reverse_table[256];
@@ -51,26 +52,11 @@ static inline uint my_bit_log2(ulong value) {
 }
 
 static inline uint my_count_bits(ulonglong v) {
-#if SIZEOF_LONG_LONG > 4
-  /* The following code is a bit faster on 16 bit machines than if we would
-     only shift v */
-  ulong v2 = (ulong)(v >> 32);
-  return (uint)(uchar)(
-      _my_bits_nbits[(uchar)v] + _my_bits_nbits[(uchar)(v >> 8)] +
-      _my_bits_nbits[(uchar)(v >> 16)] + _my_bits_nbits[(uchar)(v >> 24)] +
-      _my_bits_nbits[(uchar)(v2)] + _my_bits_nbits[(uchar)(v2 >> 8)] +
-      _my_bits_nbits[(uchar)(v2 >> 16)] + _my_bits_nbits[(uchar)(v2 >> 24)]);
-#else
-  return (uint)(uchar)(
-      _my_bits_nbits[(uchar)v] + _my_bits_nbits[(uchar)(v >> 8)] +
-      _my_bits_nbits[(uchar)(v >> 16)] + _my_bits_nbits[(uchar)(v >> 24)]);
-#endif
+  return terark::fast_popcount(v);
 }
 
 static inline uint my_count_bits_uint32(uint32 v) {
-  return (uint)(uchar)(
-      _my_bits_nbits[(uchar)v] + _my_bits_nbits[(uchar)(v >> 8)] +
-      _my_bits_nbits[(uchar)(v >> 16)] + _my_bits_nbits[(uchar)(v >> 24)]);
+  return terark::fast_popcount(v);
 }
 
 /*

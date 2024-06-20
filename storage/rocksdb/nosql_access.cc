@@ -1523,6 +1523,14 @@ class select_exec {
       return rdb_tx_get(m_tx, cf, key_slice, value_slice, m_table_type);
     }
 
+    void multi_get(rocksdb::ColumnFamilyHandle& cf, size_t size,
+                   bool sorted_input, const rocksdb::Slice *key_slices,
+                   rocksdb::PinnableSlice *value_slices,
+                   rocksdb::Status *statuses) {
+      rdb_tx_multi_get(m_tx, cf, size, key_slices, value_slices, m_table_type,
+                       statuses, sorted_input);
+    }
+
     void report_error(rocksdb::Status s) {
       if (s.IsIOError() || s.IsCorruption()) {
         rdb_handle_io_error(s, RDB_IO_ERROR_GENERAL);
@@ -1627,7 +1635,7 @@ class select_exec {
   std::shared_ptr<Rdb_key_def> m_pk_def;
   ha_rocksdb *m_handler;
   THD *m_thd;
-  std::unique_ptr<Rdb_converter> m_converter;
+  Rdb_converter m_converter[1];
   uint m_index;
   KEY *m_index_info;
   KEY *m_pk_info;
@@ -1646,7 +1654,7 @@ class select_exec {
   std::vector<std::pair<int, int>> m_field_index_to_where;
 
   // The iterator used in secondary index query or range query
-  std::unique_ptr<Rdb_iterator> m_iterator;
+  std::unique_ptr<Rdb_iterator_base> m_iterator;
 
   // The entire index (including extended keyparts) is used in query in equality
   // predicates - meaning it is a point query
@@ -2262,7 +2270,7 @@ select_exec_result INLINE_ATTR select_exec::run() {
     m_handler->print_error(HA_ERR_ROCKSDB_INVALID_TABLE, 0);
     return FAIL;
   }
-  m_converter.reset(new Rdb_converter(m_thd, m_tbl_def, m_table, m_dd_table));
+  m_converter->reset(m_thd, m_tbl_def, m_table, m_dd_table);
 
   // Scans WHERE and build the key and filter list
   const auto scan_where_result = scan_where();
@@ -2366,6 +2374,7 @@ bool INLINE_ATTR select_exec::run_pk_point_query() {
         (m_key_def->m_is_reverse_cf == m_parser.is_order_desc());
     std::vector<int> rtn_codes(size);
     m_iterator->multi_get(key_slices, value_slices, rtn_codes, sorted_input);
+    ROCKSDB_SCOPE_EXIT(m_iterator->finish_pin());
 
     for (size_t i = 0; i < size; ++i) {
       if (unlikely(handle_killed())) {
@@ -2799,9 +2808,8 @@ bool handle_unsupported_bypass(THD *thd, const char *error_msg,
     if (get_select_bypass_rejected_query_history_size() == 0) {
       if (btype == bypass_type::SQL) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                        "[REJECTED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
-                        thd->query().str, error_msg);
+        sql_print_information("[REJECTED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
+                              thd->query().str, error_msg);
       }
     } else {
       // Otherwise, record the rejected query into information_schema
@@ -2873,9 +2881,9 @@ bool rocksdb_handle_single_table_select(THD *thd, Query_block *select_lex) {
     }
     if (should_log_failed_select_bypass()) {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                      "[FAILED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
-                      thd->query().str, thd->get_stmt_da()->message_text());
+      sql_print_information("[FAILED_BYPASS_QUERY] Query='%s', Reason='%s'\n",
+                            thd->query().str,
+                            thd->get_stmt_da()->message_text());
     }
     rocksdb_select_bypass_failed++;
   } else {

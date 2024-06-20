@@ -124,6 +124,14 @@ class Mem_root_array_YY {
   /// Returns a constant pointer to the past-the-end element in the array.
   const_iterator cend() const { return end(); }
 
+  template<class Func>
+  void for_each(Func fn) const {
+    Element_type * first = m_array;
+    for (size_t i = 0, n = m_size; i < n; i++) {
+      fn(first[i]);
+    }
+  }
+
   /// Erases all of the elements.
   void clear() {
     if (!empty()) chop(0);
@@ -202,20 +210,32 @@ class Mem_root_array_YY {
     @param  args Arguments to pass to the constructor.
     @return true if out-of-memory, false otherwise.
   */
-  template <typename... Args>
+  template<class... Args>
   bool emplace_back(Args &&... args) {
-    constexpr size_t min_capacity = 20;
-    constexpr size_t expansion_factor = 2;
-    if (m_size == m_capacity) {
-      if (reserve(std::max(min_capacity, m_capacity * expansion_factor))) {
-        return true;
-      }
+    size_t oldsize = m_size;
+    if (likely(oldsize < m_capacity)) {
+      ::new (&m_array[oldsize]) Element_type(std::forward<Args>(args)...);
+      m_size = oldsize + 1;
+      return false;
+    } else {
+      return emplace_back_slow_path(std::forward<Args>(args)...);
     }
+  }
+
+private:
+  template<class... Args>
+  NO_INLINE bool emplace_back_slow_path(Args &&... args) {
+    const size_t min_capacity = 20;
+    const size_t expansion_factor = 2;
+    if (0 == m_capacity && reserve(min_capacity)) return true;
+    if (m_size == m_capacity && reserve(m_capacity * expansion_factor))
+      return true;
     Element_type *p = &m_array[m_size++];
     ::new (p) Element_type(std::forward<Args>(args)...);
     return false;
   }
 
+public:
   /**
     Adds a new element at the beginning of the array.
     The content of this new element is initialized to a copy of
