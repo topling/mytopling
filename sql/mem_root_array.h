@@ -210,7 +210,7 @@ class Mem_root_array_YY {
     @param  args Arguments to pass to the constructor.
     @return true if out-of-memory, false otherwise.
   */
-  template<class... Args>
+  template <typename... Args>
   bool emplace_back(Args &&... args) {
     size_t oldsize = m_size;
     if (likely(oldsize < m_capacity)) {
@@ -225,11 +225,13 @@ class Mem_root_array_YY {
 private:
   template<class... Args>
   NO_INLINE bool emplace_back_slow_path(Args &&... args) {
-    const size_t min_capacity = 20;
-    const size_t expansion_factor = 2;
-    if (0 == m_capacity && reserve(min_capacity)) return true;
-    if (m_size == m_capacity && reserve(m_capacity * expansion_factor))
-      return true;
+    constexpr size_t min_capacity = 20;
+    constexpr size_t expansion_factor = 2;
+    if (true) { // always m_size == m_capacity
+      if (reserve(std::max(min_capacity, m_capacity * expansion_factor))) {
+        return true;
+      }
+    }
     Element_type *p = &m_array[m_size++];
     ::new (p) Element_type(std::forward<Args>(args)...);
     return false;
