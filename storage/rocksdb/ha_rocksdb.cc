@@ -4847,7 +4847,7 @@ class Rdb_transaction {
   }
 
   [[nodiscard]] std::unique_ptr<rocksdb::Iterator> get_iterator(
-      rocksdb::ColumnFamilyHandle& column_family, bool skip_bloom_filter,
+      rocksdb::ColumnFamilyHandle &column_family, bool skip_bloom_filter,
       const rocksdb::Slice &eq_cond_lower_bound,
       const rocksdb::Slice &eq_cond_upper_bound, TABLE_TYPE table_type,
       bool read_current = false, bool create_snapshot = true) {
@@ -8706,8 +8706,6 @@ if (!g_svr_read_only) {
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
-}
-if (!g_svr_read_only) {
 #ifndef HAVE_PSI_INTERFACE
   auto err = rdb_bg_thread.create_thread(BG_THREAD_NAME);
 #else
@@ -10374,7 +10372,7 @@ uint ha_rocksdb::create_inplace_key_defs(
             "for Index Number (%u,%u), table %s",
             gl_index_id.cf_id, gl_index_id.index_id,
             old_tbl_def_arg.full_tablename().c_str());
-        return true;
+        return HA_EXIT_FAILURE;
       }
 
       uint32 ttl_rec_offset =
@@ -18820,22 +18818,24 @@ void Rdb_manual_compaction_thread::run() {
     } else {
       if (!cf_manager.get_cf(mcr.cf->GetID())) {
         // NO_LINT_DEBUG
-        sql_print_information("cf %s has been dropped",
-                              mcr.cf->GetName().c_str());
+        sql_print_information(
+                        "cf %s has been dropped", mcr.cf->GetName().c_str());
         set_state(&mcr, Manual_compaction_request::SUCCESS);
       } else if (s.IsIncomplete()) {
         // NO_LINT_DEBUG
         sql_print_information(
-            "Manual Compaction id %d cf %s cancelled. (%d:%d, %s)", mcr.mc_id,
-            mcr.cf->GetName().c_str(), s.code(), s.subcode(), s.getState());
+            "Manual Compaction id %d cf %s cancelled. (%d:%d, %s)",
+            mcr.mc_id, mcr.cf->GetName().c_str(), s.code(),
+            s.subcode(), s.getState());
         // Cancelled
         set_state(&mcr, Manual_compaction_request::CANCEL);
         rocksdb_manual_compactions_cancelled++;
       } else {
         // NO_LINT_DEBUG
         sql_print_information(
-            "Manual Compaction id %d cf %s aborted. (%d:%d, %s)", mcr.mc_id,
-            mcr.cf->GetName().c_str(), s.code(), s.subcode(), s.getState());
+            "Manual Compaction id %d cf %s aborted. (%d:%d, %s)",
+            mcr.mc_id, mcr.cf->GetName().c_str(), s.code(),
+            s.subcode(), s.getState());
         set_state(&mcr, Manual_compaction_request::FAILURE);
         if (!s.IsShutdownInProgress()) {
           rdb_handle_io_error(s, RDB_IO_ERROR_BG_THREAD);
@@ -19211,6 +19211,7 @@ void rdb_handle_io_error(const rocksdb::Status status,
     if (skip_core_dump_on_error) {
       opt_core_file = false;
     }
+
     switch (err_type) {
       case RDB_IO_ERROR_TX_COMMIT:
       case RDB_IO_ERROR_DICT_COMMIT: {
@@ -20803,9 +20804,10 @@ static bool parse_fault_injection_params(
   if (!ok) {
     // NO_LINT_DEBUG
     sql_print_error(
-        "RocksDB: Parse error (errcode=%d offset=%d)  "
+        "RocksDB: Parse error (errcode=%d offset=%zu)  "
         "rocksdb_fault_injection_options=%s",
-        ok.Code(), ok.Offset(), opt_rocksdb_fault_injection_options);
+        ok.Code(), ok.Offset(),
+        opt_rocksdb_fault_injection_options);
     return true;
   }
 
