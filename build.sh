@@ -24,6 +24,10 @@ if [ ! -e ${core} ]; then
   exit 1
 fi
 
+if [ `uname -m` = x86_64 ]; then
+  FORCE_CPU_ARCH="-DFORCE_CPU_ARCH=haswell"
+fi
+
 # both TOPLING_LIB_DIR=/node-shared/lib and -L/node-shared/lib need
 # be specified
 export LC_ALL=C
@@ -38,7 +42,7 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DADD_GDB_INDEX=ON \
       -DCOMPILATION_COMMENT="MyTopling Enterprise" \
       -DROCKSDB_DISABLE_MARCH_NATIVE=on \
-      -DFORCE_CPU_ARCH=haswell \
+      $FORCE_CPU_ARCH \
       -DWITH_FB_VECTORDB=1 \
       -DWITH_OPENMP=/usr \
       -DWITH_ZLIB=system \
