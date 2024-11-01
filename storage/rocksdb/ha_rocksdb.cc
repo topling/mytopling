@@ -4875,7 +4875,8 @@ class Rdb_transaction {
       tmp_dbname += "/";
       tmp_dbname += cf->GetName();
       tmp_dbname += "-XXXXXX";
-      mkdtemp(tmp_dbname.data());
+      auto p_mkdtemp = mkdtemp(tmp_dbname.data());
+      ROCKSDB_VERIFY(nullptr != p_mkdtemp);
       std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
       auto default_memtab_fac = cfo[0].options.memtable_factory;
       auto s = cf->GetDescriptor(&cfo[0]);
