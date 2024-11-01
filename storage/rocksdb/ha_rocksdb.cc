@@ -183,6 +183,7 @@ namespace detail {
 }
 using  rocksdb::json;
 static rocksdb::SidePluginRepo g_repo;
+static rocksdb::DB_MultiCF* g_dbm;
 bool g_svr_read_only = false;
 
 static int mysql_value_to_bool(struct st_mysql_value *value,
@@ -9264,8 +9265,12 @@ else {
     }, rocksdb_db_options->sst_file_manager);
 
   std::vector<std::string> cf_names;
+if (side_conf) {
+  status = g_repo.ListCFs(".rocksdb", &cf_names);
+} else {
   status = rocksdb::DB::ListColumnFamilies(*rocksdb_db_options, rocksdb_datadir,
                                            &cf_names);
+}
   DBUG_EXECUTE_IF("rocksdb_init_failure_list_cf", {
     // Simulate ListColumnFamilies failure
     status = rocksdb::Status::Corruption();
@@ -9535,6 +9540,7 @@ else {
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
     cf_handles = dbm->cf_handles;
+    g_dbm = dbm;
   }
   else {
     status = rocksdb::TransactionDB::Open(
@@ -9899,6 +9905,7 @@ static int rocksdb_shutdown(bool minimalShutdown) {
 
     if (side_conf) {
       g_repo.CloseAllDB(false); // dont delete rdb and cf_handles
+      g_dbm = nullptr;
     }
     delete rdb;
     rdb = nullptr;
@@ -12936,7 +12943,7 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
   DBUG_RETURN(rc);
 }
 
-static ha_rows scan_records_num_st(THD* thd, uint32_t index_id, uint8_t fixlen) {
+static ha_rows scan_records_num_st(THD* thd, rocksdb::ColumnFamilyHandle* cf, uint32_t index_id, uint8_t fixlen) {
   uint32_t index_id_storage_form = __bswap_32(index_id);
   ha_rows rows = 0;
   rocksdb::ReadOptions ro;
@@ -12946,9 +12953,8 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id, uint8_t fixlen) 
   ro.cache_sst_file_iter = false;
   ro.fixed_user_key_len = fixlen;
  #if 1
-  auto iter = rdb->NewIterator(ro);
+  auto iter = rdb->NewIterator(ro, cf);
  #else
-  auto cf = rdb->DefaultColumnFamily();
   auto iter = tx->get_iterator(ro, cf, USER_TABLE);
  #endif
   iter->Seek(Slice((char*)&index_id_storage_form, 4));
@@ -12967,6 +12973,7 @@ static ha_rows scan_records_num_st(THD* thd, uint32_t index_id, uint8_t fixlen) 
 
 class ScanRecordsParallel {
   THD* m_thd;
+  rocksdb::ColumnFamilyHandle* m_cfh;
   uint32_t m_index_id;
   uint8_t m_fixed_user_key_len;
   size_t m_num_threads;
@@ -12976,12 +12983,13 @@ class ScanRecordsParallel {
   std::atomic<size_t> m_next_range_idx{0};
   void thread_proc();
 public:
-  ScanRecordsParallel(THD* thd, uint32_t index_id, size_t num_threads, uint8_t fixlen);
+  ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* cfh, uint32_t index_id, size_t num_threads, uint8_t fixlen);
   ha_rows run_scan();
 };
-ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
+ScanRecordsParallel::ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* cfh, uint32_t index_id,
                                          size_t num_threads, uint8_t fixlen) {
   m_thd = thd;
+  m_cfh = cfh;
   m_index_id = index_id;
   m_fixed_user_key_len = fixlen;
   m_num_threads = num_threads;
@@ -12989,7 +12997,6 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, uint32_t index_id,
   uint32_t start = __bswap_32(index_id);
   uint32_t limit = __bswap_32(index_id + 1);
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
-  auto cfh = rdb->DefaultColumnFamily();
   m_bounds.reserve(m_num_threads * 400);
   m_bounds.push_back({rng.start, 0});
   rocksdb::Status s = rdb->ApproximateKeyAnchors(cfh, &rng, &m_bounds);
@@ -13036,10 +13043,9 @@ void ScanRecordsParallel::thread_proc() {
   Slice limit;
   ro.iterate_upper_bound = &limit;
  #if 1
-  auto iter = rdb->NewIterator(ro);
+  auto iter = rdb->NewIterator(ro, m_cfh);
  #else
-  auto cf = rdb->DefaultColumnFamily();
-  auto iter = m_tx->get_iterator(ro, cf, USER_TABLE);
+  auto iter = m_tx->get_iterator(ro, m_cfh, USER_TABLE);
  #endif
   while (true) {
     size_t rng_idx = m_next_range_idx++;
@@ -13067,7 +13073,7 @@ void ScanRecordsParallel::thread_proc() {
 }
 ha_rows ScanRecordsParallel::run_scan() {
   if (m_bounds.size() <= 2) {
-    return scan_records_num_st(m_thd, m_index_id, m_fixed_user_key_len);
+    return scan_records_num_st(m_thd, m_cfh, m_index_id, m_fixed_user_key_len);
   }
   size_t use_threads = std::min(m_bounds.size()-1, m_num_threads);
   std::vector<std::thread> threads; threads.reserve(use_threads-1);
@@ -13085,6 +13091,7 @@ ha_rows ScanRecordsParallel::run_scan() {
   return total_rows;
 }
 static ha_rows scan_records_num(THD* thd, const Rdb_key_def& kd) {
+  auto cfh = &kd.get_cf();
   uint32_t index_id = kd.get_index_number();
   auto fixlen = kd.is_fixed_len() ? kd.max_storage_fmt_length() : 0;
   if (fixlen > 32) {
@@ -13092,10 +13099,10 @@ static ha_rows scan_records_num(THD* thd, const Rdb_key_def& kd) {
   }
   size_t num_threads = THDVAR(thd, parallel_read_threads);
   if (num_threads >= 2) {
-    ScanRecordsParallel scan_ctx(thd, index_id, num_threads, fixlen);
+    ScanRecordsParallel scan_ctx(thd, cfh, index_id, num_threads, fixlen);
     return scan_ctx.run_scan();
   }
-  return scan_records_num_st(thd, index_id, fixlen);
+  return scan_records_num_st(thd, cfh, index_id, fixlen);
 }
 
 int ha_rocksdb::records(ha_rows *num_rows) {
@@ -13846,7 +13853,7 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   // specified for a given paritition.
   per_part_match_found = false;
 
- #if 1
+ #if 0
   (void)index;
   (void)table_arg;
   (void)tbl_def_arg;
@@ -13859,7 +13866,8 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   const char *const comment = get_key_comment(index, table_arg, tbl_def_arg);
 
   // `get_key_comment` can return `nullptr`, that's why this.
-  std::string key_comment = comment ? comment : "";
+  // MyTopling allow put table data into custom cf by table_arg.s->comment
+  std::string key_comment = comment ? comment : table_arg.s->comment.str;
 
   std::string cf_name = Rdb_key_def::parse_comment_for_qualifier(
       key_comment, table_arg, tbl_def_arg, per_part_match_found,
@@ -13876,7 +13884,14 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   // specified in the index comment in the case of no partitions, which doesn't
   // use any qualifiers at the moment. (aka its a special case)
   if (cf_name.empty() && !key_comment.empty()) {
-    return key_comment;
+    cf_name = key_comment;
+  }
+
+  // Now MyTopling allow user place a table into a pre-defined cf.
+  // This is for encryption, the cf_name must has been existed.
+  if (g_dbm->Get(cf_name) == nullptr) {
+    sql_print_warning("generate_cf_name: not found cf %s", cf_name.c_str());
+    cf_name = ""; // use default cf
   }
 
   return cf_name;
@@ -15173,7 +15188,7 @@ int ha_rocksdb::index_init(uint idx, bool sorted MY_ATTRIBUTE((__unused__))) {
     if (rocksdb_reuse_iter && tx->m_iter_cache) {
       auto& kd = m_key_descr_arr[active_index_pos()];
       ROCKSDB_VERIFY(!tx->m_iter_cache->is_partial_iter());
-      ROCKSDB_VERIFY_EQ(kd->get_cf_id(), 0); // 0 is default cf id
+      //ROCKSDB_VERIFY_EQ(kd->get_cf_id(), 0); // 0 is default cf id
       tx->m_iter_cache->init(thd, *kd, *m_pk_descr, m_tbl_def);
       m_iterator = std::move(tx->m_iter_cache);
     }
