@@ -4517,7 +4517,8 @@ class Rdb_transaction {
       tmp_dbname += "/";
       tmp_dbname += cf->GetName();
       tmp_dbname += "-XXXXXX";
-      mkdtemp(tmp_dbname.data());
+      auto p_mkdtemp = mkdtemp(tmp_dbname.data());
+      ROCKSDB_VERIFY(nullptr != p_mkdtemp);
       std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
       auto default_memtab_fac = cfo[0].options.memtable_factory;
       auto s = cf->GetDescriptor(&cfo[0]);
@@ -13166,7 +13167,8 @@ int ha_rocksdb::finalize_bulk_load(bool print_client_error) {
         tmp_dbname += "/";
         tmp_dbname += commit_info.get_cf()->GetName();
         tmp_dbname += "-XXXXXX";
-        mkdtemp(tmp_dbname.data());
+        auto p_mkdtemp = mkdtemp(tmp_dbname.data());
+        ROCKSDB_VERIFY(nullptr != p_mkdtemp);
         Ensure_cleanup tmp_dir_clean([&]() {
           if (!terark::getEnvBool("BULK_LOAD_DEL_TMP", true)) {
             return;
