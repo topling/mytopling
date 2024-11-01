@@ -170,6 +170,12 @@ std::shared_ptr<rocksdb::ColumnFamilyHandle> Rdb_cf_manager::get_or_create_cf(
 
   if (it != m_cf_name_map.end()) {
     cf_handle = it->second;
+  } else if (true) {
+    cf_handle = nullptr;
+    // MyTopling does not support dynamic create cf.
+    // cf_name has been sanitized in generate_cf_name, so it should not goes
+    // here! if it goes here, there must be a bug!
+    ROCKSDB_DIE("cf %s does not exit!", cf_name.c_str());
   } else {
     /* Create a Column Family. */
     rocksdb::ColumnFamilyOptions opts;

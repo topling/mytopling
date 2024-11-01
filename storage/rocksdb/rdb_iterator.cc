@@ -127,6 +127,9 @@ void Rdb_iterator_base::init(THD *thd,
                              const std::shared_ptr<Rdb_key_def>& kd,
                              const std::shared_ptr<Rdb_key_def>& pkd,
                              const Rdb_tbl_def *tbl_def) {
+  if (m_kd && m_kd->get_cf() != kd->get_cf()) {
+    release_scan_iterator(); // must release old for create new iterator
+  }
   m_thd = thd;
   m_kd = kd;
   m_pkd = pkd;

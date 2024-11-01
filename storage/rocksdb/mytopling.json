@@ -274,6 +274,10 @@
       "compaction_executor_factory": "dcompact",
       "compaction_filter_factory": "${compact_filter}"
     },
+    "encrypt": {
+      "template": "${default}",
+      "cf_paths": "/nvme-shared/mytopling/datadir/encrypt"
+    },
     "__system__": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
@@ -339,6 +343,7 @@
         },
         "column_families": {
           "default": "${default}",
+          "encrypt": "${encrypt}",
           "__system__": "${__system__}"
         }
       }
