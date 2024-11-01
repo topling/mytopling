@@ -10,6 +10,8 @@ sudo yum install -y openssl-devel \
                     rpcgen \
                     bison \
                     libudev-devel
+# ubuntu/debian
+sudo apt install -y g++-12 gcc-12 perl libaio-dev liburing-dev bison flex byacc libudev-dev libtirpc-dev libldap-dev libcurlpp-dev libcurl4-openssl-dev pkgconf libpkgconf-dev zlib1g-dev libgrpc-dev doxygen libsasl2-dev libsnappy-dev libnfs-dev make cmake git libncurses-dev
 ```
 
 # 1. First build ToplingDB
