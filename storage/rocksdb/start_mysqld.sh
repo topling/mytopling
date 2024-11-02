@@ -9,6 +9,7 @@ mydir=`cd $mydir; pwd`
 export LANG=C
 export LC_ALL=C
 export LD_LIBRARY_PATH=/node-shared/opt/gcc-12.1.0/lib64:/node-shared/lib
+export LD_LIBRARY_PATH=/opt/lib:$LD_LIBRARY_PATH
 export PATH=/node-shared/mytopling-${type}/bin:${PATH}
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling.json

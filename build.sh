@@ -41,6 +41,7 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DCMAKE_CXX_FLAGS_RELEASE="-O3 -g3 -DNDEBUG" \
       -DADD_GDB_INDEX=ON \
       -DCOMPILATION_COMMENT="MyTopling Enterprise" \
+      -DWITH_MYSQLD_LDFLAGS="-Wl,--no-as-needed" \
       -DROCKSDB_DISABLE_MARCH_NATIVE=on \
       $FORCE_CPU_ARCH \
       -DWITH_FB_VECTORDB=1 \
