@@ -815,6 +815,7 @@ static uint64_t rocksdb_compaction_sequential_deletes_window = 0;
 static long long rocksdb_compaction_sequential_deletes_file_size = 0LL;
 static uint32_t rocksdb_validate_tables = 1;
 char *rocksdb_datadir;
+char *rocksdb_info_log_dir = (char*)"";
 static int rocksdb_max_bottom_pri_background_compactions = 0;
 static int rocksdb_block_cache_numshardbits = -1;
 static uint32_t rocksdb_table_stats_sampling_pct;
@@ -2724,6 +2725,11 @@ static MYSQL_SYSVAR_STR(datadir, rocksdb_datadir,
                         "RocksDB data directory", nullptr, nullptr,
                         "./.rocksdb");
 
+static MYSQL_SYSVAR_STR(info_log_dir, rocksdb_info_log_dir,
+                        PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
+                        "ToplingDB info log directory", nullptr, nullptr,
+                        "");
+
 static MYSQL_SYSVAR_UINT(
     table_stats_sampling_pct, rocksdb_table_stats_sampling_pct,
     PLUGIN_VAR_RQCMDARG,
@@ -3285,6 +3291,8 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(print_snapshot_conflict_queries),
 
     MYSQL_SYSVAR(datadir),
+    MYSQL_SYSVAR(info_log_dir),
+
     MYSQL_SYSVAR(create_checkpoint),
     MYSQL_SYSVAR(create_temporary_checkpoint),
     MYSQL_SYSVAR(disable_file_deletions),
@@ -9144,6 +9152,9 @@ else {
   }
 }
 
+  if (*rocksdb_info_log_dir) {
+    rocksdb_db_options->db_log_dir = rocksdb_info_log_dir;
+  }
   std::shared_ptr<Rdb_logger> myrocks_logger = std::make_shared<Rdb_logger>();
 #if 0 // DO NOT do this
   rocksdb_db_options->info_log_level = rocksdb::InfoLogLevel(rocksdb_info_log_level);
