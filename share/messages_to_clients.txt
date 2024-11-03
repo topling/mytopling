@@ -10198,3 +10198,6 @@ ER_RBR_BEFORE_IMAGE_INCONSISTENT
 # (Please read comments from the header of this section before adding error
 #  message here)
 #
+
+ER_CF_NOT_EXISTS
+  eng "Column family ('%s') does not exist."

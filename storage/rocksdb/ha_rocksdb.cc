@@ -12591,7 +12591,9 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   // This is for encryption, the cf_name must has been existed.
   if (g_dbm->Get(cf_name) == nullptr) {
     sql_print_warning("generate_cf_name: not found cf %s", cf_name.c_str());
-    cf_name = ""; // use default cf
+    // now we pass through the cfname, let mysqld report the error,
+    // we add a new error: ER_CF_NOT_EXISTS
+    //cf_name = ""; // use default cf
   }
 
   return cf_name;
