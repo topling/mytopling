@@ -24,7 +24,7 @@ if [ ! -e ${core} ]; then
   exit 1
 fi
 
-if [ `uname -m` = x86_64 ]; then
+if [ `uname -m` = x86_64 -a `bash ${core}/cpu_has_bmi2.sh` = 1 ]; then
   FORCE_CPU_ARCH="-DFORCE_CPU_ARCH=haswell"
 fi
 
