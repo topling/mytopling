@@ -276,7 +276,7 @@
     },
     "encrypt": {
       "template": "${default}",
-      "cf_paths": "/nvme-shared/mytopling/datadir/encrypt"
+      "cf_paths": "/nvme-shared/mytopling/encrypt"
     },
     "__system__": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
