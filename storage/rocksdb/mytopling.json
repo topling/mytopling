@@ -324,6 +324,18 @@
       "template": "${default}",
       "cf_paths": "/nvme-shared/mytopling/encrypt"
     },
+    "default_sk": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/default_sk"
+    },
+    "__tmp__": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp__"
+    },
+    "__tmp_system__": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp_system__"
+    },
     "__system__": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
@@ -394,6 +406,9 @@
         "column_families": {
           "default": "${default}",
           "encrypt": "${encrypt}",
+          "default_sk": "${default}",
+          "__tmp__": "${__tmp__}",
+          "__tmp_system__": "${__system__}",
           "__system__": "${__system__}"
         }
       }

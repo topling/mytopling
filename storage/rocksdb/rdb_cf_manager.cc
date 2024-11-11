@@ -42,16 +42,11 @@ namespace myrocks {
 bool Rdb_cf_manager::is_cf_name_reverse(std::string_view name) {
   /* Empty string means the default CF is used. (TODO: can the default CF be
    * reverse?) */
-#if 0
+  // Now MyTopling allow rev cf if and only if:
+  // 1. the rev cf is predefined, if not, it will fail later
+  // 2. WriteBatchWithIndex is the default SkipList impl(Not CSPP_WBWI)
+  // 3. the rev cf TableFactory & MemTable can be Topling's impl
   return name.compare(0, 4, "rev:") == 0;
-#else
-  // MyTopling: reverse bytewise comparator makes things complicated,
-  // and the gain is very little, keep it simple stupid!
-  // topling memtab and sst are fast on iterator backward scan, thus
-  // it is not needed to use reverse bytewise comparator
-  (void)name; // use
-  return false; // MyTopling: Never use reverse bytewise comparator
-#endif
 }
 
 bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
