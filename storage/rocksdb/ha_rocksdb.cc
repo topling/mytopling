@@ -13886,7 +13886,7 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   // use any qualifiers at the moment. (aka its a special case)
   if (cf_name.empty() && !key_comment.empty()) {
     auto is_cfname_char = [](const unsigned char c) {
-      return isalnum(c) || c == '-' || c == '_' || c == '.';
+      return isalnum(c) || c == '-' || c == '_' || c == '.' || c == ':';
     };
     if (std::all_of(key_comment.begin(), key_comment.end(), is_cfname_char)) {
       cf_name = key_comment;
