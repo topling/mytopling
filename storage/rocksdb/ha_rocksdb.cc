@@ -12584,7 +12584,12 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   // specified in the index comment in the case of no partitions, which doesn't
   // use any qualifiers at the moment. (aka its a special case)
   if (cf_name.empty() && !key_comment.empty()) {
-    cf_name = key_comment;
+    auto is_cfname_char = [](const unsigned char c) {
+      return isalnum(c) || c == '-' || c == '_' || c == '.';
+    };
+    if (std::all_of(key_comment.begin(), key_comment.end(), is_cfname_char)) {
+      cf_name = key_comment;
+    }
   }
 
   // Now MyTopling allow user place a table into a pre-defined cf.
