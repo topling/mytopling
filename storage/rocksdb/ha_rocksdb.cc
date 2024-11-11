@@ -12583,7 +12583,8 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   // comment itself.  NOTE: this currently handles returning the cf name
   // specified in the index comment in the case of no partitions, which doesn't
   // use any qualifiers at the moment. (aka its a special case)
-  if (cf_name.empty() && !key_comment.empty()) {
+  if (cf_name.empty() && comment && strncmp(comment, "rev:", 4) == 0) {
+    // key_comment is from var comment(real key comment)
     auto is_cfname_char = [](const unsigned char c) {
       return isalnum(c) || c == '-' || c == '_' || c == '.';
     };
