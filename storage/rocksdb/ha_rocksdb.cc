@@ -13868,7 +13868,13 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
 
   // `get_key_comment` can return `nullptr`, that's why this.
   // MyTopling allow put table data into custom cf by table_arg.s->comment
-  std::string key_comment = comment ? comment : table_arg.s->comment.str;
+  auto stdstr = [](LEX_STRING s) {
+    if (s.str)
+      return std::string(s.str, s.length);
+    else
+      return std::string(); // empty string
+  };
+  std::string key_comment = comment ? comment : stdstr(table_arg.s->comment);
 
   std::string cf_name = Rdb_key_def::parse_comment_for_qualifier(
       key_comment, table_arg, tbl_def_arg, per_part_match_found,
@@ -13896,7 +13902,7 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
 
   // Now MyTopling allow user place a table into a pre-defined cf.
   // This is for encryption, the cf_name must has been existed.
-  if (g_dbm->Get(cf_name) == nullptr) {
+  if (!cf_name.empty() && g_dbm->Get(cf_name) == nullptr) {
     sql_print_warning("generate_cf_name: not found cf %s", cf_name.c_str());
     // now we pass through the cfname, let mysqld report the error,
     // we add a new error: ER_CF_NOT_EXISTS
