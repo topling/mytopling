@@ -28,6 +28,12 @@
 
 #include "ha_rocksdb.h"
 
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+#endif
+
 namespace myrocks {
 
 // If the iterator is not valid it might be because of EOF but might be due
