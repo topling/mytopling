@@ -63,6 +63,9 @@ bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
   m_cf_options = std::move(cf_options);
   std::vector<std::string> tmp_cfs = {DEFAULT_TMP_CF_NAME,
                                       DEFAULT_TMP_SYSTEM_CF_NAME};
+
+  tmp_cfs.clear(); // !!MyTopling: Do not drop tmp cf
+
   std::vector<std::string> default_cfs = {DEFAULT_CF_NAME,
                                           DEFAULT_SYSTEM_CF_NAME};
   tmp_column_family_id = UINT_MAX;

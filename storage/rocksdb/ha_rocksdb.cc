@@ -15038,6 +15038,7 @@ void Rdb_drop_index_thread::run() {
         }
       }
 
+  #if 0 // !!MyTopling: never drop cf
       DBUG_EXECUTE_IF("rocksdb_drop_cf", {
         THD *thd = new THD();
         thd->thread_stack = reinterpret_cast<char *>(&(thd));
@@ -15097,6 +15098,7 @@ void Rdb_drop_index_thread::run() {
           delete thd;
         }
       });
+  #endif
     }
     RDB_MUTEX_LOCK_CHECK(m_signal_mutex);
   }
