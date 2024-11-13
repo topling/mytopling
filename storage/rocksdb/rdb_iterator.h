@@ -208,11 +208,25 @@ class Rdb_iterator_base : public Rdb_iterator {
   /* Whether m_scan_it was created with skip_bloom=true */
   bool m_scan_it_skips_bloom;
   bool m_has_been_setup = false;
+#define MYTOPLING_WITH_REVERSE_CF
 #if defined(MYTOPLING_WITH_REVERSE_CF)
   bool m_kd_is_reverse_cf = false;
 #else
   static constexpr bool m_kd_is_reverse_cf = false;
 #endif
+
+  bool LT(Slice x, Slice y) const {
+    if (!m_kd_is_reverse_cf)
+      return x < y;
+    else
+      return y < x;
+  }
+  bool GT(Slice x, Slice y) const {
+    if (!m_kd_is_reverse_cf)
+      return x > y;
+    else
+      return y > x;
+  }
 
   __always_inline
   bool value_matches_prefix(const rocksdb::Slice &value,
