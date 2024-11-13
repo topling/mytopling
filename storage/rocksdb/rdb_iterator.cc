@@ -125,9 +125,9 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
 {
   m_rocksdb_handler = rocksdb_handler;
   if (tbl_def->get_table_type() == INTRINSIC_TMP) {
-    ROCKSDB_DIE("MyTopling does not support INTRINSIC_TMP table");
+    //ROCKSDB_DIE("MyTopling does not support INTRINSIC_TMP table");
     if (m_rocksdb_handler) {
-      add_tmp_table_handler(m_thd, m_rocksdb_handler);
+      add_tmp_table_handler(thd, m_rocksdb_handler);
     }
   }
   init(thd, kd, pkd, tbl_def);
@@ -337,7 +337,7 @@ void Rdb_iterator_base::setup_scan_iterator(
       m_scan_it_snapshot = snap;
     } else  if (!read_current) {
       Rdb_transaction *const tx = m_thd->m_rdb_trx;
-      auto& ro = rdb_tx_acquire_snapshot(*tx); // must by reference
+      auto& ro = rdb_tx_acquire_snapshot(*tx, m_table_type); // must by reference
       snap = ro.snapshot;
     }
     auto s = m_scan_it->Refresh(snap, false/*keep_iter_pos*/);

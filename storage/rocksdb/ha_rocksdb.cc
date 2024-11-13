@@ -21054,9 +21054,10 @@ unsigned long long get_partial_index_sort_max_mem(THD *thd) {
   return THDVAR(thd, partial_index_sort_max_mem);
 }
 
-const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction &tx) {
-  tx.acquire_snapshot(true, TABLE_TYPE::USER_TABLE);
-  return tx.m_read_opts[TABLE_TYPE::USER_TABLE];
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction &tx,
+                                                    TABLE_TYPE table_type) {
+  tx.acquire_snapshot(true, table_type);
+  return tx.m_read_opts[table_type];
 }
 
 std::unique_ptr<rocksdb::Iterator> rdb_tx_get_iterator(
