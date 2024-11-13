@@ -55,6 +55,7 @@ using rocksdb::CompactionFilter;
 using rocksdb::CompactionFilterFactory;
 using rocksdb::CompactionFilterContext;
 using rocksdb::InfoLogLevel;
+using rocksdb::TableFileCreationReason;
 
 using rocksdb::IsCompactionWorker;
 using rocksdb::CompactionParams;
@@ -201,6 +202,15 @@ public:
 class Rdb_compact_filter_factory : public CompactionFilterFactory {
 public:
   const char *Name() const override { return "Rdb_compact_filter_factory"; }
+
+// default impl just filter for kCompaction
+#if 0
+  bool ShouldFilterTableFileCreation(TableFileCreationReason reason) const
+  override {
+    return reason == TableFileCreationReason::kCompaction ||
+           reason == TableFileCreationReason::kFlush;
+  }
+#endif
 
   std::unique_ptr<CompactionFilter>
   CreateCompactionFilter(const CompactionFilterContext& context)
