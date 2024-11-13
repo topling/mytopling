@@ -85,6 +85,14 @@
       }
     }
   },
+  "Comparator": {
+    "rev": {
+      "class": "ReverseBytewiseComparator",
+      "params": {
+        "need-not-any-param": "used for rev cf"
+      }
+    }
+  },
   "TableFactory": {
     "auto_sort": {
       "class": "VecAutoSortTable",
@@ -328,6 +336,10 @@
       "template": "${default}",
       "//cf_paths": "/nvme-shared/mytopling/default_sk"
     },
+    "rev:order": {
+      "template": "${default}",
+      "comparator": "${rev}"
+    },
     "__tmp__": {
       "template": "${default}",
       "//cf_paths": "/nvme-shared/mytopling/__tmp__"
@@ -405,11 +417,12 @@
         },
         "column_families": {
           "default": "${default}",
-          "encrypt": "${encrypt}",
+          "__system__": "${__system__}",
           "default_sk": "${default}",
           "__tmp__": "${__tmp__}",
           "__tmp_system__": "${__system__}",
-          "__system__": "${__system__}"
+          "encrypt": "${encrypt}",
+          "rev:order": "${rev:order}"
         }
       }
     }
