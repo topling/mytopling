@@ -19625,11 +19625,9 @@ unsigned long long get_partial_index_sort_max_mem(THD *thd) {
 }
 
 const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction *tx,
-                                                    bool create_snapshot) {
-  if (create_snapshot) {
-    tx->acquire_snapshot(true, TABLE_TYPE::USER_TABLE);
-  }
-  return tx->m_read_opts[TABLE_TYPE::USER_TABLE];
+                                                    TABLE_TYPE table_type) {
+  tx->acquire_snapshot(true, table_type);
+  return tx->m_read_opts[table_type];
 }
 
 rocksdb::Iterator *rdb_tx_get_iterator(

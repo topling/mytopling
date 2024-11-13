@@ -1171,7 +1171,7 @@ Rdb_transaction *get_tx_from_thd(THD *const thd);
 void add_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 
-const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction*, bool create_snapshot = true);
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction*, TABLE_TYPE table_type = USER_TABLE);
 
 rocksdb::Iterator *rdb_tx_get_iterator(
     THD *thd, rocksdb::ColumnFamilyHandle *const cf, bool skip_bloom_filter,
