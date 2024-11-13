@@ -129,6 +129,11 @@ if [ $# -eq 0 ]; then
    #--rocksdb_compaction_sequential_deletes_window=150000 # default=150000
     --rocksdb_skip_bloom_filter_on_read=ON
   )
+elif [ "${1:0:12}" = "--initialize" ]; then
+  rm -rf ${datadir}/*
+  rm -rf ${datadir}/.rocksdb
+  rm -rf /dev/shm/mytopling/wal
+  mkdir -p /dev/shm/mytopling/wal
 fi
 if [ $type = dbg ]; then
   dbg="gdb --args"
