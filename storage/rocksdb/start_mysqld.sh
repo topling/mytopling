@@ -108,6 +108,11 @@ if [ $# -eq 0 ]; then
     --rocksdb_lock_wait_timeout=10
     --rocksdb_print_snapshot_conflict_queries=1
   )
+elif [ "${1:0:12}" = "--initialize" ]; then
+  rm -rf ${datadir}/*
+  rm -rf ${datadir}/.rocksdb
+  rm -rf /dev/shm/mytopling/wal
+  mkdir -p /dev/shm/mytopling/wal
 fi
 if [ $type = dbg ]; then
   dbg="gdb --args"
