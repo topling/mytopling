@@ -1168,6 +1168,22 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
               side_conf, s.ToString().c_str());
       ::exit(HA_EXIT_FAILURE);
     }
+    if (const char* side_conf_mtr = getenv("TOPLING_SIDEPLUGIN_CONF_MTR")) {
+      s = g_repo.ImportAutoFile(side_conf_mtr);
+      if (!s.ok()) {
+        fprintf(stderr, "Error ImportAutoFile(%s) for MTR = %s\n",
+                side_conf_mtr, s.ToString().c_str());
+        ::exit(HA_EXIT_FAILURE);
+      }
+      if (mysqld_port && g_repo.m_impl->http_js.contains("listening_ports")) {
+        auto http_port = std::min(mysqld_port + 2000, 65500u);
+        g_repo.m_impl->http_js["listening_ports"] = std::to_string(http_port);
+        fprintf(stderr, "INFO: sideplugin http port is %d for mtr\n", http_port);
+      }
+      if (!g_repo.m_impl->http_js.contains("listening_ports")) {
+        fprintf(stderr, "INFO: sideplugin http is disabled\n");
+      }
+    }
     ROCKSDB_VERIFY_EQ(g_repo.m_impl->db_options.name2p->size(), 1);
     try {
       rocksdb_auto_sort_sst_factory = PluginFactorySP<TableFactory>::GetPlugin(
