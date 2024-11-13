@@ -390,8 +390,16 @@ static void rocksdb_flush_all_memtables(rocksdb::FlushOptions fopt =
 
   // RocksDB will fail the flush if the CF is deleted,
   // but here we don't handle return status
-  for (const auto &cf_handle : cf_manager.get_all_cf()) {
-    rdb->Flush(fopt, cf_handle.get());
+
+  // MyTopling never delete cf, error should not happen
+  auto cfh_sp_vec = cf_manager.get_all_cf(); // shared_ptr vec
+  std::vector<rocksdb::ColumnFamilyHandle*> cfh_vec(cfh_sp_vec.size());
+  for (size_t i = 0; i < cfh_vec.size(); i++) {
+    cfh_vec[i] = cfh_sp_vec[i].get();
+  }
+  rocksdb::Status s = rdb->Flush(fopt, cfh_vec);
+  if (!s.ok()) { // MyTopling never delete cf, error should not happen
+    sql_print_error("rdb->Flush all cf: %s", s.ToString().c_str());
   }
 }
 
