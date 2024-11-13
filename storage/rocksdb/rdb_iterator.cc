@@ -427,7 +427,10 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
   int rc = 0;
 
   if (unlikely(!m_valid)) return HA_ERR_END_OF_FILE;
+
+#if 0 // now MyTopling support ReverseBytewiseComparator
   assert(m_kd->get_cf()->GetComparator()->IsForwardBytewise());
+#endif
 
   const uint32_t refresh_interval = 10000;
   if (unlikely(++m_call_cnt >= refresh_interval)) {
@@ -479,24 +482,24 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     if (old_skip_next) { // in seek, check both lower_bound and upper_bound
       if (m_check_iterate_bounds &&
           ((!m_scan_it_upper_bound_slice.empty() &&
-            key > m_scan_it_upper_bound_slice) ||
+            GT(key, m_scan_it_upper_bound_slice)) ||
           (!m_scan_it_lower_bound_slice.empty() &&
-            key < m_scan_it_lower_bound_slice))) {
+            LT(key, m_scan_it_lower_bound_slice)))) {
         rc = HA_ERR_END_OF_FILE;
         break;
       }
     }
     else { // in scan, just check lower_bound or upper_bound
       if (m_check_iterate_bounds) {
-        if (m_kd_is_reverse_cf ^ move_forward) {
+        if (move_forward) {
           if (!m_scan_it_upper_bound_slice.empty() &&
-              key > m_scan_it_upper_bound_slice) {
+              GT(key, m_scan_it_upper_bound_slice)) {
             rc = HA_ERR_END_OF_FILE;
             break;
           }
         } else {
           if (!m_scan_it_lower_bound_slice.empty() &&
-              key < m_scan_it_lower_bound_slice) {
+              LT(key, m_scan_it_lower_bound_slice)) {
             rc = HA_ERR_END_OF_FILE;
             break;
           }
