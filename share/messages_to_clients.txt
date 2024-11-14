@@ -10201,3 +10201,6 @@ ER_RBR_BEFORE_IMAGE_INCONSISTENT
 
 ER_CF_NOT_EXISTS
   eng "Column family ('%s') does not exist."
+
+ER_DELETE_CF_NOT_SUPPORTED
+  eng "MyTopling does not support delete column family"
