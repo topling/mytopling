@@ -146,7 +146,9 @@ class Rdb_iterator_base : public Rdb_iterator {
   }
   void release_snapshot() override;
 
-  void init(THD*, const Rdb_key_def&, const Rdb_key_def& pkd, const Rdb_tbl_def*);
+  void init(THD *thd, ha_rocksdb *rocksdb_handler,
+            const Rdb_key_def& kd,
+            const Rdb_key_def& pkd, const Rdb_tbl_def *tbl_def);
 
   bool is_partial_iter() const { return m_is_partial_iter; }
   bool is_valid() override { return m_valid; }
@@ -233,7 +235,7 @@ class Rdb_iterator_base : public Rdb_iterator {
                             const rocksdb::Slice &prefix) const;
 
   const rocksdb::Snapshot *m_scan_it_snapshot = nullptr;
-  TABLE_TYPE m_table_type;
+  TABLE_TYPE m_table_type = USER_TABLE;
   bool m_valid;
   bool m_check_iterate_bounds;
   bool m_ignore_killed;

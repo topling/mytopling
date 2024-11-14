@@ -123,14 +123,7 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
                                      const Rdb_key_def &pkd,
                                      const Rdb_tbl_def *tbl_def)
 {
-  m_rocksdb_handler = rocksdb_handler;
-  if (tbl_def->get_table_type() == INTRINSIC_TMP) {
-    //ROCKSDB_DIE("MyTopling does not support INTRINSIC_TMP table");
-    if (m_rocksdb_handler) {
-      add_tmp_table_handler(thd, m_rocksdb_handler);
-    }
-  }
-  init(thd, kd, pkd, tbl_def);
+  init(thd, rocksdb_handler, kd, pkd, tbl_def);
 }
 
 Rdb_iterator_base::~Rdb_iterator_base() {
@@ -150,18 +143,33 @@ Rdb_iterator_base::~Rdb_iterator_base() {
   }
 }
 
-void Rdb_iterator_base::init(THD *thd,
+void Rdb_iterator_base::init(THD *thd, ha_rocksdb *rocksdb_handler,
                              const Rdb_key_def& kd,
                              const Rdb_key_def& pkd,
                              const Rdb_tbl_def *tbl_def) {
   if (m_kd && &m_kd->get_cf() != &kd.get_cf()) {
     release_scan_iterator(); // must release old for create new iterator
   }
+  auto new_table_type = tbl_def->get_table_type();
+  if (m_rocksdb_handler) {
+    ROCKSDB_VERIFY_EQ(INTRINSIC_TMP, m_table_type);
+    if (INTRINSIC_TMP != new_table_type) {
+      remove_tmp_table_handler(m_thd, m_rocksdb_handler);
+      m_rocksdb_handler = nullptr;
+    }
+  }
+  if (INTRINSIC_TMP == new_table_type && nullptr == m_rocksdb_handler) {
+    //ROCKSDB_DIE("MyTopling does not support INTRINSIC_TMP table");
+    if (rocksdb_handler) {
+      add_tmp_table_handler(thd, rocksdb_handler);
+      m_rocksdb_handler = rocksdb_handler;
+    }
+  }
   m_thd = thd;
   m_kd = &kd;
   m_pkd = &pkd;
   m_tbl_def = tbl_def;
-  m_table_type = tbl_def->get_table_type();
+  m_table_type = new_table_type;
   m_valid = false;
   m_check_iterate_bounds = false;
   m_ignore_killed = false;
