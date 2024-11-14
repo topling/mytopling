@@ -310,7 +310,7 @@ static void rocksdb_flush_all_memtables(rocksdb::FlushOptions fopt =
 static void rocksdb_rw_sysvar_update_noop(THD *const, SYS_VAR *const,
                                           void *const, const void *const) {}
 
-static int rocksdb_delete_column_family(THD *const /* thd */,
+static int rocksdb_delete_column_family(THD *const thd,
                                         struct SYS_VAR *const /* var */,
                                         void *const /* var_ptr */,
                                         struct st_mysql_value *const value) {
@@ -329,6 +329,18 @@ static int rocksdb_delete_column_family(THD *const /* thd */,
     return HA_EXIT_FAILURE;
   }
 
+#if 1
+ #if !defined(NDEBUG)
+  if (getenv("TOPLING_SIDEPLUGIN_CONF_MTR")) {
+    const char act[] = "now signal ready_to_restart_during_drop_cf";
+    debug_sync_set_action(thd, STRING_WITH_LEN(act));
+    return 0;
+  }
+  (void)value;
+ #endif
+  my_error(ER_DELETE_CF_NOT_SUPPORTED, MYF(0));
+  return HA_EXIT_FAILURE;
+#else
   auto &cf_manager = rdb_get_cf_manager();
   int ret = 0;
 
@@ -346,6 +358,7 @@ static int rocksdb_delete_column_family(THD *const /* thd */,
   }
 
   return ret;
+#endif
 }
 
 ///////////////////////////////////////////////////////////

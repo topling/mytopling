@@ -10460,3 +10460,6 @@ ER_FIND_RAFT_LOG_INVALID_INPUT
 
 ER_CF_NOT_EXISTS
   eng "Column family ('%s') does not exist."
+
+ER_DELETE_CF_NOT_SUPPORTED
+  eng "MyTopling does not support delete column family"
