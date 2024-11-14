@@ -13306,14 +13306,29 @@ int ha_rocksdb::index_prev(uchar *const buf) {
 }
 
 inline rocksdb::Slice ha_rocksdb::iter_value() {
+#if 1
+  // needs_kv_value() introduced some bugs, so always fetch value
+  // TODO: improved fix
+  return m_iterator->value();
+#else
 #ifdef NDEBUG
   return m_converter->needs_kv_value() ? m_iterator->value() : Slice();
 #else
   rocksdb::Slice value = m_iterator->value();
+  const Rdb_key_def& kd = *m_key_descr_arr[active_index_pos()];
   if (m_converter->needs_kv_value()) {
-    ROCKSDB_ASSERT_NE(value.size(), 0);
+    if (value.size() == 0) {
+      sql_print_information("ha_rocksdb::iter_value: should not empty: %s", kd.get_name().c_str());
+    }
+  }
+  else {
+    ROCKSDB_ASSERT_F(value.size() == 0, "should empty: %s", kd.get_name().c_str());
+    if (value.size() > 0)
+      sql_print_information("ha_rocksdb::iter_value: valsize %zd %s", value.size(), kd.get_name().c_str());
+    //value = ""; // respect needs_kv_value()
   }
   return value;
+#endif
 #endif
 }
 
