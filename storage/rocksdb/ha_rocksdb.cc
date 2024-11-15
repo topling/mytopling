@@ -16968,7 +16968,7 @@ int ha_rocksdb::inplace_populate_sk(
   }
   for (const auto &index : indexes) {
     // Skip populating partial indexes.
-    if (index->is_partial_index() && bulk_load_partial_index)
+    if (index->is_partial_index() && !bulk_load_partial_index)
       continue;
 
     bool is_unique = key_info[index->get_keyno()].flags & HA_NOSAME;
