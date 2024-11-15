@@ -6236,7 +6236,7 @@ static int rocksdb_close_connection(
     handlerton *const hton MY_ATTRIBUTE((__unused__)), THD *const thd) {
   Rdb_transaction *tx = get_tx_from_thd(thd);
 
-  if (tx != nullptr) {
+  if (tx != nullptr && tx->num_ongoing_bulk_load()) {
     bool is_critical_error;
     int rc = tx->finish_bulk_load(&is_critical_error, false);
     if (rc != 0 && is_critical_error) {
@@ -18975,7 +18975,7 @@ static int rocksdb_check_bulk_load(
   }
 
   Rdb_transaction *tx = get_tx_from_thd(thd);
-  if (tx != nullptr) {
+  if (tx != nullptr && tx->num_ongoing_bulk_load()) {
     bool is_critical_error;
     const int rc = tx->finish_bulk_load(&is_critical_error);
     if (rc != 0 && is_critical_error) {
