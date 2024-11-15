@@ -127,7 +127,11 @@ class Rdb_index_merge {
   struct merge_heap_comparator {
     bool operator()(const std::shared_ptr<merge_heap_entry> &lhs,
                     const std::shared_ptr<merge_heap_entry> &rhs) {
+    #if 0
       return lhs->m_comparator->Compare(rhs->m_key, lhs->m_key) < 0;
+    #else
+      return rhs->m_key < lhs->m_key; // 'r < l' means '>', yield min heap
+    #endif
     }
   };
 
