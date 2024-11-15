@@ -48,7 +48,6 @@ class Rdb_index_merge {
   Rdb_index_merge(const Rdb_index_merge &p) = delete;
   Rdb_index_merge &operator=(const Rdb_index_merge &p) = delete;
 
- public:
   /* Information about temporary files used in external merge sort */
   struct merge_file_info {
     File m_fd = -1;               /* file descriptor */
@@ -142,7 +141,6 @@ class Rdb_index_merge {
     bool operator<(merge_record) const noexcept;
   };
 
- private:
   const char *m_tmpfile_path;
   const ulonglong m_merge_buf_size;
   const ulonglong m_merge_combine_read_size;
@@ -181,6 +179,16 @@ class Rdb_index_merge {
   void read_slice(rocksdb::Slice *slice, const uchar *block_ptr)
       MY_ATTRIBUTE((__nonnull__));
 
+  int merge_file_create() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
+  int merge_buf_write() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
+  int merge_heap_prepare() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
+  void merge_heap_top(rocksdb::Slice *key, rocksdb::Slice *val)
+      MY_ATTRIBUTE((__nonnull__));
+  int merge_heap_pop_and_get_next(rocksdb::Slice *const key,
+                                  rocksdb::Slice *const val)
+      MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
+  void merge_reset();
+
  public:
   Rdb_index_merge(const char *const tmpfile_path,
                   const ulonglong merge_buf_size,
@@ -191,26 +199,11 @@ class Rdb_index_merge {
 
   int init() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
 
-  int merge_file_create() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
-
   int add(const rocksdb::Slice &key, const rocksdb::Slice &val)
       MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
 
-  int merge_buf_write() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
-
   int next(rocksdb::Slice *const key, rocksdb::Slice *const val)
       MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
-
-  int merge_heap_prepare() MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
-
-  void merge_heap_top(rocksdb::Slice *key, rocksdb::Slice *val)
-      MY_ATTRIBUTE((__nonnull__));
-
-  int merge_heap_pop_and_get_next(rocksdb::Slice *const key,
-                                  rocksdb::Slice *const val)
-      MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
-
-  void merge_reset();
 
   rocksdb::ColumnFamilyHandle *get_cf() const { return m_cf_handle; }
 };
