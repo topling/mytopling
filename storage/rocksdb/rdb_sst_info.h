@@ -68,9 +68,13 @@ class Rdb_sst_file_ordered {
     rocksdb::Status commit();
 
     inline const std::string get_name() const { return m_name; }
+  #if 0
     inline int compare(rocksdb::Slice key1, rocksdb::Slice key2) {
       return m_comparator->Compare(key1, key2);
     }
+  #else
+    inline bool IsReverseCF() const { return m_comparator->IsReverseBytewise(); }
+  #endif
     inline bool use_auto_sort_sst() const { return m_use_auto_sort_sst; }
   };
 
