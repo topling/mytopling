@@ -51,7 +51,6 @@ class Rdb_index_merge {
   Rdb_index_merge(Rdb_index_merge &&) = delete;
   Rdb_index_merge &operator=(Rdb_index_merge &&) = delete;
 
- public:
   /* Information about temporary files used in external merge sort */
   struct merge_file_info {
     File m_fd = -1;               /* file descriptor */
@@ -148,7 +147,6 @@ class Rdb_index_merge {
     bool operator<(merge_record) const noexcept;
   };
 
- private:
   const char *m_tmpfile_path;
   const std::string m_table_name;
   const std::string m_index_name;
@@ -189,6 +187,16 @@ class Rdb_index_merge {
   void read_slice(rocksdb::Slice *slice, const uchar *block_ptr)
       MY_ATTRIBUTE((__nonnull__));
 
+  [[nodiscard]] int merge_file_create();
+  [[nodiscard]] int merge_buf_write();
+  [[nodiscard]] int merge_heap_prepare();
+  void merge_heap_top(rocksdb::Slice *key, rocksdb::Slice *val)
+      MY_ATTRIBUTE((__nonnull__));
+  [[nodiscard]] int merge_heap_pop_and_get_next(rocksdb::Slice *const key,
+                                                rocksdb::Slice *const val)
+      MY_ATTRIBUTE((__nonnull__));
+  void merge_reset();
+
  public:
   Rdb_index_merge(const std::string table_name, const std::string index_name,
                   const char *tmpfile_path, ulonglong merge_buf_size,
@@ -198,32 +206,13 @@ class Rdb_index_merge {
   ~Rdb_index_merge();
 
   [[nodiscard]] int init();
-
-  [[nodiscard]] int merge_file_create();
-
   [[nodiscard]] int add(const rocksdb::Slice &key, const rocksdb::Slice &val);
-
-  [[nodiscard]] int merge_buf_write();
-
   [[nodiscard]] int next(rocksdb::Slice *const key, rocksdb::Slice *const val);
-
-  [[nodiscard]] int merge_heap_prepare();
-
-  void merge_heap_top(rocksdb::Slice *key, rocksdb::Slice *val)
-      MY_ATTRIBUTE((__nonnull__));
-
-  [[nodiscard]] int merge_heap_pop_and_get_next(rocksdb::Slice *const key,
-                                                rocksdb::Slice *const val)
-      MY_ATTRIBUTE((__nonnull__));
-
-  void merge_reset();
-
   [[nodiscard]] rocksdb::ColumnFamilyHandle &get_cf() const {
     return m_cf_handle;
   }
 
   [[nodiscard]] std::string get_table_name() const { return m_table_name; }
-
   [[nodiscard]] std::string get_index_name() const { return m_index_name; }
 };
 
