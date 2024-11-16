@@ -115,7 +115,6 @@
     "sng": {
       "class": "SingleFastTable",
       "params": {
-        "keyPrefixLen": 4,
         "minPreadLen": -1,
         "maxPreadLen": 32768,
         "minPreadLevel": 1,
@@ -385,7 +384,7 @@
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
-      "wal_dir": "/dev/shm/mytopling/wal",
+      "//wal_dir": "/dev/shm/mytopling/wal",
       "//db_paths" : [
         "/path/to/local/filesystem/for/level/0",
         "/path/to/nfs/filesystem/for/level/1",
