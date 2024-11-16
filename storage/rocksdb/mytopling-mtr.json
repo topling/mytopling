@@ -78,6 +78,7 @@
           "cf_a": "${default}",
           "cf_b": "${default}",
           "cf_c": "${default}",
+          "cf_count_table": "${default}",
           "cf_i": "${default}",
           "cf_link": "${default}",
           "cf_link_id1_type": "${default}",
