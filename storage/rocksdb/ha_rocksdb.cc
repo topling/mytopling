@@ -4325,7 +4325,7 @@ class Rdb_transaction {
         auto sst_info = std::make_shared<Rdb_sst_info>(
             rdb, table_name, index_name, rdb_merge.get_cf(),
             *rocksdb_db_options,
-            m_use_auto_sort_sst,
+            m_use_auto_sort_sst && !keydef->is_partial_index(),
             THDVAR(get_thd(), trace_sst_api));
 
         if (keydef->is_partial_index()) {
@@ -13209,7 +13209,7 @@ int ha_rocksdb::bulk_load_key(Rdb_transaction *const tx, const Rdb_key_def &kd,
   if (unlikely(m_sst_info == nullptr || m_sst_info->is_done())) {
     m_sst_info.reset(new Rdb_sst_info(rdb, m_table_handler->m_table_name,
                                       kd.get_name(), cf, *rocksdb_db_options,
-                                      tx->use_auto_sort_sst(),
+                                      tx->use_auto_sort_sst() && !kd.is_partial_index(),
                                       THDVAR(thd, trace_sst_api)));
     res = tx->start_bulk_load(this, m_sst_info);
     if (res != HA_EXIT_SUCCESS) {
@@ -16912,11 +16912,15 @@ int ha_rocksdb::inplace_populate_sk(
   bool bulk_load_partial_index = THDVAR(ha_thd(), bulk_load_partial_index);
   auto key_info = new_table_arg->key_info;
   auto num_use_auto_sort = 0;
+  std::vector<std::pair<Rdb_key_def*, bool> > ivec;
+  ivec.reserve(indexes.size());
   for (const auto &index : indexes) {
-    if (index->is_partial_index() && !bulk_load_partial_index)
+    ivec.push_back({index.get(), false});
+    if (index->is_partial_index())
       continue; // Skip populating partial indexes.
     bool is_unique = key_info[index->get_keyno()].flags & HA_NOSAME;
     if (tx->use_auto_sort_sst() && !is_unique)
+      ivec.back().second = true,
       num_use_auto_sort++;
   }
   if (num_use_auto_sort) { // build multi indexes by one pass scan
@@ -16935,11 +16939,9 @@ int ha_rocksdb::inplace_populate_sk(
         ha_index_end();
         DBUG_RETURN(res);
       }
-      for (const auto &index : indexes) {
-        if (index->is_partial_index() && !bulk_load_partial_index)
-          continue; // Skip populating partial indexes.
-        if (key_info[index->get_keyno()].flags & HA_NOSAME)
-          continue; // is unique index, skip it
+      for (const auto& [index, auto_sort] : ivec) {
+        if (!auto_sort)
+          continue;
         const int new_packed_size = index->pack_record(
             new_table_arg, m_pack_buffer, table->record[0], m_sk_packed_tuple,
             &m_sk_tails, should_store_row_debug_checksums(), hidden_pk_id, 0,
@@ -16966,15 +16968,13 @@ int ha_rocksdb::inplace_populate_sk(
       DBUG_RETURN(res);
     }
   }
-  for (const auto &index : indexes) {
+  for (const auto& [index, auto_sort] : ivec) {
     // Skip populating partial indexes.
     if (index->is_partial_index() && !bulk_load_partial_index)
       continue;
 
-    bool is_unique = key_info[index->get_keyno()].flags & HA_NOSAME;
-    bool can_use_auto_sort = tx->use_auto_sort_sst() && !is_unique;
-    if (can_use_auto_sort)
-      continue; // index has been created, skip
+    if (auto_sort)
+      continue;
 
     /*
       Note: We use the currently existing table + tbl_def object here,
