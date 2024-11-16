@@ -103,7 +103,6 @@ class Rdb_index_merge {
   struct merge_heap_entry {
     std::shared_ptr<merge_buf_info> m_chunk_info; /* pointer to buffer info */
     uchar *m_block; /* pointer to heap memory where record is stored */
-    const rocksdb::Comparator *const m_comparator;
     rocksdb::Slice m_key; /* current key pointed to by block ptr */
     rocksdb::Slice m_val;
 
@@ -119,18 +118,20 @@ class Rdb_index_merge {
     int read_slice(rocksdb::Slice *const slice, const uchar **block_ptr)
         MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
 
-    explicit merge_heap_entry(const rocksdb::Comparator *const comparator)
-        : m_chunk_info(nullptr), m_block(nullptr), m_comparator(comparator) {}
+    explicit merge_heap_entry(const rocksdb::Comparator*)
+        : m_chunk_info(nullptr), m_block(nullptr) {}
   };
 
   struct merge_heap_comparator {
+    merge_heap_comparator(const rocksdb::Comparator* c)
+       : m_is_rev(c->IsReverseBytewise()) {}
+    bool m_is_rev;
     bool operator()(const std::shared_ptr<merge_heap_entry> &lhs,
                     const std::shared_ptr<merge_heap_entry> &rhs) {
-    #if 0
-      return lhs->m_comparator->Compare(rhs->m_key, lhs->m_key) < 0;
-    #else
-      return rhs->m_key < lhs->m_key; // 'r < l' means '>', yield min heap
-    #endif
+      if (m_is_rev)
+        return lhs->m_key < rhs->m_key; // 'l < r' : rev min heap
+      else
+        return lhs->m_key > rhs->m_key; // 'l > r' : asc min heap
     }
   };
 
@@ -138,7 +139,11 @@ class Rdb_index_merge {
   struct merge_record {
     uchar *m_block; /* points to offset of key in sort buffer */
 
-    bool operator<(merge_record) const noexcept;
+    struct Less {
+      Less(const rocksdb::Comparator* c) : m_is_rev(c->IsReverseBytewise()) {}
+      bool m_is_rev;
+      bool operator()(merge_record x, merge_record y) const noexcept;
+    };
   };
 
   const char *m_tmpfile_path;
@@ -149,7 +154,7 @@ class Rdb_index_merge {
   struct merge_file_info m_merge_file;
   std::shared_ptr<merge_buf_info> m_rec_buf_unsorted;
   std::shared_ptr<merge_buf_info> m_output_buf;
-  std::set<merge_record> m_offset_tree;
+  std::set<merge_record, merge_record::Less> m_offset_tree;
   std::priority_queue<std::shared_ptr<merge_heap_entry>,
                       std::vector<std::shared_ptr<merge_heap_entry>>,
                       merge_heap_comparator>

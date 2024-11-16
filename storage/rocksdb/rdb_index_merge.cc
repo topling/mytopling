@@ -39,7 +39,10 @@ Rdb_index_merge::Rdb_index_merge(const char *const tmpfile_path,
       m_merge_tmp_file_removal_delay(merge_tmp_file_removal_delay),
       m_cf_handle(cf),
       m_rec_buf_unsorted(nullptr),
-      m_output_buf(nullptr) {}
+      m_output_buf(nullptr),
+      m_offset_tree(merge_record::Less(cf->GetComparator())),
+      m_merge_min_heap(merge_heap_comparator(cf->GetComparator()))
+      {}
 
 Rdb_index_merge::~Rdb_index_merge() {
   /*
@@ -486,13 +489,13 @@ int Rdb_index_merge::merge_buf_info::read_next_chunk_from_disk(File fd) {
 }
 
 ALWAYS_INLINE
-bool Rdb_index_merge::merge_record::operator<(merge_record y) const noexcept {
+bool Rdb_index_merge::merge_record::Less::operator()(merge_record x, merge_record y) const noexcept {
   // topling specific: just bytewise compare
-  auto a = as_slice(m_block), b = as_slice(y.m_block);
-  auto n = std::min(a.size_, b.size_);
-  auto c = memcmp(a.data_, b.data_, n);
-  if (0 != c) return c < 0;
-  return a.size_ < b.size_;
+  auto a = as_slice(x.m_block), b = as_slice(y.m_block);
+  if (m_is_rev)
+    return b < a;
+  else
+    return a < b;
 }
 
 /**
