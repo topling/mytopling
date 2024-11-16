@@ -60,9 +60,9 @@
           "rocksdb.write.raw.block.micros",
           "# comment end of array"
         ],
-        "stats_level": "kExceptHistogramOrTimers",
+        "//stats_level": "kExceptHistogramOrTimers",
         "--stats_level": "kExceptTimeForMutex",
-        "//stats_level": "kExceptDetailedTimers"
+        "stats_level": "kExceptDetailedTimers"
       }
     }
   },
@@ -107,6 +107,12 @@
     "sng": {
       "class": "SingleFastTable",
       "params": {
+        "keyPrefixLen": 4,
+        "minPreadLen": -1,
+        "maxPreadLen": 32768,
+        "minPreadLevel": 1,
+        "collectPropertiesMinLevel": 2,
+        "needCompactOnOmitPropsCollector": true,
         "accurateKeyAnchorsSize": true,
         "keyAnchorSizeUnit": "100K"
       }
@@ -118,7 +124,10 @@
       "params": {
         "//localTempDir": "/tmp",
         "builderMinLevel": 0,
+        "//needCompactMaxLevel": 2,
         "acceptCompressionRatio": 0.8,
+        "enableFixedLenHoleIndex": true,
+        "enableUintIndex": true,
         "enableStatistics": false,
         "warmupLevel": "kIndex",
         "optimizeCpuL3Cache": true,
@@ -138,18 +147,22 @@
       "class": "ToplingZipTable",
       "params": {
         "//localTempDir": "/tmp",
+        "enableFixedLenHoleIndex": true,
+        "enableUintIndex": true,
         "//indexType": "SE_512_64",
         "indexNestLevel": 3,
         "//indexNestScale": 1,
         "//indexMemAsHugePage": true,
         "indexMemAsResident": false,
         "builderMinLevel": 0,
+        "//needCompactMaxLevel": 2,
         "acceptCompressionRatio": 0.8,
         "enableStatistics": false,
         "warmupLevel": "kIndex",
         "optimizeCpuL3Cache": true,
         "offsetArrayBlockUnits": 128,
         "sampleRatio": 0.01,
+        "//sampleRatio": [0.02, 0.01, 0.007, 0.005, 0.002],
         "keyRankCacheRatio": 0.001,
         "checksumLevel": 0,
         "entropyAlgo": "kNoEntropy",
@@ -159,12 +172,22 @@
         "minPreadLen": -1
       }
     },
+    "cspp_memtab_sst": {
+      "class": "CSPPMemTabTable",
+      "params": { }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
-        "default": "light_dzip",
+        "default": "sng",
+        "auto_compaction_max_wamp-comment": "may cause compactions can not be scheduled",
+        "//auto_compaction_max_wamp": 10,
+        "mark_for_compaction_max_wamp": 30,
+        "trivial_move_always_max_output_level": 5,
+        "trivial_move_max_file_size_multiplier": 4,
         "readers": {
           "VecAutoSortTable": "auto_sort",
+          "CSPPMemTabTable": "cspp_memtab_sst",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng",
           "ToplingZipTable": "dzip"
@@ -177,7 +200,6 @@
         ],
         "level_writers": [
           "sng", "sng",
-          "light_dzip", "light_dzip",
           "dzip", "dzip", "dzip", "dzip", "dzip"
         ]
       }
@@ -191,9 +213,16 @@
     "cspp": {
       "class": "cspp",
       "params": {
-        "mem_cap": "2G",
+        "mem_cap": "6G",
+        "chunk_size": "256K",
         "use_vm": true,
+        "vm_explicit_commit": true,
         "use_hugepage": true,
+        "//0 convert_to_sst": "kDontConvert is the default",
+        "//1 convert_to_sst": "kDontConvert",
+        "//2 convert_to_sst": "kDumpMem",
+        "convert_to_sst": "kFileMmap",
+        "sync_sst_file": false,
         "read_by_writer_token": true,
         "token_use_idle": true
       }
@@ -244,31 +273,48 @@
     "by_prefix": {
       "class": "FixedPrefix",
       "params": {
+        "user_key_at_least_prefix_len": true,
         "prefix_len": 4,
         "//max_level": 2,
         "min_file_size": 0
       }
     }
   },
+  "RateLimiter": {
+    "rate_limiter": {
+      "class": "GenericRateLimiter",
+      "params": {
+        "rate_bytes_per_sec": "40M"
+      }
+    }
+  },
   "CFOptions": {
     "default": {
-      "num_levels": 7, "max_bytes_for_level_multiplier": 10,
+      "num_levels": 7,
+      "max_bytes_for_level_multiplier": 1,
+      "max_bytes_for_level_multiplier_additional": [1,3,5,7,10,10,10,10],
+      "min_filter_level": 2,
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
-      "max_bytes_for_level_base": "512M",
+      "//level0_slowdown_writes_trigger": 8,
+      "//level0_stop_writes_trigger": 16,
+      "//max_bytes_for_level_base": "512M",
       "//level_compaction_dynamic_level_bytes": true,
+      "-compaction_pri": "kByCompensatedSize",
       "compaction_pri": "kMinOverlappingRatio",
       "//compaction_pri": "kMinOverlappingBytes",
       "memtable_factory": "${dyna}",
-      "max_write_buffer_number": 4, "write_buffer_size": "1G",
-      "compaction_options_level": {"L1_score_boost": 1},
-      "target_file_size_base": "32M", "target_file_size_multiplier": 3,
+      "max_write_buffer_number": 4, "write_buffer_size": "2560M",
+      "max_write_buffer_size_to_maintain": "256M",
+      "target_file_size_base": "32M", "target_file_size_multiplier": 2.3,
+      "level_compaction_dynamic_file_size": false,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
       "table_factory": "${dispatch}",
       "html_user_key_coder": "${hex_key_coder}",
       "//html_user_key_coder": "${pretty}",
       "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
+      "check_flush_compaction_key_order": false,
       "paranoid_file_checks": false,
       "sst_partitioner_factory": "by_prefix",
       "compaction_executor_factory": "dcompact",
@@ -278,15 +324,27 @@
       "template": "${default}",
       "cf_paths": "/nvme-shared/mytopling/encrypt"
     },
+    "default_sk": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/default_sk"
+    },
+    "__tmp__": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp__"
+    },
+    "__tmp_system__": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp_system__"
+    },
     "__system__": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
       "memtable_factory": "${cspp_small}",
-      "max_write_buffer_number": 4, "write_buffer_size": "16M",
-      "compaction_options_level": {"L1_score_boost": 5},
+      "max_write_buffer_number": 2, "write_buffer_size": "16M",
       "target_file_size_base": "16M", "target_file_size_multiplier": 2,
       "table_factory": "${dispatch}",
+      "check_flush_compaction_key_order": true,
       "paranoid_file_checks": true,
       "merge_operator": "${system_merge_op}"
     },
@@ -301,12 +359,16 @@
       "advise_random_on_open": true,
       "create_if_missing": true,
       "create_missing_column_families": true,
+      "delayed_write_rate": "16M",
+      "info_log_level": "DEBUG_LEVEL",
       "max_background_flushes": 2,
       "max_background_compactions": 32,
       "max_subcompactions": 1,
       "max_level1_subcompactions": 3,
+      "max_level1_subcompactions nas": 13,
       "max_log_file_size": "256M",
       "keep_log_file_num": 100,
+      "//rate_limiter": "${rate_limiter}",
       "verify_sst_unique_id_in_manifest": false,
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
@@ -344,6 +406,9 @@
         "column_families": {
           "default": "${default}",
           "encrypt": "${encrypt}",
+          "default_sk": "${default}",
+          "__tmp__": "${__tmp__}",
+          "__tmp_system__": "${__system__}",
           "__system__": "${__system__}"
         }
       }
@@ -358,14 +423,24 @@
         "//info_log_level": "DEBUG_LEVEL",
         "estimate_speed": "10M",
         "timeout_multiplier": 5.0,
+        "//copy_sst_files": true,
+        "copy_sst_files oss": true,
+        "copy_sst_files nfs": false,
         "hoster_root": "/nvme-shared/mytopling/datadir",
         "instance_name": "datadir",
+        "///hoster_root": "/ram-shared/mytopling/copydir",
+        "///instance_name": "copydir",
+        "///copy_sst_files": true,
+        "oneshot_dbname_prefix": "default-",
         "nfs_mnt_src": "static-mounted",
         "nfs_mnt_opt": "",
+        "alert_email": "20409170@qq.com",
+        "//alert_http": "https://dcompact.alert.com/dcompact-alert",
         "web_domain": "topling.in",
+        "job_url_root": "http://192.168.31.100:8080",
         "overall_timeout": 30,
         "http_max_retry": 3,
-        "http_timeout": 1,
+        "http_timeout": 5,
         "http_workers": [
           "//http://127.0.0.1:8080",
           "http://192.168.31.100:8080",
@@ -378,6 +453,10 @@
           "//http://commented-host:8080",
           "//end_http_workers"
         ],
+        "dcompact_http_headers": {
+          "Header1": "value1",
+          "Header2": "value2"
+        },
         "//load_balance": "kRoundRobin",
         "load_balance": "kWeight",
         "dcompact_min_level": 2
