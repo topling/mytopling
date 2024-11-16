@@ -264,12 +264,8 @@ rocksdb::Status Rdb_sst_file_ordered::put(const rocksdb::Slice &key,
   // the SST or be put on the stack to be retrieved later.
   if (!m_first_key.empty()) {
     rocksdb::Slice first_key_slice(m_first_key);
-  #if 0
     int cmp = m_file.compare(first_key_slice, key);
     m_use_stack = (cmp > 0);
-  #else
-    m_use_stack = m_file.IsReverseCF() && (first_key_slice < key);
-  #endif
 
     // Apply the first key to the stack or SST
     s = apply_first();
