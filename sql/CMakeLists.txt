@@ -1338,7 +1338,7 @@ IF(MSVC)
   ADD_DEPENDENCIES(mysqld GenMysqldDef)
 ENDIF()
 
-target_link_directories(mysqld PUBLIC ${ROCKSDB_SRC_PATH})
+target_link_directories(mysqld PUBLIC ${TOPLING_LIB_DIR})
 TARGET_LINK_LIBRARIES(mysqld optimized rocksdb)
 TARGET_LINK_LIBRARIES(mysqld debug rocksdb_debug)
 
