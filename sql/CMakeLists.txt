@@ -1211,7 +1211,7 @@ IF(MSVC)
 ENDIF()
 
 SET_TARGET_PROPERTIES(mysqld PROPERTIES ENABLE_EXPORTS TRUE)
-target_link_directories(mysqld PUBLIC ${ROCKSDB_SRC_PATH})
+target_link_directories(mysqld PUBLIC ${TOPLING_LIB_DIR})
 TARGET_LINK_LIBRARIES(mysqld optimized rocksdb)
 TARGET_LINK_LIBRARIES(mysqld debug rocksdb_debug)
 TARGET_LINK_LIBRARIES(mysqld
