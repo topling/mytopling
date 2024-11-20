@@ -135,6 +135,7 @@ void thd_mark_transaction_to_rollback(MYSQL_THD thd, int all);
 extern bool yield_condition(TABLE*);
 extern bool opt_binlog_ddl_only_follower; // defined in mysqld.cc
 extern uint mysqld_port; // defined in mysqld.cc
+extern char mysql_unpacked_real_data_home[];
 
 /**
  *   Get the user thread's binary logging format
@@ -8493,7 +8494,13 @@ if (side_conf) {
     using namespace rocksdb;
     json& method = g_repo.m_impl->db_js[".rocksdb"]["method"];
     json& params = g_repo.m_impl->db_js[".rocksdb"]["params"];
-    params["path"] = rocksdb_datadir;
+    if (rocksdb_datadir && '/' == rocksdb_datadir[0]) {
+      params["path"] = rocksdb_datadir;
+    } else {
+      using std::filesystem::path;
+      auto dir = path(mysql_unpacked_real_data_home) / rocksdb_datadir;
+      params["path"] = dir.string();
+    }
     params["txn_db_options"]["write_policy"] =
         enum_stdstr(TxnDBWritePolicy(rocksdb_write_policy));
     g_svr_read_only = method == "TransactionDB::OpenAsSecondary";
