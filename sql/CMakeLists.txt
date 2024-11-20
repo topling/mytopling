@@ -1572,7 +1572,9 @@ IF(DEFINED MYSQL_GITHASH)
 ELSE()
   # Otherwise we want to add the .git/logs/HEAD file to the list of
   # dependencies
-  SET(GITHASH_DEPENDS ${GITHASH_DEPENDS} ${CMAKE_SOURCE_DIR}/.git/logs/HEAD)
+  IF (EXISTS ${CMAKE_SOURCE_DIR}/.git/logs/HEAD)
+    SET(GITHASH_DEPENDS ${GITHASH_DEPENDS} ${CMAKE_SOURCE_DIR}/.git/logs/HEAD)
+  ENDIF()
 ENDIF()
 
 SET(GITHASH_PERL ${CMAKE_SOURCE_DIR}/cmake/githash.pl)
