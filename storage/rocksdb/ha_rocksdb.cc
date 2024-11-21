@@ -6237,7 +6237,10 @@ static int rocksdb_close_connection(
     handlerton *const hton MY_ATTRIBUTE((__unused__)), THD *const thd) {
   Rdb_transaction *tx = get_tx_from_thd(thd);
 
-  if (tx != nullptr && tx->num_ongoing_bulk_load()) {
+  if (tx != nullptr) {
+    if (tx->num_ongoing_bulk_load()) {
+      sql_print_information("finishing bulk load on close connection");
+    }
     bool is_critical_error;
     int rc = tx->finish_bulk_load(&is_critical_error, false);
     if (rc != 0 && is_critical_error) {
