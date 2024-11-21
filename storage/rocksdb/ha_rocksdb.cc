@@ -436,7 +436,6 @@ static int rocksdb_delete_column_family(THD *const thd,
     debug_sync_set_action(thd, STRING_WITH_LEN(act));
     return 0;
   }
-  (void)value;
  #endif
   my_error(ER_DELETE_CF_NOT_SUPPORTED, MYF(0));
   return HA_EXIT_FAILURE;
