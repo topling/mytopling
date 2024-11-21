@@ -10129,6 +10129,7 @@ std::vector<std::string> Rdb_open_tables_map::get_table_names(void) const {
   std::vector<std::string> names;
 
   RDB_MUTEX_LOCK_CHECK(m_mutex);
+  names.reserve(m_table_map.size());
   for (const auto &kv : m_table_map) {
     table_handler = kv.second;
     assert(table_handler != nullptr);
