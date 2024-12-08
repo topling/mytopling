@@ -31,6 +31,9 @@
 #include <vector>
 
 /* MySQL header files */
+#include <sql/log.h>
+#include <mysql/components/services/log_builtins.h>
+#include "my_checksum.h"
 #include "my_dbug.h"
 #include "my_icp.h" /* icp_result */
 #include "sql/handler.h"    /* handler */
@@ -44,8 +47,11 @@
 
 /* MyRocks header files */
 #include "./rdb_buff.h"
+#include "rdb_converter.h"
 #include "./rdb_global.h"
 #include "./rdb_index_merge.h"
+#include "./rdb_io_watchdog.h"
+#include "rdb_iterator.h"
 #include "./rdb_perf_context.h"
 #include "./rdb_sst_info.h"
 #include "./rdb_utils.h"
@@ -53,6 +59,7 @@
 #ifndef __APPLE__
 #include "./rdb_io_watchdog.h"
 #endif
+#include <terark/sso.hpp>
 
 /**
   @note MyRocks Coding Conventions:
@@ -98,41 +105,6 @@ struct Rdb_table_handler {
   my_io_perf_atomic_t m_io_perf_read;
   my_io_perf_atomic_t m_io_perf_write;
   Rdb_atomic_perf_counters m_table_perf_context;
-};
-
-}  // namespace myrocks
-
-/* Provide hash function for GL_INDEX_ID so we can include it in sets */
-namespace std {
-template <>
-struct hash<myrocks::GL_INDEX_ID> {
-  std::size_t operator()(const myrocks::GL_INDEX_ID &gl_index_id) const {
-    const uint64_t val =
-        ((uint64_t)gl_index_id.cf_id << 32 | (uint64_t)gl_index_id.index_id);
-    return std::hash<uint64_t>()(val);
-  }
-};
-}  // namespace std
-
-namespace myrocks {
-enum table_cardinality_scan_type {
-  SCAN_TYPE_NONE,
-  SCAN_TYPE_MEMTABLE_ONLY,
-  SCAN_TYPE_FULL_TABLE,
-};
-
-enum Rdb_lock_type { RDB_LOCK_NONE, RDB_LOCK_READ, RDB_LOCK_WRITE };
-
-enum TABLE_TYPE {
-  INTRINSIC_TMP = 0,
-  USER_TABLE = 1,
-};
-
-enum file_checksums_type {
-  CHECKSUMS_OFF = 0,
-  CHECKSUMS_WRITE_ONLY,
-  CHECKSUMS_WRITE_AND_VERIFY,
-  CHECKSUMS_WRITE_AND_VERIFY_ON_CLONE,
 };
 
 class Mrr_rowid_source;
@@ -184,7 +156,7 @@ class blob_buffer {
   Class definition for ROCKSDB storage engine plugin handler
 */
 
-class ha_rocksdb : public my_core::handler, public blob_buffer {
+class ha_rocksdb final : public my_core::handler, public blob_buffer {
   Rdb_table_handler *m_table_handler;  ///< Open table handler
 
   Rdb_tbl_def *m_tbl_def;
@@ -203,6 +175,22 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
     TRUE <=> Primary Key columns can be decoded from the index
   */
   mutable bool m_pk_can_be_decoded;
+  bool m_iter_is_scan = false;
+  bool m_is_mysql_system_table = false;
+
+  /*
+    Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
+  */
+  // char *m_ttl_bytes;
+  /*
+    The TTL timestamp value can change if the explicit TTL column is
+    updated. If we detect this when updating the PK, we indicate it here so
+    we know we must always update any SK's.
+  */
+  bool m_ttl_bytes_updated;
+
+  // speed update_row_stats(ROWS_READ) in index_next_with_direction_intern
+  uint32_t m_rows_read = 0;
 
   // The common buffer for m_pk_packed_tuple, m_sk_packed_tuple,
   // m_sk_packed_tuple_old, m_sk_packed_tuple_updated, m_end_key_packed_tuple,
@@ -252,24 +240,23 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   uchar *m_pack_buffer;
 
   /* class to convert between Mysql format and RocksDB format*/
-  std::unique_ptr<Rdb_converter> m_converter;
+  Rdb_converter m_converter[1];
 
-  std::unique_ptr<Rdb_iterator> m_iterator;
-  std::unique_ptr<Rdb_iterator_base> m_pk_iterator;
+  Rdb_iterator_proxy m_iterator;
+  Rdb_iterator_proxy m_pk_iterator;
 
-  /*
-    Pointer to the original TTL timestamp value (8 bytes) during UPDATE.
-  */
-  char *m_ttl_bytes;
-  /*
-    The TTL timestamp value can change if the explicit TTL column is
-    updated. If we detect this when updating the PK, we indicate it here so
-    we know we must always update any SK's.
-  */
-  bool m_ttl_bytes_updated;
+  rocksdb::Slice iter_value();
 
   /* rowkey of the last record we've read, in StorageFormat. */
-  String m_last_rowkey;
+  struct RowKeyStr : public terark::minimal_sso<64, false> {
+    char* ptr() { return this->data(); }
+    __always_inline ROCKSDB_FLATTEN
+    void copy(const char* s, size_t n, const CHARSET_INFO*) {
+      this->assign(s, n);
+    }
+    void mem_free() { this->destroy(); }
+  };
+  RowKeyStr m_last_rowkey;
 
   /*
     Last retrieved record, in table->record[0] data format.
@@ -292,6 +279,13 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   Rdb_lock_type m_lock_rows;
 
   thr_locked_row_action m_locked_row_action;
+
+  bool m_active_is_vector_index = false;
+  enum class ActiveIndexType : unsigned char {
+    Primary, Secondary, Unknown
+  };
+  ActiveIndexType m_active_index_type = ActiveIndexType::Unknown;
+  void SetActiveIndexType();
 
   /* true means we're doing an index-only read. false means otherwise. */
   bool m_keyread_only;
@@ -391,7 +385,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   void load_auto_incr_value();
   ulonglong load_auto_incr_value_from_index();
   void update_auto_incr_val(ulonglong val);
-  void update_auto_incr_val_from_field();
+  void update_auto_incr_val_from_field(Rdb_transaction*);
   rocksdb::Status get_datadic_auto_incr(Rdb_transaction *const tx,
                                         const GL_INDEX_ID &gl_index_id,
                                         ulonglong *new_val) const;
@@ -409,7 +403,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
       MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
   [[nodiscard]] static bool has_hidden_pk(const TABLE &t);
 
-  void update_row_stats(const operation_type &type, ulonglong count = 1);
+  void update_row_stats(operation_type type, ulonglong count = 1);
 
   void set_last_rowkey(const uchar *const old_data);
   void set_last_rowkey(const char *str, size_t len);
@@ -442,6 +436,9 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   */
   static int update_stats(ha_statistics *ha_stats, Rdb_tbl_def *tbl_def,
                           bool from_handler = false);
+
+  // intentional hide handler::ha_statistic_increment
+  void ha_statistic_increment(ulonglong System_status_var::*);
 
   /*
     Controls whether writes include checksums. This is updated from the session
@@ -842,8 +839,9 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   [[nodiscard]] int update_write_row(const uchar *const old_data,
                                      const uchar *const new_data);
   int get_pk_for_update(struct update_row_info *const row_info);
-  [[nodiscard]] int check_and_lock_unique_pk(
-      const struct update_row_info &row_info, bool *const found);
+  int check_and_lock_unique_pk(const struct update_row_info &row_info, THD*,
+                               bool *const found)
+      MY_ATTRIBUTE((__warn_unused_result__));
   int acquire_prefix_lock(const Rdb_key_def &kd, Rdb_transaction *tx,
                           const uchar *data)
       MY_ATTRIBUTE((__warn_unused_result__));
@@ -893,6 +891,7 @@ class ha_rocksdb : public my_core::handler, public blob_buffer {
   void dec_table_n_rows();
 
   bool should_skip_invalidated_record(const int rc);
+  bool should_skip_invalidated_record(const int rc, THD*);
   bool should_skip_locked_record(const int rc);
   bool should_recreate_snapshot(const int rc, const bool is_new_snapshot);
   bool can_assume_tracked(THD *thd);
@@ -1212,7 +1211,7 @@ Rdb_bulk_load_context *get_bulk_load_ctx_from_thd(THD *const thd);
 void add_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 
-void rdb_tx_acquire_snapshot(Rdb_transaction &tx);
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction*);
 
 [[nodiscard]] std::unique_ptr<rocksdb::Iterator> rdb_tx_get_iterator(
     THD *thd, rocksdb::ColumnFamilyHandle &cf, bool skip_bloom_filter,
@@ -1242,6 +1241,8 @@ void rdb_tx_multi_get(Rdb_transaction *tx,
                       rocksdb::PinnableSlice *values, TABLE_TYPE table_type,
                       rocksdb::Status *statuses, bool sorted_input);
 
+void rdb_tx_finish_pin(Rdb_transaction *tx, TABLE_TYPE);
+
 inline void rocksdb_smart_seek(bool seek_backward, rocksdb::Iterator &iter,
                                const rocksdb::Slice &key_slice) {
   if (seek_backward) {
@@ -1265,6 +1266,17 @@ inline void rocksdb_smart_prev(bool seek_backward, rocksdb::Iterator &iter) {
   } else {
     iter.Prev();
   }
+}
+
+// If the iterator is not valid it might be because of EOF but might be due
+// to IOError or corruption. The good practice is always check it.
+// https://github.com/facebook/rocksdb/wiki/Iterator#error-handling
+bool is_valid_iter_err(rocksdb::Iterator *scan_it);
+inline bool is_valid_iterator(rocksdb::Iterator *scan_it) {
+  if (scan_it->Valid())
+    return true;
+  else
+    return is_valid_iter_err(scan_it);
 }
 
 [[nodiscard]] bool rdb_should_hide_ttl_rec(

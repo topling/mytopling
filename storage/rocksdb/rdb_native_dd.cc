@@ -19,6 +19,8 @@
 
 /* MySQL header files */
 #include "sql/dd/types/table.h"  // dd::Table
+#include "my_sys.h"
+#include "mysqld_error.h"
 
 /* MyRocks header files */
 #include "sql/mysqld.h"

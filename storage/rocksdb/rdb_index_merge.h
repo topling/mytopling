@@ -141,19 +141,7 @@ class Rdb_index_merge {
   /* Represents a record in unsorted buffer */
   struct merge_record {
     uchar *m_block; /* points to offset of key in sort buffer */
-    const rocksdb::Comparator *const m_comparator;
-
-    bool operator<(const merge_record &record) const {
-      return merge_record_compare(this->m_block, record.m_block, m_comparator) <
-             0;
-    }
-
-    // For bulk load, use non-timestamp aware comparator because we don't assign
-    // timestamp to bulk-loaded key. GetRootComparator() can return us a
-    // non-timestamp aware one when UDT-IN-MEM is enabled or disabled.
-    merge_record(uchar *const block,
-                 const rocksdb::Comparator *const comparator)
-        : m_block(block), m_comparator(comparator->GetRootComparator()) {}
+    bool operator<(merge_record) const noexcept;
   };
 
  private:
@@ -190,10 +178,6 @@ class Rdb_index_merge {
 
     return rocksdb::Slice(reinterpret_cast<const char *>(block), len);
   }
-
-  [[nodiscard]] static int merge_record_compare(
-      const uchar *a_block, const uchar *b_block,
-      const rocksdb::Comparator *const comparator) MY_ATTRIBUTE((__nonnull__));
 
   void merge_read_rec(const uchar *const block, rocksdb::Slice *const key,
                       rocksdb::Slice *const val) MY_ATTRIBUTE((__nonnull__));

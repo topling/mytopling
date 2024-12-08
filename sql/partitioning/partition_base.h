@@ -511,6 +511,7 @@ class Partition_base : public handler,
   ha_rows estimate_rows_upper_bound() override;
 
   int records(ha_rows *num_rows) override;
+  int records_from_index(ha_rows *num_rows, uint index) override;
 
   /* Calculate hash value for PARTITION BY KEY tables. */
   uint32 calculate_key_hash_value(Field **field_array) override {

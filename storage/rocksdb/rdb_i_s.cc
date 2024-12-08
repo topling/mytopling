@@ -928,58 +928,17 @@ static int rdb_i_s_compact_stats_fill_table(
   DBUG_RETURN(ret);
 }
 
-#if ROCKSDB_MAJOR < 8 || (ROCKSDB_MAJOR == 8 && ROCKSDB_MINOR < 7)
-namespace {
+} // namespace myrocks
 
-using rocksdb::CompactionReason;
+namespace rocksdb {
 
 // TODO(T65629248): this is copy/pasted from RocksDB as it is not exposed in a
 // public header file. Once https://github.com/facebook/rocksdb/issues/6471 is
 // fixed, we should delete this and use the RocksDB-provided strings.
-const char *GetCompactionReasonString(CompactionReason compaction_reason) {
-  switch (compaction_reason) {
-    case CompactionReason::kUnknown:
-      return "Unknown";
-    case CompactionReason::kLevelL0FilesNum:
-      return "LevelL0FilesNum";
-    case CompactionReason::kLevelMaxLevelSize:
-      return "LevelMaxLevelSize";
-    case CompactionReason::kUniversalSizeAmplification:
-      return "UniversalSizeAmplification";
-    case CompactionReason::kUniversalSizeRatio:
-      return "UniversalSizeRatio";
-    case CompactionReason::kUniversalSortedRunNum:
-      return "UniversalSortedRunNum";
-    case CompactionReason::kFIFOMaxSize:
-      return "FIFOMaxSize";
-    case CompactionReason::kFIFOReduceNumFiles:
-      return "FIFOReduceNumFiles";
-    case CompactionReason::kFIFOTtl:
-      return "FIFOTtl";
-    case CompactionReason::kManualCompaction:
-      return "ManualCompaction";
-    case CompactionReason::kFilesMarkedForCompaction:
-      return "FilesMarkedForCompaction";
-    case CompactionReason::kBottommostFiles:
-      return "BottommostFiles";
-    case CompactionReason::kTtl:
-      return "Ttl";
-    case CompactionReason::kFlush:
-      return "Flush";
-    case CompactionReason::kExternalSstIngestion:
-      return "ExternalSstIngestion";
-    case CompactionReason::kPeriodicCompaction:
-      return "PeriodicCompaction";
-    case CompactionReason::kNumOfReasons:
-      // fall through
-    default:
-      assert(false);
-      return "Invalid";
-  }
+const char *GetCompactionReasonString(CompactionReason compaction_reason);
 }
 
-}  // anonymous namespace
-#endif
+namespace myrocks {
 
 /*
   Support for INFORMATION_SCHEMA.ROCKSDB_ACTIVE_COMPACTION_STATS dynamic table
@@ -1020,6 +979,8 @@ static int rdb_i_s_active_compact_stats_fill_table(
         GetCompactionReasonString(it.info.compaction_reason);
     field[4]->store(compaction_reason, strlen(compaction_reason),
                     system_charset_info);
+    field[5]->store(it.info.base_input_level, false /* unsigned_val */);
+    field[6]->store(it.info.output_level, false /* unsigned_val */);
 
     int ret = static_cast<int>(
         my_core::schema_table_store_record(thd, tables->table));
@@ -1362,6 +1323,8 @@ static ST_FIELD_INFO rdb_i_s_active_compact_stats_fields_info[] = {
     ROCKSDB_FIELD_INFO("OUTPUT_FILES", FN_REFLEN + 1, MYSQL_TYPE_STRING, 0),
     ROCKSDB_FIELD_INFO("COMPACTION_REASON", FN_REFLEN + 1, MYSQL_TYPE_STRING,
                        0),
+    ROCKSDB_FIELD_INFO("INPUT_LEVEL", sizeof(uint32), MYSQL_TYPE_LONG, 0),
+    ROCKSDB_FIELD_INFO("OUTPUT_LEVEL", sizeof(uint32), MYSQL_TYPE_LONG, 0),
     ROCKSDB_FIELD_INFO_END};
 
 static ST_FIELD_INFO rdb_i_s_compact_history_fields_info[] = {
@@ -1808,17 +1771,20 @@ static int rdb_i_s_vector_index_config_init(void *p) {
 }
 
 /* Given a path to a file return just the filename portion. */
-static std::string rdb_filename_without_path(const std::string &path) {
+template<class AnyString>
+static std::string rdb_filename_without_path(const AnyString& apath) {
+  std::string_view path(apath.data(), apath.size());
+
   /* Find last slash in path */
   const size_t pos = path.rfind('/');
 
   /* None found?  Just return the original string */
   if (pos == std::string::npos) {
-    return std::string(path);
+    return rocksdb::stdstrof(path);
   }
 
   /* Return everything after the slash (or backslash) */
-  return path.substr(pos + 1);
+  return rocksdb::stdstrof(path.substr(pos + 1));
 }
 
 /*
@@ -1843,6 +1809,8 @@ enum {
   OLDEST_KEY_TIME,
   FILTER_POLICY,
   COMPRESSION_OPTIONS,
+  TAG_SIZE,
+  GDIC_SIZE,
 };
 }  // namespace RDB_SST_PROPS_FIELD
 
@@ -1876,6 +1844,8 @@ static ST_FIELD_INFO rdb_i_s_sst_props_fields_info[] = {
                        MY_I_S_MAYBE_NULL),
     ROCKSDB_FIELD_INFO("COMPRESSION_OPTIONS", NAME_LEN + 1, MYSQL_TYPE_STRING,
                        MY_I_S_MAYBE_NULL),
+    ROCKSDB_FIELD_INFO("TAG_SIZE", sizeof(int64_t), MYSQL_TYPE_LONGLONG, 0),
+    ROCKSDB_FIELD_INFO("GDIC_SIZE", sizeof(int64_t), MYSQL_TYPE_LONGLONG, 0),
     ROCKSDB_FIELD_INFO_END};
 
 static int rdb_i_s_sst_props_fill_table(
@@ -1971,6 +1941,11 @@ static int rdb_i_s_sst_props_fill_table(
             props.second->compression_options.c_str(),
             props.second->compression_options.size(), system_charset_info);
       }
+
+      field[RDB_SST_PROPS_FIELD::TAG_SIZE]->store(
+          props.second->tag_size, true);
+      field[RDB_SST_PROPS_FIELD::GDIC_SIZE]->store(
+          props.second->gdic_size, true);
 
       /* Tell MySQL about this row in the virtual table */
       ret = static_cast<int>(

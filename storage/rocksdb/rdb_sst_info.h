@@ -30,6 +30,8 @@
 /* MyRocks header files */
 #include "./rdb_utils.h"
 
+#include <terark/gold_hash_map.hpp>
+
 namespace myrocks {
 
 class Rdb_sst_file_ordered {
@@ -45,6 +47,7 @@ class Rdb_sst_file_ordered {
     const rocksdb::DBOptions &m_db_options;
     std::unique_ptr<rocksdb::SstFileWriter> m_sst_file_writer;
     const std::string m_name;
+    const bool m_use_auto_sort_sst;
     const bool m_tracing;
     const rocksdb::Comparator *m_comparator;
     uint32_t m_compression_parallel_threads;
@@ -53,6 +56,7 @@ class Rdb_sst_file_ordered {
    public:
     Rdb_sst_file(rocksdb::DB *db, rocksdb::ColumnFamilyHandle &cf,
                  const rocksdb::DBOptions &db_options, const std::string &name,
+                 bool use_auto_sort_sst,
                  bool tracing, uint32_t compression_parallel_threads);
 
     rocksdb::Status open();
@@ -63,6 +67,7 @@ class Rdb_sst_file_ordered {
     inline int compare(rocksdb::Slice key1, rocksdb::Slice key2) {
       return m_comparator->Compare(key1, key2);
     }
+    inline bool use_auto_sort_sst() const { return m_use_auto_sort_sst; }
   };
 
   class Rdb_sst_stack {
@@ -74,7 +79,7 @@ class Rdb_sst_file_ordered {
 
    public:
     explicit Rdb_sst_stack(size_t max_size)
-        : m_buffer(nullptr), m_buffer_size(max_size) {}
+        : m_buffer(nullptr), m_buffer_size(max_size), m_offset(0) {}
     ~Rdb_sst_stack() { delete[] m_buffer; }
 
     void reset() { m_offset = 0; }
@@ -97,13 +102,19 @@ class Rdb_sst_file_ordered {
  public:
   Rdb_sst_file_ordered(rocksdb::DB *db, rocksdb::ColumnFamilyHandle &cf,
                        const rocksdb::DBOptions &db_options,
-                       const std::string &name, bool tracing, size_t max_size,
+                       const std::string &name,
+                       bool use_auto_sort_sst,
+                       bool tracing,
+                       size_t max_size,
                        uint32_t compression_parallel_threads);
 
   inline rocksdb::Status open() { return m_file.open(); }
   rocksdb::Status put(const rocksdb::Slice &key, const rocksdb::Slice &value);
   rocksdb::Status commit();
   inline const std::string get_name() const { return m_file.get_name(); }
+
+  class Rdb_sst_info* m_sst_info = nullptr;
+  size_t curr_size = 0;
 };
 
 class Rdb_sst_info {
@@ -115,8 +126,8 @@ class Rdb_sst_info {
   rocksdb::DB *const m_db;
   rocksdb::ColumnFamilyHandle &m_cf;
   const rocksdb::DBOptions &m_db_options;
-  uint64_t m_curr_size;
   uint64_t m_max_size;
+  uint m_parallel_num;
   uint m_sst_count;
   std::atomic<int> m_background_error;
   bool m_done;
@@ -124,18 +135,29 @@ class Rdb_sst_info {
   static std::atomic<uint64_t> m_prefix_counter;
   static std::string m_suffix;
   mysql_mutex_t m_commit_mutex;
-  std::unique_ptr<Rdb_sst_file_ordered> m_sst_file;
+
+  struct OneFile {
+    Rdb_sst_file_ordered* sst_file = nullptr;
+    uint64_t curr_size = 0;
+  };
+  uint64_t m_avg_max_size;
+  terark::gold_hash_map<uint32_t, OneFile> m_sst_map;
 
   // List of committed SST files - we'll ingest them later in one single batch
   std::vector<std::string> m_committed_files;
+  size_t m_commiting_files = 0;
 
+  const bool m_use_auto_sort_sst;
   bool m_tracing;
   bool m_print_client_error;
   // num of parallel threads to compress data block
   uint32_t m_compression_parallel_threads;
-  int open_new_sst_file();
-  void close_curr_sst_file();
+
+  int open_new_sst_file(OneFile&);
+  void close_curr_sst_file(OneFile&);
+
   void commit_sst_file(Rdb_sst_file_ordered *sst_file);
+  void commit_sst_file_func(Rdb_sst_file_ordered*);
 
   void set_error_msg(const std::string &sst_file_name,
                      const rocksdb::Status &s);
@@ -143,7 +165,9 @@ class Rdb_sst_info {
  public:
   Rdb_sst_info(rocksdb::DB *db, const std::string &tablename,
                const std::string &indexname, rocksdb::ColumnFamilyHandle &cf,
-               const rocksdb::DBOptions &db_options, bool tracing,
+               const rocksdb::DBOptions &db_options,
+               bool use_auto_sort_sst,
+               bool tracing,
                uint32_t compression_parallel_threads);
   ~Rdb_sst_info();
 

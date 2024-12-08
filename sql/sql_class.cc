@@ -2871,6 +2871,7 @@ bool THD::always_yield() { return true; }
 
   @param cond A predicate that returns true if a yield should take place.
 */
+#if 0
 void THD::check_yield(std::function<bool()> cond) {
   bool skip_yield_wait = false;
 
@@ -2896,22 +2897,20 @@ void THD::check_yield(std::function<bool()> cond) {
     yield_cond = nullptr;
   }
 }
-
-void THD::check_limit_rows_examined() { ++m_accessed_rows_and_keys; }
+#else
+// MyTopling check counter before calling check_yield, and the code change
+// is much earlier than upstream MyRocks, and much faster than MyRocks's
+// improvements!
+void THD::check_yield(std::function<bool()>&& cond) {
+  yield_cond = std::move(cond);
+  thd_wait_begin(this, THD_WAIT_YIELD);
+  thd_wait_end(this);
+  yield_cond = nullptr;
+}
+#endif
 
 void THD::set_accessed_rows_and_keys(ulonglong count) {
   m_accessed_rows_and_keys = count;
-}
-
-void THD::update_sql_stats_periodic() {
-  ulong min_examined_row_limit_sql_stats =
-      variables.min_examined_row_limit_sql_stats;
-  if (m_statement_psi == nullptr || get_stmt_da() == nullptr ||
-      m_accessed_rows_and_keys == 0 || min_examined_row_limit_sql_stats == 0 ||
-      m_accessed_rows_and_keys % min_examined_row_limit_sql_stats != 0) {
-    return;
-  }
-  MYSQL_SNAPSHOT_STATEMENT(m_statement_psi, get_stmt_da());
 }
 
 /**

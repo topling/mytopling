@@ -45,8 +45,10 @@ bool Rdb_cf_options::init(
     m_default_cf_opts.comparator = rocksdb::BytewiseComparator();
   }
 
+/*
   m_default_cf_opts.compaction_filter_factory.reset(
       new Rdb_compact_filter_factory);
+*/
 
   m_default_cf_opts.table_factory.reset(
       rocksdb::NewBlockBasedTableFactory(table_options));
@@ -62,8 +64,7 @@ bool Rdb_cf_options::init(
 
   if (m_default_cf_opts.sst_partitioner_factory != nullptr) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(
-        WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
         "Invalid cf options, sst_partitioner_factory should not be set");
     return false;
   }
@@ -147,9 +148,7 @@ bool Rdb_cf_options::find_column_family(std::string_view input, size_t &pos,
 
   if (end_pos == beg_pos - 1) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "No column family found (options: %.*s)",
-                    static_cast<int>(input.length()), input.data());
+    sql_print_warning("No column family found (options: %s)", input.c_str());
     return false;
   }
 
@@ -165,9 +164,8 @@ bool Rdb_cf_options::find_options(std::string_view input, size_t &pos,
   // Make sure we have an open curly brace at the current position.
   if (pos < input.size() && input[pos] != '{') {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Invalid cf options, '{' expected (options: %.*s)",
-                    static_cast<int>(input.length()), input.data());
+    sql_print_warning("Invalid cf options, '{' expected (options: %s)",
+                      input.c_str());
     return false;
   }
 
@@ -210,9 +208,8 @@ bool Rdb_cf_options::find_options(std::string_view input, size_t &pos,
   // We never found the correct number of closing curly braces.
   // Generate an error.
   // NO_LINT_DEBUG
-  LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                  "Mismatched cf options, '}' expected (options: %.*s)",
-                  static_cast<int>(input.length()), input.data());
+  sql_print_warning("Mismatched cf options, '}' expected (options: %s)",
+                    input.c_str());
   return false;
 }
 
@@ -228,9 +225,8 @@ bool Rdb_cf_options::find_cf_options_pair(std::string_view input, size_t &pos,
   // If we are at the end of the input then we generate an error.
   if (pos == input.size()) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Invalid cf options, '=' expected (options: %.*s)",
-                    static_cast<int>(input.length()), input.data());
+    sql_print_warning("Invalid cf options, '=' expected (options: %s)",
+                      input.c_str());
     return false;
   }
 
@@ -249,9 +245,8 @@ bool Rdb_cf_options::find_cf_options_pair(std::string_view input, size_t &pos,
   if (pos < input.size()) {
     if (input[pos] != ';') {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                      "Invalid cf options, ';' expected (options: %.*s)",
-                      static_cast<int>(input.length()), input.data());
+      sql_print_warning("Invalid cf options, ';' expected (options: %s)",
+                        input.c_str());
       return false;
     }
 
@@ -290,8 +285,7 @@ bool Rdb_cf_options::parse_cf_options(std::string_view cf_options,
                 << cf_options << ')';
       if (print_warnings) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "%s",
-                        output->str().c_str());
+        sql_print_warning(output->str().c_str());
       }
       return false;
     }
@@ -302,8 +296,7 @@ bool Rdb_cf_options::parse_cf_options(std::string_view cf_options,
                 << "' in override options (options: " << cf_options << ')';
       if (print_warnings) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "%s",
-                        output->str().c_str());
+        sql_print_warning(output->str().c_str());
       }
       return false;
     }
@@ -317,8 +310,7 @@ bool Rdb_cf_options::parse_cf_options(std::string_view cf_options,
                 << " (options: " << cf_options << ')';
       if (print_warnings) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "%s",
-                        output->str().c_str());
+        sql_print_warning(output->str().c_str());
       }
       return false;
     }
@@ -395,8 +387,7 @@ bool Rdb_cf_options::get_cf_options(const std::string &cf_name,
       cf_name != DEFAULT_TMP_SYSTEM_CF_NAME) {
     if (opts->sst_partitioner_factory != nullptr) {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(
-          WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_warning(
           "Invalid cf options for %s, sst_partitioner_factory should not be "
           "set.",
           cf_name.c_str());

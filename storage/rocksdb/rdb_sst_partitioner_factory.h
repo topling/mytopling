@@ -69,17 +69,17 @@ class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
    * if a partition is required for given index
    */
   bool should_partition(const std::string &index_key,
-                        const rocksdb::Slice *previous_key,
-                        const rocksdb::Slice *current_key) const {
+                        const rocksdb::Slice &previous_key,
+                        const rocksdb::Slice &current_key) const {
     // for reverse cf, indexKey is upper limit of index data,
     // for normal cf, indexKey is lower limit of index data.
     // we want indexKey itself get partitioned with other keys in the index.
     if (m_is_reverse_cf) {
-      return m_comparator->Compare(*previous_key, index_key) <= 0 &&
-             m_comparator->Compare(*current_key, index_key) > 0;
+      return m_comparator->Compare(previous_key, index_key) <= 0 &&
+             m_comparator->Compare(current_key, index_key) > 0;
     }
-    return m_comparator->Compare(*previous_key, index_key) < 0 &&
-           m_comparator->Compare(*current_key, index_key) >= 0;
+    return m_comparator->Compare(previous_key, index_key) < 0 &&
+           m_comparator->Compare(current_key, index_key) >= 0;
   }
 
  public:
@@ -121,11 +121,11 @@ class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
 
   rocksdb::PartitionerResult ShouldPartition(
       const rocksdb::PartitionerRequest &request) override {
-    assert(m_comparator->Compare(*request.current_user_key,
-                                 *request.prev_user_key) > 0);
+    assert(m_comparator->Compare(request.current_user_key,
+                                 request.prev_user_key) > 0);
 
-    if (m_comparator->Compare(*request.prev_user_key, m_max_index_key) > 0 ||
-        m_comparator->Compare(*request.current_user_key, m_min_index_key) < 0) {
+    if (m_comparator->Compare(request.prev_user_key, m_max_index_key) > 0 ||
+        m_comparator->Compare(request.current_user_key, m_min_index_key) < 0) {
       return rocksdb::PartitionerResult::kNotRequired;
     }
     for (const auto &index_key_range : m_index_key_ranges) {
@@ -187,7 +187,7 @@ class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
       auto index_ids = get_index_ids();
       if (!index_ids.empty()) {
         // NO_LINT_DEBUG
-        LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+        sql_print_information(
                         "MyRocks: Rdb_sst_partitioner_factory creating "
                         "partitioner with %lu "
                         "indexes.",
@@ -206,7 +206,7 @@ class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
    */
   bool add_index(Index_id index_id) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks: Rdb_sst_partitioner_factory adding index %d.",
                     index_id);
     const std::lock_guard<std::mutex> lock(m_index_ids_mutex);
@@ -220,7 +220,7 @@ class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
    */
   bool remove_index(Index_id index_id) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "MyRocks: Rdb_sst_partitioner_factory removing index %d.",
                     index_id);
     const std::lock_guard<std::mutex> lock(m_index_ids_mutex);
@@ -279,8 +279,7 @@ class Rdb_bulk_load_index_registry {
     if (rdb_sst_partitioner_factory == nullptr) {
       // should never happen
       // NO_LINT_DEBUG
-      LogPluginErrMsg(
-          WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_warning(
           "MyRocks: Rdb_sst_partitioner_factory not registered for cf %s ",
           cf.GetName().c_str());
       return false;
@@ -352,7 +351,7 @@ class Rdb_bulk_load_index_registry {
       const rocksdb::Slice compact_begin_key = begin_index_key;
       const rocksdb::Slice compact_end_key = end_index_Key;
       // NO_LINT_DEBUG
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "MyRocks: CompactRange on cf %s. key range ['%s', '%s'].",
                       cf->GetName().c_str(),
                       compact_begin_key.ToString(/*hex*/ true).c_str(),

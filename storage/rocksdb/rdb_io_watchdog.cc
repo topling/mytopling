@@ -68,8 +68,7 @@ void Rdb_io_watchdog::io_check_callback(
 
   if (unlikely(ret)) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Creating a watchdog I/O timer failed with %d.", errno);
+    sql_print_warning("Creating a watchdog I/O timer failed with %d.", errno);
     RDB_MUTEX_UNLOCK_CHECK(m_reset_mutex);
     return;
   }
@@ -84,9 +83,8 @@ void Rdb_io_watchdog::io_check_callback(
 
   if (unlikely(ret)) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Setting time for a watchdog I/O timer failed with %d.",
-                    errno);
+    sql_print_warning("Setting time for a watchdog I/O timer failed with %d.",
+                      errno);
     RDB_MUTEX_UNLOCK_CHECK(m_reset_mutex);
     return;
   }
@@ -101,9 +99,8 @@ void Rdb_io_watchdog::io_check_callback(
     // in other cases as well.
     if (unlikely(ret != HA_EXIT_SUCCESS)) {
       // NO_LINT_DEBUG
-      LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                      "Unable to verify write access to %s (error code %d).",
-                      directory.c_str(), ret);
+      sql_print_warning("Unable to verify write access to %s (error code %d).",
+                        directory.c_str(), ret);
     }
   }
 
@@ -114,8 +111,7 @@ void Rdb_io_watchdog::io_check_callback(
 
   if (unlikely(ret)) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Deleting the watchdog I/O timer failed with %d.", errno);
+    sql_print_warning("Deleting the watchdog I/O timer failed with %d.", errno);
   }
 
   m_io_check_watchdog_timer = nullptr;
@@ -173,8 +169,7 @@ int Rdb_io_watchdog::reset_timeout(const uint32_t write_timeout) {
 
   if (unlikely(ret)) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Stopping I/O timers failed with %d.", errno);
+    sql_print_warning("Stopping I/O timers failed with %d.", errno);
     RDB_MUTEX_UNLOCK_CHECK(m_reset_mutex);
     return ret;
   }
@@ -217,8 +212,7 @@ int Rdb_io_watchdog::reset_timeout(const uint32_t write_timeout) {
 
   if (unlikely(ret)) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Creating a I/O timer failed with %d.", errno);
+    sql_print_warning("Creating a I/O timer failed with %d.", errno);
     RDB_MUTEX_UNLOCK_CHECK(m_reset_mutex);
     return ret;
   }
@@ -234,9 +228,8 @@ int Rdb_io_watchdog::reset_timeout(const uint32_t write_timeout) {
 
   if (unlikely(ret)) {
     // NO_LINT_DEBUG
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Setting time for a watchdog I/O timer failed with %d.",
-                    errno);
+    sql_print_warning("Setting time for a watchdog I/O timer failed with %d.",
+                      errno);
   }
 
   RDB_MUTEX_UNLOCK_CHECK(m_reset_mutex);

@@ -14,6 +14,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+#define MYSQL_SERVER 1
 #include "./rdb_cmd_srv_helper.h"
 
 #include <array>
@@ -55,8 +56,7 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::get_error_status(
   MYSQL_H mysql_h = mysql_wrapper.mysql;
   unsigned int error_no;
   if (m_command_error_info->sql_errno(mysql_h, &error_no)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to get error number");
+    sql_print_warning("failed to get error number");
     return Rdb_cmd_srv_status("unknown error, failed to get error number");
   }
   // if it is a connection error, sql_error does not work because the required
@@ -68,16 +68,14 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::get_error_status(
   char *error_msg_ptr = error_msg.data();
   std::string error_msg_str;
   if (m_command_error_info->sql_error(mysql_h, &error_msg_ptr)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to get error message");
+    sql_print_warning("failed to get error message");
   } else {
     error_msg_str = std::string(error_msg.data());
   }
   char *sqlstate = nullptr;
   std::string sqlstate_str;
   if (m_command_error_info->sql_state(mysql_h, &sqlstate)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to get sql state");
+    sql_print_warning("failed to get sql state");
   } else if (sqlstate != nullptr) {
     sqlstate_str = std::string(sqlstate);
   }
@@ -87,19 +85,17 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::get_error_status(
 
 Rdb_cmd_srv_status Rdb_cmd_srv_helper::connect(MYSQL_H_wrapper &mysql_wrapper) {
   if (mysql_wrapper.init()) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to init command factory");
+    sql_print_warning("failed to init command factory");
     return Rdb_cmd_srv_status("failed to init command factory");
   }
 
   MYSQL_H mysql_h = mysql_wrapper.mysql;
   if (m_command_options->set(mysql_h, MYSQL_COMMAND_USER_NAME, CMD_SRV_USER)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to set user name");
+    sql_print_warning("failed to set user name");
     return Rdb_cmd_srv_status("failed to set user name");
   }
   if (m_command_factory->connect(mysql_h)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "failed to connect");
+    sql_print_warning("failed to connect");
     return get_error_status(mysql_wrapper, true);
   }
 
@@ -112,20 +108,18 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::execute_query(
   const std::string use_db = "USE " + db_name;
   if (m_command_query->query(mysql_wrapper.mysql, use_db.data(),
                              use_db.length())) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to execute query: %s", use_db.c_str());
+    sql_print_warning("failed to execute query: %s", use_db.c_str());
     return get_error_status(mysql_wrapper);
   }
 
   if (m_command_query->query(mysql_wrapper.mysql, query.data(),
                              query.length())) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to execute query: %s", query.c_str());
+    sql_print_warning("failed to execute query: %s", query.c_str());
     return get_error_status(mysql_wrapper);
   }
 
   if (mysql_res_wrapper.store_result(mysql_wrapper.mysql)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "failed to store result");
+    sql_print_warning("failed to store result");
     return get_error_status(mysql_wrapper);
   }
 
@@ -135,8 +129,7 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::execute_query(
 Rdb_cmd_srv_status Rdb_cmd_srv_helper::get_row_count(
     MYSQL_H_wrapper &mysql_wrapper, uint64_t &row_count) {
   if (m_command_query->affected_rows(mysql_wrapper.mysql, &row_count)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to get row count");
+    sql_print_warning("failed to get row count");
     return get_error_status(mysql_wrapper);
   }
 
@@ -151,8 +144,7 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::check_row_count(
     return status;
   }
   if (row_count != expected_row_count) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "expect one row, but got %" PRIu64, row_count);
+    sql_print_warning("expect one row, but got %" PRIu64, row_count);
     return Rdb_cmd_srv_status("Unexpected number of rows returned.");
   }
 
@@ -165,14 +157,12 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::check_column_types(
   MYSQL_RES_H mysql_res = mysql_res_wrapper.mysql_res;
   unsigned int num_column;
   if (m_command_field_info->num_fields(mysql_res, &num_column)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to get column count");
+    sql_print_warning("failed to get column count");
     return get_error_status(mysql_wrapper);
   }
 
   if (num_column != field_types.size()) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "expect one column, but got %u", num_column);
+    sql_print_information("expect one column, but got %u", num_column);
 
     return Rdb_cmd_srv_status("Unexepcted column count");
   }
@@ -180,14 +170,14 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::check_column_types(
   MYSQL_FIELD_H *fields_info = nullptr;
   if (m_command_field_info->fetch_fields(mysql_res, &fields_info) ||
       fields_info == nullptr) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "failed to fetch fields");
+    sql_print_warning("failed to fetch fields");
     return get_error_status(mysql_wrapper);
   }
   MYSQL_FIELD *fields = reinterpret_cast<MYSQL_FIELD *>(fields_info);
   for (unsigned int i = 0; i < num_column; i++) {
     MYSQL_FIELD &field = fields[i];
     if (field.type != field_types[i]) {
-      LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "expect column %u type %u, but got %u", i, field_types[i],
                       field.type);
       return Rdb_cmd_srv_status("Unexpected column type for column " +
@@ -202,7 +192,7 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::fetch_row(
     MYSQL_ROW_H *row, ulong **column_lengths) {
   MYSQL_RES_H mysql_res = mysql_res_wrapper.mysql_res;
   if (m_command_query_result->fetch_row(mysql_res, row)) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG, "failed to fetch row");
+    sql_print_warning("failed to fetch row");
     return get_error_status(mysql_wrapper);
   }
 
@@ -220,14 +210,13 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::get_json_column(
   dom_ptr = Json_dom::parse(row[col], column_lengths[col], parse_handler,
                             JsonDocumentDefaultDepthHandler);
   if (!dom_ptr) {
-    LogPluginErrMsg(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
-                    "failed to parse metadata");
+    sql_print_warning("failed to parse metadata");
     return Rdb_cmd_srv_status("failed to parse json column " +
                               std::to_string(col));
   }
 
   if (dom_ptr->json_type() != expected_type) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+    sql_print_information(
                     "expect json type %d, but got %d",
                     static_cast<int>(expected_type),
                     static_cast<int>(dom_ptr->json_type()));
@@ -293,27 +282,25 @@ Rdb_cmd_srv_status Rdb_cmd_srv_helper::read_index_metadata(
   Json_object *json_object = down_cast<Json_object *>(dom_ptr.get());
   longlong int_field_val;
   if (get_json_int_field(json_object, METADATA_KEY_VERSION, int_field_val)) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "invalid version number");
+    sql_print_information("invalid version number");
     return Rdb_cmd_srv_status("failed to read version number from metadata");
   }
   if (int_field_val != (int)Rdb_vector_index_data_version::V1) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
-                    "invalid version number %lld", int_field_val);
+    sql_print_information("invalid version number %lld", int_field_val);
     return Rdb_cmd_srv_status("unsupported version number");
   }
   if (get_json_int_field(json_object, METADATA_KEY_NLIST, int_field_val)) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "invalid nlist");
+    sql_print_information("invalid nlist");
     return Rdb_cmd_srv_status("failed to read nlist from metadata");
   }
   index_data.m_nlist = int_field_val;
   if (get_json_int_field(json_object, METADATA_KEY_PQ_M, int_field_val)) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "invalid pq_m");
+    sql_print_information("invalid pq_m");
     return Rdb_cmd_srv_status("failed to read pq_m from metadata");
   }
   index_data.m_pq_m = int_field_val;
   if (get_json_int_field(json_object, METADATA_KEY_PQ_NBITS, int_field_val)) {
-    LogPluginErrMsg(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG, "invalid pq_nbits");
+    sql_print_information("invalid pq_nbits");
     return Rdb_cmd_srv_status("failed to read pq_nbits from metadata");
   }
   index_data.m_pq_nbits = int_field_val;
