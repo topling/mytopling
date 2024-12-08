@@ -185,9 +185,6 @@ using  rocksdb::json;
 static rocksdb::SidePluginRepo g_repo;
 bool g_svr_read_only = false;
 
-template<class T>
-inline T& NoAtomic(std::atomic<T>& x) { return reinterpret_cast<T&>(x); }
-
 static int mysql_value_to_bool(struct st_mysql_value *value,
                                bool *return_value);
 
@@ -1122,7 +1119,7 @@ static int handle_rocksdb_corrupt_data_error(THD *thd) {
       // NO_LINT_DEBUG
       sql_print_error(
           "MyRocks: aborting on HA_ERR_ROCKSDB_CORRUPT_DATA error.");
-      LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "Failed query - db: %s , query: %s", thd->db().str,
                       thd->query().str);
       rdb_persist_corruption_marker();
@@ -3900,6 +3897,8 @@ class Rdb_transaction {
  protected:
 #endif
 
+ public:
+
   std::shared_ptr<Rdb_snapshot_notifier> m_notifier;
 
   rocksdb::ReadOptions m_read_opts[2];
@@ -4423,7 +4422,8 @@ class Rdb_transaction {
                       "status code = %d, status = %s",
                       s.code(), s.ToString().c_str());
       s = bulk_load_index_registry.compact_index_ranges(
-          rdb, getCompactRangeOptions(0, (rocksdb::BottommostLevelCompaction)));
+          rdb, getCompactRangeOptions(0,
+                (rocksdb::BottommostLevelCompaction)THDVAR(m_thd, manual_compaction_bottommost_level)));
       if (!s.ok()) {
         // NO_LINT_DEBUG
         sql_print_information(
@@ -6094,7 +6094,9 @@ class Rdb_transaction_impl : public Rdb_transaction {
     tx_opts.max_write_batch_size = THDVAR(m_thd, write_batch_max_bytes);
     tx_opts.write_batch_flush_threshold =
         THDVAR(m_thd, write_batch_flush_threshold);
+#if ROCKSDB_MAJOR >= 9
     tx_opts.write_batch_track_timestamp_size = rocksdb_enable_udt_in_mem;
+#endif
 
     // for SkipListMemTable, hint is the last insert position,
     //     hint can speed up sequential insert
@@ -6244,10 +6246,12 @@ class Rdb_transaction_impl : public Rdb_transaction {
    to be non-conflicting. Any further usage of this class should completely
    be thought thoroughly.
 */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
 struct FixMyRocksMassiveChanges {
-  union { mutable rocksdb::WriteBatchWithIndex* m_batch_hack[1]; };
-  mutable rocksdb::WriteBatchWithIndex& m_batch;
-  FixMyRocksMassiveChanges() {
+  union { rocksdb::WriteBatchWithIndex* m_batch_hack[1]; };
+  rocksdb::WriteBatchWithIndex& m_batch;
+  FixMyRocksMassiveChanges() : m_batch(*(rocksdb::WriteBatchWithIndex*)(nullptr)) {
     m_batch_hack[0] = nullptr;
     // set m_batch by m_batch_hack[1]:
     auto& fac = rocksdb_db_options->wbwi_factory;
@@ -6257,6 +6261,8 @@ struct FixMyRocksMassiveChanges {
     delete m_batch_hack[1];
   }
 };
+#pragma GCC diagnostic pop
+
 class Rdb_writebatch_impl : public Rdb_transaction, FixMyRocksMassiveChanges {
   // mutable rocksdb::WriteBatchWithIndex m_batch; // FixMyRocksMassiveChanges
   rocksdb::WriteOptions write_opts;
@@ -9121,10 +9127,6 @@ if (side_conf) {
       }}, rocksdb_db_options->rate_limiter);
     }
   }
-  if (rocksdb_delayed_write_rate)
-    rocksdb_db_options->delayed_write_rate = rocksdb_delayed_write_rate;
-  else
-    rocksdb_delayed_write_rate = rocksdb_db_options->delayed_write_rate;
 }
 else {
   rocksdb_stats = rocksdb::CreateDBStatistics();
@@ -9138,6 +9140,7 @@ else {
         rocksdb::NewGenericRateLimiter(rocksdb_rate_limiter_bytes_per_sec));
     rocksdb_db_options->rate_limiter = rocksdb_rate_limiter;
   }
+}
 
   std::shared_ptr<Rdb_logger> myrocks_logger = std::make_shared<Rdb_logger>();
 #if 0 // DO NOT do this
@@ -9472,7 +9475,9 @@ else {
   tx_db_options.custom_mutex_factory = std::make_shared<Rdb_mutex_factory>();
   tx_db_options.write_policy =
       static_cast<rocksdb::TxnDBWritePolicy>(rocksdb_write_policy);
+#if ROCKSDB_MAJOR >= 9
   tx_db_options.enable_udt_validation = !rocksdb_enable_udt_in_mem;
+#endif
 
   status =
       check_rocksdb_options_compatibility(rocksdb_datadir, main_opts, cf_descr);
@@ -18296,8 +18301,8 @@ int ha_rocksdb::inplace_populate_sk(
     }
     ha_rnd_end();
     bool is_critical_error;
-    res = tx->finish_bulk_load(&is_critical_error, true, new_table_arg,
-                                m_table_handler->m_table_name);
+    res = tx->finish_bulk_load(&is_critical_error, true, new_table_arg);
+                                //m_table_handler->m_table_name);
     if (res && is_critical_error) {
       sql_print_error("Error finishing bulk load.");
       DBUG_RETURN(res);
@@ -20989,9 +20994,9 @@ unsigned long long get_partial_index_sort_max_mem(THD *thd) {
   return THDVAR(thd, partial_index_sort_max_mem);
 }
 
-const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction *tx) {
-  tx->acquire_snapshot(true, TABLE_TYPE::USER_TABLE);
-  return tx->m_read_opts[TABLE_TYPE::USER_TABLE];
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction &tx) {
+  tx.acquire_snapshot(true, TABLE_TYPE::USER_TABLE);
+  return tx.m_read_opts[TABLE_TYPE::USER_TABLE];
 }
 
 std::unique_ptr<rocksdb::Iterator> rdb_tx_get_iterator(

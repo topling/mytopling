@@ -523,6 +523,13 @@ enum TABLE_TYPE : unsigned char {
   USER_TABLE = 1,
 };
 
+enum file_checksums_type {
+  CHECKSUMS_OFF = 0,
+  CHECKSUMS_WRITE_ONLY,
+  CHECKSUMS_WRITE_AND_VERIFY,
+  CHECKSUMS_WRITE_AND_VERIFY_ON_CLONE,
+};
+
 }  // namespace myrocks
 
 /* Provide hash function for GL_INDEX_ID so we can include it in sets */

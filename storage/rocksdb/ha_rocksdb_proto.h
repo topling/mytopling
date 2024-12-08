@@ -118,4 +118,8 @@ Rdb_ddl_manager *rdb_get_ddl_manager(void)
 class Rdb_binlog_manager;
 Rdb_binlog_manager *rdb_get_binlog_manager(void)
     MY_ATTRIBUTE((__warn_unused_result__));
+
+template<class T>
+inline T& NoAtomic(std::atomic<T>& x) { return reinterpret_cast<T&>(x); }
+
 }  // namespace myrocks

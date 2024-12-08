@@ -101,7 +101,7 @@ class Rdb_bulk_load_manager {
       }
     } else {
       assert(false);
-      LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+      sql_print_information(
                       "unexpected bulk load type %d", static_cast<int>(type));
       return HA_EXIT_FAILURE;
     }
@@ -280,7 +280,9 @@ Rdb_sst_info *Rdb_bulk_load_context::add_sst_info(
     rocksdb::DBOptions &db_option, bool trace_sst_api,
     bool compression_parallel_threads) {
   auto sst_info_ptr = std::make_unique<Rdb_sst_info>(
-      rdb, tablename, kd.get_name(), kd.get_cf(), db_option, trace_sst_api,
+      rdb, tablename, kd.get_name(), kd.get_cf(), db_option,
+      m_use_auto_sort,
+      trace_sst_api,
       compression_parallel_threads);
   Rdb_sst_info *sst_info = sst_info_ptr.get();
   m_curr_bulk_load.emplace(kd.get_gl_index_id(), std::move(sst_info_ptr));

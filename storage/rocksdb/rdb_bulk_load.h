@@ -17,6 +17,8 @@
 #pragma once
 
 #include <string_view>
+#include "rdb_index_merge.h"
+#include "rdb_sst_info.h"
 #include "./rdb_sst_partitioner_factory.h"
 #include "sql/sql_class.h"
 
@@ -220,12 +222,14 @@ class Rdb_bulk_load_context {
   }
 
   bool active() const { return m_active; }
+  void set_use_auto_sort(bool b) { m_use_auto_sort = b; }
 
   void increment_num_commited_sst_files(uint count);
 
  private:
   THD *m_thd;
   bool m_active = false;
+  bool m_use_auto_sort = false;
   std::string m_bulk_load_session_id;
   // The Rdb_sst_info structures we are currently loading.  In a partitioned
   // table this can have more than one entry

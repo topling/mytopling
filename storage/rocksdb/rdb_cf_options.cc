@@ -33,6 +33,8 @@
 #include "./rdb_compact_filter.h"
 #include "./rdb_sst_partitioner_factory.h"
 
+#include "ha_rocksdb.h"
+
 namespace myrocks {
 
 bool Rdb_cf_options::init(
@@ -148,7 +150,7 @@ bool Rdb_cf_options::find_column_family(std::string_view input, size_t &pos,
 
   if (end_pos == beg_pos - 1) {
     // NO_LINT_DEBUG
-    sql_print_warning("No column family found (options: %s)", input.c_str());
+    sql_print_warning("No column family found (options: %.*s)", (int)input.size(), input.data());
     return false;
   }
 
@@ -164,8 +166,8 @@ bool Rdb_cf_options::find_options(std::string_view input, size_t &pos,
   // Make sure we have an open curly brace at the current position.
   if (pos < input.size() && input[pos] != '{') {
     // NO_LINT_DEBUG
-    sql_print_warning("Invalid cf options, '{' expected (options: %s)",
-                      input.c_str());
+    sql_print_warning("Invalid cf options, '{' expected (options: %.*s)",
+                      (int)input.size(), input.data());
     return false;
   }
 
@@ -208,8 +210,8 @@ bool Rdb_cf_options::find_options(std::string_view input, size_t &pos,
   // We never found the correct number of closing curly braces.
   // Generate an error.
   // NO_LINT_DEBUG
-  sql_print_warning("Mismatched cf options, '}' expected (options: %s)",
-                    input.c_str());
+  sql_print_warning("Mismatched cf options, '}' expected (options: %.*s)",
+                    (int)input.size(), input.data());
   return false;
 }
 
@@ -225,8 +227,8 @@ bool Rdb_cf_options::find_cf_options_pair(std::string_view input, size_t &pos,
   // If we are at the end of the input then we generate an error.
   if (pos == input.size()) {
     // NO_LINT_DEBUG
-    sql_print_warning("Invalid cf options, '=' expected (options: %s)",
-                      input.c_str());
+    sql_print_warning("Invalid cf options, '=' expected (options: %.*s)",
+                      (int)input.size(), input.data());
     return false;
   }
 
@@ -245,8 +247,8 @@ bool Rdb_cf_options::find_cf_options_pair(std::string_view input, size_t &pos,
   if (pos < input.size()) {
     if (input[pos] != ';') {
       // NO_LINT_DEBUG
-      sql_print_warning("Invalid cf options, ';' expected (options: %s)",
-                        input.c_str());
+      sql_print_warning("Invalid cf options, ';' expected (options: %.*s)",
+                        (int)input.size(), input.data());
       return false;
     }
 

@@ -328,7 +328,7 @@ void Rdb_iterator_base::setup_scan_iterator(
       m_scan_it_snapshot = snap;
     } else  if (!read_current) {
       Rdb_transaction *const tx = m_thd->m_rdb_trx;
-      auto& ro = rdb_tx_acquire_snapshot(tx); // must by reference
+      auto& ro = rdb_tx_acquire_snapshot(*tx); // must by reference
       snap = ro.snapshot;
     }
     auto s = m_scan_it->Refresh(snap, false/*keep_iter_pos*/);
@@ -706,9 +706,9 @@ Rdb_iterator_partial::Rdb_iterator_partial(THD *thd, const Rdb_key_def &kd,
       m_prefix_keyparts(kd.partial_index_keyparts()),
       m_cur_prefix_key_len(0),
       m_records_it(m_records.end()),
-      m_comparator(slice_comparator(m_kd.get_cf().GetComparator())),
+      m_comparator(slice_comparator(kd.get_cf().GetComparator())),
       m_comparator_root(slice_comparator(
-          m_kd.get_cf().GetComparator()->GetRootComparator())) {
+          kd.get_cf().GetComparator()->GetRootComparator())) {
   m_is_partial_iter = true;
   init_sql_alloc(PSI_NOT_INSTRUMENTED, &m_mem_root, 4096);
   auto max_mem = get_partial_index_sort_max_mem(thd);
@@ -1063,7 +1063,7 @@ int Rdb_iterator_partial::materialize_prefix() {
     const rocksdb::Slice &dummy_slice = rocksdb::Slice("dummy");
     s = wb->UpdateTimestamps(dummy_slice, [](uint32_t) { return 0; });
     if (!s.ok()) {
-      rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
+      rc = rdb_tx_set_status_error(*tx, s, *m_kd, m_tbl_def);
       goto exit;
     }
   }

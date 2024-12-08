@@ -1211,7 +1211,7 @@ Rdb_bulk_load_context *get_bulk_load_ctx_from_thd(THD *const thd);
 void add_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler);
 
-const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction*);
+const rocksdb::ReadOptions &rdb_tx_acquire_snapshot(Rdb_transaction&);
 
 [[nodiscard]] std::unique_ptr<rocksdb::Iterator> rdb_tx_get_iterator(
     THD *thd, rocksdb::ColumnFamilyHandle &cf, bool skip_bloom_filter,
