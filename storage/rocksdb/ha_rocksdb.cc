@@ -4909,14 +4909,14 @@ class Rdb_transaction {
         std::error_code ec;
         std::filesystem::remove_all(dir, ec);
         if (ec.value() == (int)std::errc::no_such_file_or_directory) {
-          sql_print_information("remove_all(%s) = no_such_file_or_directory",
+          sql_print_information("MyRocks: remove_all(%s) = no_such_file_or_directory",
                                  dir.c_str());
         }
         else if (ec.value() == 0) {
           // sql_print_information("remove_all(%s) = success", dir.c_str());
         }
         else {
-          sql_print_error("remove_all(%s) = %s", dir.c_str(), strerror(ec.value()));
+          sql_print_error("MyRocks: remove_all(%s) = %s", dir.c_str(), strerror(ec.value()));
         }
       }
     });
