@@ -12454,7 +12454,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
   /* TODO(yzha) - row stats are gone in 8.0
   stats.rows_requested++; */
 
-  if (m_active_is_vector_index) {
+  if (unlikely(m_active_is_vector_index)) {
     const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
     auto vector_db_handler = get_vector_db_handler();
     vector_db_handler->next_result();
