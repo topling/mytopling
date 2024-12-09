@@ -1155,7 +1155,12 @@ class THD : public MDL_context_owner,
   struct System_status_var *initial_status_var; /* used by show status */
   // has status_var already been added to global_status_var?
   bool status_var_aggregated;
+#if 0
   uint32_t m_check_yield_counting = 0;
+#else
+  // MyRocks defined check_yield_counter for the purpose, just use it
+  #define m_check_yield_counting check_yield_counter
+#endif
 
   /**
     Session's connection attributes for the connected client
