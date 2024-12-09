@@ -2882,7 +2882,7 @@ void THD::check_yield(std::function<bool()>&& cond) {
    */
   ulong yield_check_frequency = variables.yield_check_frequency;
   if (yield_check_frequency > 0 &&
-      (check_yield_counter % yield_check_frequency != 0 || !cond())) {
+      (check_yield_counter < yield_check_frequency || (check_yield_counter = 0, !cond()))) {
     skip_yield_wait = true;
 
     // Alter the check frequency as a way to verify this path is executed.
