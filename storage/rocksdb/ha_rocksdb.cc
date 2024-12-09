@@ -134,8 +134,11 @@ void thd_mark_transaction_to_rollback(MYSQL_THD thd, int all);
 
 extern bool yield_condition(TABLE*);
 extern bool opt_binlog_ddl_only_follower; // defined in mysqld.cc
+#if 0
+// already declared in mysqld.h and #include'ed
 extern uint mysqld_port; // defined in mysqld.cc
 extern char mysql_unpacked_real_data_home[];
+#endif
 
 /**
  *   Get the user thread's binary logging format
