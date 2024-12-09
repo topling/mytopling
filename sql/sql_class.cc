@@ -2871,7 +2871,16 @@ bool THD::always_yield() { return true; }
 
   @param cond A predicate that returns true if a yield should take place.
 */
+MY_ATTRIBUTE((flatten))
 void THD::check_yield(std::function<bool()>&& cond) {
+  check_yield_tpl(std::move(cond));
+}
+MY_ATTRIBUTE((flatten))
+void THD::check_yield() {
+  check_yield_tpl([]{return true;}); // always_yield
+}
+template<class ConditionFunc>
+void THD::check_yield_tpl(ConditionFunc&& cond) {
   bool skip_yield_wait = false;
 
   check_yield_counter++;
