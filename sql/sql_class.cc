@@ -2871,8 +2871,7 @@ bool THD::always_yield() { return true; }
 
   @param cond A predicate that returns true if a yield should take place.
 */
-#if 0
-void THD::check_yield(std::function<bool()> cond) {
+void THD::check_yield(std::function<bool()>&& cond) {
   bool skip_yield_wait = false;
 
   check_yield_counter++;
@@ -2897,17 +2896,6 @@ void THD::check_yield(std::function<bool()> cond) {
     yield_cond = nullptr;
   }
 }
-#else
-// MyTopling check counter before calling check_yield, and the code change
-// is much earlier than upstream MyRocks, and much faster than MyRocks's
-// improvements!
-void THD::check_yield(std::function<bool()>&& cond) {
-  yield_cond = std::move(cond);
-  thd_wait_begin(this, THD_WAIT_YIELD);
-  thd_wait_end(this);
-  yield_cond = nullptr;
-}
-#endif
 
 void THD::set_accessed_rows_and_keys(ulonglong count) {
   m_accessed_rows_and_keys = count;
