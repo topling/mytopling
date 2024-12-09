@@ -9543,6 +9543,11 @@ if (side_conf) {
       static_cast<rocksdb::TxnDBWritePolicy>(rocksdb_write_policy);
 #if ROCKSDB_MAJOR >= 9
   tx_db_options.enable_udt_validation = !rocksdb_enable_udt_in_mem;
+#else
+  if (rocksdb_enable_udt_in_mem) {
+    sql_print_warning("RocksDB: MyTopling does not support UDT, auto change rocksdb_enable_udt_in_mem to false");
+    rocksdb_enable_udt_in_mem = false;
+  }
 #endif
 
   status =
