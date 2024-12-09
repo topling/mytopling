@@ -926,7 +926,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
   } else if (rc == 0) {
     // Found rows in SK, so use them
     m_materialized = true;
-    assert(value.size() == (m_pkd.has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
+    assert(value.size() == (m_pkd->has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
 
     // Rdb_iterator_base::seek below will overwrite m_prefix_tuple, so we save a
     // copy here.
@@ -1305,7 +1305,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
       }
     }
   } else if (rc == 0) {
-    assert(value.size() == (m_pkd.has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
+    assert(value.size() == (m_pkd->has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
     m_materialized = true;
 
     rc = Rdb_iterator_base::seek(find_flag, start_key, true, end_key,
