@@ -140,8 +140,11 @@ SERVICE_TYPE(log_builtins_string) *log_bs = nullptr;
 
 extern bool yield_condition(TABLE*);
 extern bool opt_binlog_ddl_only_follower; // defined in mysqld.cc
+#if 0
+// already declared in mysqld.h and #include'ed
 extern uint mysqld_port; // defined in mysqld.cc
 extern char mysql_unpacked_real_data_home[];
+#endif
 namespace rocksdb {
 Status MergeTables(const std::vector<std::string>& files, const std::string& dbname,
                    const DBOptions& dbo, std::vector<ColumnFamilyDescriptor> cfo,
