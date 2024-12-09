@@ -69,6 +69,7 @@ common_args=(
   --transaction_isolation=READ-COMMITTED
  #--verbose
   --log-error-verbosity=3 # information
+  --yield_check_frequency=200
 )
 dram=`awk '$1 == "MemTotal:"{print $2*1024}' /proc/meminfo`
 part=`nproc`
