@@ -527,7 +527,7 @@ class Rdb_vector_iterator : public faiss::InvertedListsIterator {
 
      */
     rocksdb::Slice value_slice = m_iterator->value();
-    unsigned long int value_bytes = value_slice.size() - m_code_size;
+    ptrdiff_t value_bytes = value_slice.size() - m_code_size;
     if (value_bytes < 0) {
       LogPluginErrMsg(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                       "Invalid value size %lu for key in index %d, list id %lu",
@@ -556,7 +556,7 @@ class Rdb_vector_iterator : public faiss::InvertedListsIterator {
       value.append(value_slice.data() + header_size + m_code_size,
                    value_bytes - header_size);
     }
-    assert(value.size() == value_bytes);
+    assert(value.size() == (size_t)value_bytes);
 
     return HA_EXIT_SUCCESS;
   }
