@@ -1175,7 +1175,7 @@ static MYSQL_SYSVAR_BOOL(reuse_iter, rocksdb_reuse_iter,
                          "Allow rocksdb reuse iterator across txn",
                          nullptr, nullptr, false);
 static const char* side_conf = getenv("TOPLING_SIDEPLUGIN_CONF");
-static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
+static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
   std::shared_ptr<rocksdb::DBOptions> o;
   auto listener = std::make_shared<Rdb_event_listener>(&ddl_manager);
   if (side_conf) {
@@ -1219,10 +1219,17 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
     }, listener);
   }
   else {
-    o = std::make_shared<rocksdb::DBOptions>();
-    o->max_open_files = -2;  // auto-tune to 50% open_files_limit
-    o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
+    sql_print_error("RocksDB: MyTopling requires env TOPLING_SIDEPLUGIN_CONF");
+    exit(HA_EXIT_FAILURE);
   }
+  return o;
+}
+static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
+  std::shared_ptr<rocksdb::DBOptions> o;
+  auto listener = std::make_shared<Rdb_event_listener>(&ddl_manager);
+  o = std::make_shared<rocksdb::DBOptions>();
+  o->max_open_files = -2;  // auto-tune to 50% open_files_limit
+  o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
   o->listeners.push_back(listener);
 
   o->create_if_missing = true;
@@ -8919,6 +8926,37 @@ static bool rocksdb_notify_drop_table(THD *thd, const MDL_key *mdl_key,
   return rocksdb_notify_alter_table(thd, mdl_key, notification_type);
 }
 
+static void update_side_plugin_dbopt() {
+  auto repo_dbo = rdb_load_side_plugin(); // will exit if side_conf is null
+
+  // 1. update repo_dbo
+  #define UpdateRepoDBO(field) repo_dbo->field = rocksdb_db_options->field
+  UpdateRepoDBO(create_if_missing);
+  UpdateRepoDBO(two_write_queues);
+  UpdateRepoDBO(manual_wal_flush);
+  //UpdateRepoDBO(create_missing_column_families);
+  UpdateRepoDBO(error_if_exists);
+  UpdateRepoDBO(paranoid_checks);
+  UpdateRepoDBO(allow_concurrent_memtable_write);
+  UpdateRepoDBO(enable_write_thread_adaptive_yield);
+  UpdateRepoDBO(use_fsync);
+  UpdateRepoDBO(use_direct_io_for_flush_and_compaction);
+  UpdateRepoDBO(allow_mmap_reads);
+  UpdateRepoDBO(allow_mmap_writes);
+  UpdateRepoDBO(is_fd_close_on_exec);
+  UpdateRepoDBO(advise_random_on_open);
+  UpdateRepoDBO(use_adaptive_mutex);
+  UpdateRepoDBO(enable_thread_tracking);
+
+  // 2. assign repo_dbo to rocksdb_db_options
+  *rocksdb_db_options = *repo_dbo;
+
+  // 3. overwrite g_repo dbo with rocksdb_db_options
+  g_repo.Put("dbopt", json{nullptr}, rocksdb_db_options);
+
+  ROCKSDB_VERIFY_EQ((*g_repo.m_impl->db_options.name2p)["dbopt"].get(), rocksdb_db_options.get());
+}
+
 /*
   Storage Engine initialization function, invoked when plugin is loaded.
 */
@@ -8933,6 +8971,8 @@ static int rocksdb_init_internal(void *const p) {
 #else
   reg_srv = mysql_plugin_registry_acquire();
 #endif
+
+  update_side_plugin_dbopt();
 
   my_h_service h_command_factory_srv = nullptr;
   my_h_service h_command_srv = nullptr;
