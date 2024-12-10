@@ -6310,25 +6310,8 @@ class Rdb_transaction_impl : public Rdb_transaction {
    to be non-conflicting. Any further usage of this class should completely
    be thought thoroughly.
 */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warray-bounds"
-struct FixMyRocksMassiveChanges {
-  union { rocksdb::WriteBatchWithIndex* m_batch_hack[1]; };
+class Rdb_writebatch_impl : public Rdb_transaction {
   rocksdb::WriteBatchWithIndex& m_batch;
-  FixMyRocksMassiveChanges() : m_batch(*(rocksdb::WriteBatchWithIndex*)(nullptr)) {
-    m_batch_hack[0] = nullptr;
-    // set m_batch by m_batch_hack[1]:
-    auto& fac = rocksdb_db_options->wbwi_factory;
-    m_batch_hack[1] = fac->NewWriteBatchWithIndex(rocksdb::BytewiseComparator(), true);
-  }
-  ~FixMyRocksMassiveChanges() {
-    delete m_batch_hack[1];
-  }
-};
-#pragma GCC diagnostic pop
-
-class Rdb_writebatch_impl : public Rdb_transaction, FixMyRocksMassiveChanges {
-  // mutable rocksdb::WriteBatchWithIndex m_batch; // FixMyRocksMassiveChanges
   rocksdb::WriteOptions write_opts;
   // Called after commit/rollback.
   void reset() {
@@ -6646,8 +6629,12 @@ class Rdb_writebatch_impl : public Rdb_transaction, FixMyRocksMassiveChanges {
     rollback_to_stmt_savepoint();
   }
 
+  static auto NewBatch() {
+    auto& fac = rocksdb_db_options->wbwi_factory;
+    return fac->NewWriteBatchWithIndex(rocksdb::BytewiseComparator(), true);
+  }
   explicit Rdb_writebatch_impl(THD *const thd)
-      : Rdb_transaction(thd) {}
+      : Rdb_transaction(thd), m_batch(*NewBatch()) {}
 
   virtual ~Rdb_writebatch_impl() override {
     rollback();
@@ -6655,6 +6642,8 @@ class Rdb_writebatch_impl : public Rdb_transaction, FixMyRocksMassiveChanges {
     // Remove from the global list before all other processing is started.
     // Otherwise, information_schema.rocksdb_trx can crash on this object.
     Rdb_transaction::remove_from_global_trx_list();
+
+    delete &m_batch;
   }
 };
 
@@ -13503,6 +13492,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
       table->m_status = 0;
       rc = 0;
     } else if (ActiveIndexType::Primary == m_active_index_type) {
+      ROCKSDB_ASSERT_EQ(active_index, table->s->primary_key);
       if (m_lock_rows != RDB_LOCK_NONE) {
         DEBUG_SYNC(thd, "rocksdb_concurrent_delete");
         if (ALWAYS_LOCK_BY_GET ||
@@ -13542,6 +13532,7 @@ int ha_rocksdb::index_next_with_direction_intern(uchar *const buf,
     } else if (unlikely(ActiveIndexType::Unknown == m_active_index_type)) {
       ROCKSDB_DIE("m_active_index_type is unknown");
     } else {
+      ROCKSDB_ASSERT_NE(active_index, table->s->primary_key);
       const rocksdb::Slice key = m_iterator->key();
       const rocksdb::Slice value = m_iterator->value();
       const Rdb_key_def &kd = *m_key_descr_arr[active_index_pos()];
