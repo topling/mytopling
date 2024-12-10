@@ -7008,8 +7008,6 @@ class [[nodiscard]] Rdb_ha_data {
   Rdb_bulk_load_context *get_or_create_bulk_load_ctx(THD *thd) {
     if (!m_bulk_load_ctx) {
       m_bulk_load_ctx = std::make_unique<Rdb_bulk_load_context>(thd);
-      ROCKSDB_ASSERT_EQ(thd->m_rdb_trx, trx);
-      m_bulk_load_ctx->set_use_auto_sort(thd->m_rdb_trx->use_auto_sort_sst());
     }
     return m_bulk_load_ctx.get();
   }
@@ -7083,6 +7081,10 @@ Rdb_transaction *inline_get_tx_from_thd(THD *const thd) {
 static void set_tx_on_thd(THD *const thd, Rdb_transaction *trx) {
   thd->m_rdb_trx = trx;
   return get_ha_data(thd)->set_trx(trx);
+}
+
+bool thd_use_auto_sort(THD* thd) {
+  return thd->m_rdb_trx->use_auto_sort_sst();
 }
 
 class Rdb_perf_context_guard {

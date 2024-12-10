@@ -275,13 +275,15 @@ uint Rdb_bulk_load_context::notify_ddl(std::string_view db_name,
   return rtn;
 }
 
+bool thd_use_auto_sort(THD*);
+
 Rdb_sst_info *Rdb_bulk_load_context::add_sst_info(
     rocksdb::DB *rdb, const std::string &tablename, const Rdb_key_def &kd,
     rocksdb::DBOptions &db_option, bool trace_sst_api,
     bool compression_parallel_threads) {
   auto sst_info_ptr = std::make_unique<Rdb_sst_info>(
       rdb, tablename, kd.get_name(), kd.get_cf(), db_option,
-      m_use_auto_sort && !kd.is_partial_index(),
+      thd_use_auto_sort(m_thd) && !kd.is_partial_index(),
       trace_sst_api,
       compression_parallel_threads);
   Rdb_sst_info *sst_info = sst_info_ptr.get();
