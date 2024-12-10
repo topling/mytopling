@@ -3468,8 +3468,8 @@ static int rocksdb_compact_column_family(
       auto grd =
           create_scope_guard([&]() { rdb_mc_thread.set_client_done(mc_id); });
       // NO_LINT_DEBUG
-      sql_print_information("RocksDB: Manual compaction of column family: %s\n",
-                            cf);
+      sql_print_information(
+                      "RocksDB: Manual compaction of column family: %s\n", cf);
       // Checking thd state every short cycle (100ms). This is for allowing to
       // exiting this function without waiting for CompactRange to finish.
       Rdb_manual_compaction_thread::Manual_compaction_request::mc_state
@@ -6627,7 +6627,7 @@ static int rocksdb_commit(handlerton *const hton MY_ATTRIBUTE((__unused__)),
   assert(thd != nullptr);
   assert(commit_latency_stats != nullptr);
 
-  auto clock = rocksdb_db_options->env->GetSystemClock().get();
+  auto clock = rocksdb::Env::Default()->GetSystemClock().get();
   rocksdb::StopWatchNano timer(clock, true);
 
   /* note: h->external_lock(F_UNLCK) is called after this function is called) */
@@ -13188,7 +13188,7 @@ int ha_rocksdb::check_uniqueness_and_lock(
        row_info.new_data == table->record[0]) ||
       (row_info.old_data == nullptr && row_info.new_data == table->record[0]));
 
-  THD* thd = ha_thd();
+  THD *thd = ha_thd();
   Rdb_transaction *const tx =
       get_or_create_tx(thd, m_tbl_def->get_table_type());
   tx->acquire_snapshot(false, m_tbl_def->get_table_type());
