@@ -122,6 +122,9 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, ha_rocksdb *rocksdb_handler,
                                      const Rdb_key_def &kd,
                                      const Rdb_key_def &pkd,
                                      const Rdb_tbl_def *tbl_def)
+    : m_kd(kd),
+      m_pkd(pkd),
+      m_thd(thd)
 {
   init(thd, rocksdb_handler, kd, pkd, tbl_def);
 }
@@ -147,7 +150,7 @@ void Rdb_iterator_base::init(THD *thd, ha_rocksdb *rocksdb_handler,
                              const Rdb_key_def& kd,
                              const Rdb_key_def& pkd,
                              const Rdb_tbl_def *tbl_def) {
-  if (m_kd && &m_kd->get_cf() != &kd.get_cf()) {
+  if (&m_kd.get_cf() != &kd.get_cf()) {
     release_scan_iterator(); // must release old for create new iterator
   }
   auto new_table_type = tbl_def->get_table_type();
@@ -166,8 +169,8 @@ void Rdb_iterator_base::init(THD *thd, ha_rocksdb *rocksdb_handler,
     }
   }
   m_thd = thd;
-  m_kd = &kd;
-  m_pkd = &pkd;
+  ((const Rdb_key_def**)(&m_thd))[-2] = &kd ; ROCKSDB_VERIFY_EQ(&m_kd , &kd );
+  ((const Rdb_key_def**)(&m_thd))[-1] = &pkd; ROCKSDB_VERIFY_EQ(&m_pkd, &pkd);
   m_tbl_def = tbl_def;
   m_table_type = new_table_type;
   m_valid = false;
@@ -184,7 +187,7 @@ void Rdb_iterator_base::init(THD *thd, ha_rocksdb *rocksdb_handler,
   static_assert(sizeof(m_prefix_sso) == sizeof(m_scan_it_lower_bound_sso));
   static_assert(sizeof(m_prefix_sso) == sizeof(m_scan_it_upper_bound_sso));
   static_assert(offsetof(Rdb_iterator_base, m_prefix_tuple) % 64 == 0);
-  const size_t packed_len = m_kd->max_storage_fmt_length();
+  const size_t packed_len = m_kd.max_storage_fmt_length();
   if (m_prefix_buf && m_packed_buf_len != packed_len) {
     if (m_packed_buf_len > sizeof(m_prefix_sso)) {
       my_free(m_scan_it_lower_bound);
@@ -284,7 +287,7 @@ void Rdb_iterator_base::setup_scan_iterator(
   // See setup_iterator_bounds on how the bound_len parameter is
   // used.
   if (ha_rocksdb::check_bloom_and_set_bounds(
-          m_thd, *m_kd, eq_cond, slice, end_slice, m_scan_it_lower_bound,
+          m_thd, m_kd, eq_cond, slice, end_slice, m_scan_it_lower_bound,
           m_scan_it_upper_bound, &m_scan_it_lower_bound_slice,
           &m_scan_it_upper_bound_slice, &m_check_iterate_bounds, find_flag)) {
     skip_bloom = false;
@@ -319,7 +322,7 @@ void Rdb_iterator_base::setup_scan_iterator(
     */
   if (!m_scan_it) {
     m_scan_it = rdb_tx_get_iterator(
-        m_thd, m_kd->get_cf(), skip_bloom, m_scan_it_lower_bound_slice,
+        m_thd, m_kd.get_cf(), skip_bloom, m_scan_it_lower_bound_slice,
         m_scan_it_upper_bound_slice, &m_scan_it_snapshot, m_table_type,
         read_current, !read_current).release();
    #if defined(_MSC_VER) || defined(__clang__)
@@ -374,7 +377,7 @@ void Rdb_iterator_base::setup_prefix_buffer(enum ha_rkey_function find_flag,
   uint prefix_key_len;
 
   if (!m_prefix_buf) {
-    const uint packed_len = m_kd->max_storage_fmt_length();
+    const uint packed_len = m_kd.max_storage_fmt_length();
     if (packed_len > sizeof(m_prefix_sso)) {
       m_scan_it_lower_bound = reinterpret_cast<uchar *>(
           my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
@@ -390,17 +393,17 @@ void Rdb_iterator_base::setup_prefix_buffer(enum ha_rkey_function find_flag,
     m_packed_buf_len = packed_len;
   }
   else {
-    ROCKSDB_VERIFY_EQ(m_kd->max_storage_fmt_length(), m_packed_buf_len);
+    ROCKSDB_VERIFY_EQ(m_kd.max_storage_fmt_length(), m_packed_buf_len);
   }
 
   if (find_flag == HA_READ_KEY_EXACT || find_flag == HA_READ_PREFIX_LAST) {
     memcpy(m_prefix_buf, start_key.data(), start_key.size());
     prefix_key_len = start_key.size();
   } else {
-    m_kd->get_infimum_key(m_prefix_buf, &prefix_key_len);
+    m_kd.get_infimum_key(m_prefix_buf, &prefix_key_len);
   }
   m_prefix_tuple = rocksdb::Slice((char *)m_prefix_buf, prefix_key_len);
-  assert(m_kd->get_index_number_storage_form() == m_index_number_storage_form);
+  assert(m_kd.get_index_number_storage_form() == m_index_number_storage_form);
 }
 
 int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
@@ -444,7 +447,7 @@ __always_inline
 bool Rdb_iterator_base::value_matches_prefix(const Slice &value,
                                              const Slice &prefix) const {
   // same symantic with Rdb_key_def::value_matches_prefix, this reduces
-  // a memory read (m_kd->get_index_number() has 2 memory read)
+  // a memory read (m_kd.get_index_number() has 2 memory read)
   return value.size() >= Rdb_key_def::INDEX_NUMBER_SIZE &&
     // *(const uint32*)value.data() == m_index_number_storage_form &&
     rocksdb::MemoryEqual(value.data(), prefix.data(),
@@ -460,12 +463,12 @@ ROCKSDB_FLATTEN int Rdb_iterator_base::prev() {
 }
 
 int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
+  if (!unlikely(m_valid)) return HA_ERR_END_OF_FILE;
+
   int rc = 0;
 
-  if (unlikely(!m_valid)) return HA_ERR_END_OF_FILE;
-
 #if 0 // now MyTopling support ReverseBytewiseComparator
-  assert(m_kd->get_cf().GetComparator()->IsForwardBytewise());
+  assert(m_kd.get_cf().GetComparator()->IsForwardBytewise());
 #endif
 
   const uint32_t refresh_interval = 10000;
@@ -558,7 +561,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
       }
       const rocksdb::Slice value = InvokeRocksIter_val();
       auto tx = m_thd->m_rdb_trx;
-      if (rdb_should_hide_ttl_rec(*m_kd, &value, *tx)) {
+      if (rdb_should_hide_ttl_rec(m_kd, &value, *tx)) {
         continue;
       }
     }
@@ -585,11 +588,11 @@ int Rdb_iterator_base::seek(enum ha_rkey_function find_flag,
   // We need to undo mutating the start key in case of retries using the same
   // buffer.
   auto start_key_guard = create_scope_guard([this, start_key_buf, start_key] {
-    this->m_kd->predecessor(start_key_buf, start_key.size());
+    this->m_kd.predecessor(start_key_buf, start_key.size());
   });
   if (find_flag == HA_READ_PREFIX_LAST_OR_PREV ||
       find_flag == HA_READ_PREFIX_LAST || find_flag == HA_READ_AFTER_KEY) {
-    bytes_changed_by_succ = m_kd->successor(start_key_buf, start_key.size());
+    bytes_changed_by_succ = m_kd.successor(start_key_buf, start_key.size());
   } else {
     start_key_guard.commit();
   }
@@ -645,12 +648,12 @@ int Rdb_iterator_base::convert_get_status(myrocks::Rdb_transaction &tx,
                                           bool skip_ttl_check) const {
   int rc = HA_EXIT_SUCCESS;
   if (!s.IsNotFound() && !s.ok()) {
-    return rdb_tx_set_status_error(tx, s, *m_kd, m_tbl_def);
+    return rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
   }
 
   const bool hide_ttl_rec =
-      !skip_ttl_check && m_kd->has_ttl() &&
-      rdb_should_hide_ttl_rec(*m_kd, s.IsNotFound() ? nullptr : value, tx);
+      !skip_ttl_check && m_kd.has_ttl() &&
+      rdb_should_hide_ttl_rec(m_kd, s.IsNotFound() ? nullptr : value, tx);
 
   if (hide_ttl_rec || s.IsNotFound()) {
     return HA_ERR_KEY_NOT_FOUND;
@@ -669,7 +672,7 @@ int Rdb_iterator_base::convert_iterator_status() const {
   if (s.ok() || s.IsNotFound()) return HA_ERR_END_OF_FILE;
 
   auto &tx = *get_tx_from_thd(m_thd);
-  return rdb_tx_set_status_error(tx, s, *m_kd, m_tbl_def);
+  return rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
 }
 
 int Rdb_iterator_base::get(const rocksdb::Slice *key,
@@ -679,9 +682,9 @@ int Rdb_iterator_base::get(const rocksdb::Slice *key,
   Rdb_transaction *const tx = m_thd->m_rdb_trx;
   rocksdb::Status s;
   if (type == RDB_LOCK_NONE) {
-    s = rdb_tx_get(tx, m_kd->get_cf(), *key, value, m_table_type);
+    s = rdb_tx_get(tx, m_kd.get_cf(), *key, value, m_table_type);
   } else {
-    s = rdb_tx_get_for_update(tx, *m_kd, *key, value, m_table_type,
+    s = rdb_tx_get_for_update(tx, m_kd, *key, value, m_table_type,
                               type == RDB_LOCK_WRITE, skip_wait);
   }
 
@@ -701,7 +704,7 @@ void Rdb_iterator_base::multi_get(
   auto tx = get_tx_from_thd(m_thd);
   const auto size = key_slices.size();
   std::vector<rocksdb::Status> statuses(size);
-  rdb_tx_multi_get(tx, m_kd->get_cf(), size, key_slices.data(),
+  rdb_tx_multi_get(tx, m_kd.get_cf(), size, key_slices.data(),
                    value_slices.data(), m_table_type, statuses.data(),
                    sorted_input);
   for (std::size_t i = 0; i < size; i++) {
@@ -726,9 +729,9 @@ Rdb_iterator_partial::Rdb_iterator_partial(THD *thd, const Rdb_key_def &kd,
       m_prefix_keyparts(kd.partial_index_keyparts()),
       m_cur_prefix_key_len(0),
       m_records_it(m_records.end()),
-      m_comparator(slice_comparator(kd.get_cf().GetComparator())),
+      m_comparator(slice_comparator(m_kd.get_cf().GetComparator())),
       m_comparator_root(slice_comparator(
-          kd.get_cf().GetComparator()->GetRootComparator())) {
+          m_kd.get_cf().GetComparator()->GetRootComparator())) {
   m_is_partial_iter = true;
   init_sql_alloc(PSI_NOT_INSTRUMENTED, &m_mem_root, 4096);
   auto max_mem = get_partial_index_sort_max_mem(thd);
@@ -740,7 +743,7 @@ Rdb_iterator_partial::Rdb_iterator_partial(THD *thd, const Rdb_key_def &kd,
                                    true /* decode all */);
 
   const auto packed_len =
-      std::max(m_kd->max_storage_fmt_length(), m_pkd->max_storage_fmt_length());
+      std::max(m_kd.max_storage_fmt_length(), m_pkd.max_storage_fmt_length());
   m_cur_prefix_key = reinterpret_cast<uchar *>(
       my_malloc(PSI_NOT_INSTRUMENTED, packed_len, MYF(0)));
   m_record_buf = reinterpret_cast<uchar *>(
@@ -777,7 +780,7 @@ int Rdb_iterator_partial::get_prefix_len(const rocksdb::Slice &start_key,
       return HA_EXIT_SUCCESS;
     }
 
-    if (m_kd->read_memcmp_key_part(&reader, i) > 0) {
+    if (m_kd.read_memcmp_key_part(&reader, i) > 0) {
       return HA_ERR_INTERNAL_ERROR;
     }
   }
@@ -822,7 +825,7 @@ int Rdb_iterator_partial::get_prefix_from_start(
     // using the secondary key, with the index_id overwritten.
     memcpy(m_cur_prefix_key, start_key.data(), prefix_len);
     rocksdb::Slice seek_key((const char *)m_cur_prefix_key, prefix_len);
-    m_pkd->get_infimum_key(m_cur_prefix_key, &tmp);
+    m_pkd.get_infimum_key(m_cur_prefix_key, &tmp);
 
     rc = m_iterator_pk.seek(find_flag, seek_key, false, empty_end_key);
     if (rc) {
@@ -874,11 +877,11 @@ int Rdb_iterator_partial::get_next_prefix(bool direction) {
     rc = get_prefix_from_start(
         direction ? HA_READ_AFTER_KEY : HA_READ_BEFORE_KEY, cur_prefix_key);
   }
-  m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
+  m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
   cur_prefix_key =
       rocksdb::Slice((const char *)m_cur_prefix_key, m_cur_prefix_key_len);
-  if (!rc && !m_kd->value_matches_prefix(cur_prefix_key, m_prefix_tuple)) {
+  if (!rc && !m_kd.value_matches_prefix(cur_prefix_key, m_prefix_tuple)) {
     rc = HA_ERR_END_OF_FILE;
   }
 
@@ -899,7 +902,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
   // First try reading from SK in the current prefix.
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                 m_cur_prefix_key_len);
-  m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
+  m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
   rocksdb::PinnableSlice value;
   rc = Rdb_iterator_base::get(&cur_prefix_key, &value, RDB_LOCK_NONE,
@@ -926,7 +929,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
   } else if (rc == 0) {
     // Found rows in SK, so use them
     m_materialized = true;
-    assert(value.size() == (m_pkd->has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
+    assert(value.size() == (m_pkd.has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
 
     // Rdb_iterator_base::seek below will overwrite m_prefix_tuple, so we save a
     // copy here.
@@ -962,7 +965,7 @@ int Rdb_iterator_partial::materialize_prefix() {
   uint tmp;
   int rc = HA_EXIT_SUCCESS;
   Rdb_transaction *const tx = m_thd->m_rdb_trx;
-  m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
+  m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                 m_cur_prefix_key_len);
 
@@ -972,15 +975,15 @@ int Rdb_iterator_partial::materialize_prefix() {
   // It is possible that someone else has already materialized this group
   // before we locked. Double check by doing a locking read on the sentinel.
   rocksdb::PinnableSlice value;
-  auto s = rdb_tx_get_for_update(tx, *m_kd, cur_prefix_key, &value, m_table_type,
+  auto s = rdb_tx_get_for_update(tx, m_kd, cur_prefix_key, &value, m_table_type,
                                  true, false);
   if (s.ok()) {
-    rdb_tx_release_lock(tx, *m_kd, cur_prefix_key, true /* force */);
+    rdb_tx_release_lock(tx, m_kd, cur_prefix_key, true /* force */);
     thd_proc_info(m_thd, old_proc_info);
     return HA_EXIT_SUCCESS;
   } else if (!s.IsNotFound()) {
     thd_proc_info(m_thd, old_proc_info);
-    return rdb_tx_set_status_error(*tx, s, *m_kd, m_tbl_def);
+    return rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
   }
 
   rocksdb::WriteOptions options;
@@ -994,19 +997,19 @@ int Rdb_iterator_partial::materialize_prefix() {
   size_t default_cf_ts_sz = rocksdb_enable_udt_in_mem ? ROCKSDB_SIZEOF_UDT : 0;
   auto wb = std::unique_ptr<rocksdb::WriteBatch>(
       new rocksdb::WriteBatch(0, 0, 0, default_cf_ts_sz));
-  auto val = m_pkd->has_ttl() ? rocksdb::Slice(max_timestamp_uint64,
+  auto val = m_pkd.has_ttl() ? rocksdb::Slice(max_timestamp_uint64,
                                                ROCKSDB_SIZEOF_TTL_RECORD)
                               : rocksdb::Slice();
-  s = wb->Put(&m_kd->get_cf(), cur_prefix_key, val);
+  s = wb->Put(&m_kd.get_cf(), cur_prefix_key, val);
   if (!s.ok()) {
-    rc = rdb_tx_set_status_error(*tx, s, *m_kd, m_tbl_def);
-    rdb_tx_release_lock(tx, *m_kd, cur_prefix_key, true /* force */);
+    rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
+    rdb_tx_release_lock(tx, m_kd, cur_prefix_key, true /* force */);
     thd_proc_info(m_thd, old_proc_info);
     return rc;
   }
 
-  m_pkd->get_infimum_key(m_cur_prefix_key, &tmp);
-  Rdb_iterator_base iter_pk(m_thd, nullptr, *m_pkd, *m_pkd, m_tbl_def);
+  m_pkd.get_infimum_key(m_cur_prefix_key, &tmp);
+  Rdb_iterator_base iter_pk(m_thd, nullptr, m_pkd, m_pkd, m_tbl_def);
   if (rocksdb_partial_index_ignore_killed) {
     iter_pk.set_ignore_killed(true);
   }
@@ -1034,13 +1037,13 @@ int Rdb_iterator_partial::materialize_prefix() {
     const rocksdb::Slice &rval = iter_pk.value();
 
     // Unpack from PK format
-    rc = m_converter.decode(*m_pkd, m_record_buf, &rkey, &rval);
+    rc = m_converter.decode(m_pkd, m_record_buf, &rkey, &rval);
     if (rc) {
       goto exit;
     }
 
     // Repack into SK format
-    const auto sk_packed_size = m_kd->pack_record(
+    const auto sk_packed_size = m_kd.pack_record(
         m_table, m_pack_buffer, m_record_buf, m_sk_packed_tuple, &m_sk_tails,
         false /* store_row_debug_checksums */, 0 /* hidden_pk_id */, 0, nullptr,
         m_converter.get_ttl_bytes_buffer());
@@ -1049,21 +1052,21 @@ int Rdb_iterator_partial::materialize_prefix() {
     if (rocksdb_enable_udt_in_mem) {
       const rocksdb::Slice &timestamp = iter_pk.timestamp();
       s = wb->Put(
-          &m_kd->get_cf(),
+          &m_kd.get_cf(),
           rocksdb::Slice((const char *)m_sk_packed_tuple, sk_packed_size),
           timestamp,
           rocksdb::Slice((const char *)m_sk_tails.ptr(),
                          m_sk_tails.get_current_pos()));
     } else {
       s = wb->Put(
-          &m_kd->get_cf(),
+          &m_kd.get_cf(),
           rocksdb::Slice((const char *)m_sk_packed_tuple, sk_packed_size),
           rocksdb::Slice((const char *)m_sk_tails.ptr(),
                          m_sk_tails.get_current_pos()));
     }
 
     if (!s.ok()) {
-      rc = rdb_tx_set_status_error(*tx, s, *m_kd, m_tbl_def);
+      rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
       goto exit;
     }
 
@@ -1083,14 +1086,14 @@ int Rdb_iterator_partial::materialize_prefix() {
     const rocksdb::Slice &dummy_slice = rocksdb::Slice("dummy");
     s = wb->UpdateTimestamps(dummy_slice, [](uint32_t) { return 0; });
     if (!s.ok()) {
-      rc = rdb_tx_set_status_error(*tx, s, *m_kd, m_tbl_def);
+      rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
       goto exit;
     }
   }
 
   s = rdb_get_rocksdb_db()->GetBaseDB()->Write(options, wb.get());
   if (!s.ok()) {
-    rc = rdb_tx_set_status_error(*tx, s, *m_kd, m_tbl_def);
+    rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
     goto exit;
   }
 
@@ -1098,8 +1101,8 @@ int Rdb_iterator_partial::materialize_prefix() {
   rocksdb_partial_index_rows_materialized += num_rows;
 
 exit:
-  m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
-  rdb_tx_release_lock(tx, *m_kd, cur_prefix_key, true /* force */);
+  m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
+  rdb_tx_release_lock(tx, m_kd, cur_prefix_key, true /* force */);
   thd_proc_info(m_thd, old_proc_info);
   return rc;
 }
@@ -1118,7 +1121,7 @@ int Rdb_iterator_partial::read_prefix_from_pk() {
 
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                 m_cur_prefix_key_len);
-  m_pkd->get_infimum_key(m_cur_prefix_key, &tmp);
+  m_pkd.get_infimum_key(m_cur_prefix_key, &tmp);
 
   // Since order does not matter (as we will reorder in SK order later), it is
   // better to read in reverse direction for rev cf.
@@ -1143,7 +1146,7 @@ int Rdb_iterator_partial::read_prefix_from_pk() {
     if (rc == HA_ERR_END_OF_FILE) {
       m_iterator_pk_position = Iterator_position::END_OF_FILE;
       break;
-    } else if (!m_pkd->value_matches_prefix(m_iterator_pk.key(),
+    } else if (!m_pkd.value_matches_prefix(m_iterator_pk.key(),
                                            cur_prefix_key)) {
       rc = HA_ERR_END_OF_FILE;
       m_iterator_pk_position = Iterator_position::START_NEXT_PREFIX;
@@ -1154,11 +1157,11 @@ int Rdb_iterator_partial::read_prefix_from_pk() {
     const rocksdb::Slice &rval = m_iterator_pk.value();
 
     // Unpack from PK format
-    rc = m_converter.decode(*m_pkd, m_record_buf, &rkey, &rval);
+    rc = m_converter.decode(m_pkd, m_record_buf, &rkey, &rval);
     if (rc) goto exit;
 
     // Repack into SK format
-    const auto sk_packed_size = m_kd->pack_record(
+    const auto sk_packed_size = m_kd.pack_record(
         m_table, m_pack_buffer, m_record_buf, m_sk_packed_tuple, &m_sk_tails,
         false /* store_row_debug_checksums */, 0 /* hidden_pk_id */, 0, nullptr,
         m_converter.get_ttl_bytes_buffer());
@@ -1234,7 +1237,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
   // First try reading from SK in the current prefix.
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                 m_cur_prefix_key_len);
-  m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
+  m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
   rocksdb::PinnableSlice value;
   rc = Rdb_iterator_base::get(&cur_prefix_key, &value, RDB_LOCK_NONE,
@@ -1259,11 +1262,11 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
       // key that we will actually seek to.
       auto start_key_guard =
           create_scope_guard([this, start_key_buf, start_key] {
-            this->m_kd->predecessor(start_key_buf, start_key.size());
+            this->m_kd.predecessor(start_key_buf, start_key.size());
           });
       if (find_flag == HA_READ_PREFIX_LAST_OR_PREV ||
           find_flag == HA_READ_PREFIX_LAST || find_flag == HA_READ_AFTER_KEY) {
-        m_kd->successor(start_key_buf, start_key.size());
+        m_kd.successor(start_key_buf, start_key.size());
       } else {
         start_key_guard.commit();
       }
@@ -1305,7 +1308,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
       }
     }
   } else if (rc == 0) {
-    assert(value.size() == (m_pkd->has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
+    assert(value.size() == (m_pkd.has_ttl() ? ROCKSDB_SIZEOF_TTL_RECORD : 0));
     m_materialized = true;
 
     rc = Rdb_iterator_base::seek(find_flag, start_key, true, end_key,
@@ -1319,7 +1322,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
 
     // Group is materialized, but no keys found. Check next prefix.
     if (rc == 0 &&
-        !m_kd->value_matches_prefix(Rdb_iterator_base::key(), cur_prefix_key)) {
+        !m_kd.value_matches_prefix(Rdb_iterator_base::key(), cur_prefix_key)) {
       next_prefix = true;
     }
   }
@@ -1329,7 +1332,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
   }
 
   if (!rc) {
-    if (!m_kd->value_matches_prefix(key(), m_prefix_tuple)) {
+    if (!m_kd.value_matches_prefix(key(), m_prefix_tuple)) {
       rc = HA_ERR_END_OF_FILE;
     } else {
       m_partial_valid = true;
@@ -1344,7 +1347,7 @@ int Rdb_iterator_partial::handle_get_result(
     Rdb_lock_type type, bool skip_ttl_check, bool skip_wait) {
   int rc = get_rtn_code;
   if (rc == HA_ERR_KEY_NOT_FOUND) {
-    const auto size = m_kd->get_primary_key_tuple(*m_pkd, key, m_sk_packed_tuple);
+    const auto size = m_kd.get_primary_key_tuple(m_pkd, key, m_sk_packed_tuple);
     if (size == RDB_INVALID_KEY_LEN) {
       return HA_ERR_ROCKSDB_CORRUPT_DATA;
     }
@@ -1355,11 +1358,11 @@ int Rdb_iterator_partial::handle_get_result(
     if (rc) return rc;
 
     // Unpack from PK format
-    rc = m_converter.decode(*m_pkd, m_record_buf, &pk_key, value);
+    rc = m_converter.decode(m_pkd, m_record_buf, &pk_key, value);
     if (rc) return rc;
 
     // Repack into SK format
-    const auto sk_packed_size = m_kd->pack_record(
+    const auto sk_packed_size = m_kd.pack_record(
         m_table, m_pack_buffer, m_record_buf, m_sk_packed_tuple, &m_sk_tails,
         false /* store_row_debug_checksums */, 0 /* hidden_pk_id */, 0, nullptr,
         m_converter.get_ttl_bytes_buffer());
@@ -1407,9 +1410,9 @@ int Rdb_iterator_partial::next_with_direction_in_group(bool direction) {
     if (rc == HA_EXIT_SUCCESS) {
       rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                     m_cur_prefix_key_len);
-      m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
+      m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
-      if (!m_kd->value_matches_prefix(Rdb_iterator_base::key(),
+      if (!m_kd.value_matches_prefix(Rdb_iterator_base::key(),
                                      cur_prefix_key)) {
         return HA_ERR_END_OF_FILE;
       }
@@ -1434,14 +1437,14 @@ int Rdb_iterator_partial::next_with_direction(bool direction) {
 
   if (!rc) {
     // On success, check if key is still within prefix.
-    if (!m_kd->value_matches_prefix(key(), m_prefix_tuple)) {
+    if (!m_kd.value_matches_prefix(key(), m_prefix_tuple)) {
       rc = HA_ERR_END_OF_FILE;
     }
   } else if (rc == HA_ERR_END_OF_FILE) {
     uint tmp;
     rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                   m_cur_prefix_key_len);
-    m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
+    m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
     if (m_prefix_tuple.size() >= cur_prefix_key.size()) {
       assert(memcmp(m_prefix_tuple.data(), cur_prefix_key.data(),

@@ -34,6 +34,10 @@ using rocksdb::Slice;
 typedef rocksdb::Slice (*slice_ft)(void*); // key/value
 class ha_rocksdb;
 bool is_valid_iter_err(rocksdb::Iterator *scan_it);
+
+// If the iterator is not valid it might be because of EOF but might be due
+// to IOError or corruption. The good practice is always check it.
+// https://github.com/facebook/rocksdb/wiki/Iterator#error-handling
 [[nodiscard]] bool is_valid_rdb_iterator(const rocksdb::Iterator &it);
 
 class Rdb_iterator : public rocksdb::CacheAlignedNewDelete {
@@ -131,6 +135,7 @@ class Rdb_iterator_base : public Rdb_iterator {
 
  #if defined(_MSC_VER) || defined(__clang__)
   rocksdb::Slice key() override { return m_scan_it->key(); }
+
   rocksdb::Slice value() override { return m_scan_it->value(); }
  #else
   rocksdb::Slice key  () override { return m_iter_key(m_scan_it); }
@@ -160,12 +165,13 @@ class Rdb_iterator_base : public Rdb_iterator {
 
   void setup_prefix_buffer(enum ha_rkey_function find_flag,
                            const rocksdb::Slice start_key);
-  const Rdb_key_def* m_kd;
+
+  const Rdb_key_def &m_kd;
 
   // Rdb_key_def of the primary key
-  const Rdb_key_def* m_pkd;
-
+  const Rdb_key_def &m_pkd;
   THD *m_thd;
+
 
   /* Iterator used for range scans and for full table/index scans */
   rocksdb::Iterator *m_scan_it = nullptr;
