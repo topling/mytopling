@@ -4079,7 +4079,7 @@ class Rdb_transaction {
             "Got snapshot conflict errors: %s, User: %s "
             "Query: %s",
             s.ToString().c_str(),
-            user_host_buff, thd->query());
+            user_host_buff, thd->query().str);
       }
       m_detailed_error = String(" (snapshot conflict)", system_charset_info);
       /* TODO(yzha) - row stats are gone in 8.0
