@@ -7865,7 +7865,12 @@ static void move_wals_to_target_dir() {
   }
 }
 
+void GitInfoShowerWholeArchive();
+
 static void update_side_plugin_dbopt() {
+  if (size_t(side_conf) == 1) {
+    GitInfoShowerWholeArchive(); // enforce compiler & linker
+  }
   auto repo_dbo = rdb_load_side_plugin(); // will exit if side_conf is null
 
   // 1. update repo_dbo
