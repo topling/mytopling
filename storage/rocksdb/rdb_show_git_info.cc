@@ -46,3 +46,9 @@ ROCKSDB_REG_DEFAULT_CONS(GitInfoShower, AnyPlugin);
 ROCKSDB_REG_AnyPluginManip("GitInfoShower");
 
 } // namespace rocksdb
+
+namespace myrocks {
+  void GitInfoShowerWholeArchive() {
+    printf("GitInfoShowerWholeArchive\n");
+  }
+}

@@ -332,9 +332,15 @@ IF(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
   SET(rocksdb_static_libs ${rocksdb_static_libs} "-lrt")
 ENDIF()
 
-MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SE_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
-  LINK_LIBRARIES ${rocksdb_static_libs}
-)
+IF (ROCKSDB_DYNAMIC_PLUGIN)
+  MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SE_SOURCES} STORAGE_ENGINE DEFAULT
+    MODULE_ONLY LINK_LIBRARIES)
+ELSE()
+  MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SE_SOURCES} STORAGE_ENGINE MANDATORY
+    STATIC_ONLY LINK_LIBRARIES ${rocksdb_static_libs})
+    # to fix linkage error on partition_base
+    TARGET_LINK_LIBRARIES(rocksdb_se sql_main)
+ENDIF()
 
 # MYSQL_ADD_PLUGIN will add C macro MYSQL_DYNAMIC_PLUGIN which makes
 # things much complex, so we use ADD_LIBRARY
