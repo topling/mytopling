@@ -1105,8 +1105,8 @@ class Rdb_field_packing {
   */
   bool m_field_is_nullable; /* true <=> NULL-byte is stored */
   bool m_field_unsigned_flag;
-  uchar m_field_null_bit_mask;
   enum_field_types m_field_real_type;
+  uchar m_field_null_bit_mask;
   uint m_field_pack_length;
   uint m_field_null_offset;
   ptrdiff_t m_field_offset;

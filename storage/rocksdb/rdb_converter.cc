@@ -274,8 +274,8 @@ Rdb_value_field_iterator<value_field_decoder, dst_type>::
   m_table = table;
   m_value_slice_reader = value_slice_reader;
   auto fields = rdb_converter->get_decode_fields();
-  m_field_iter = fields->data();
-  m_field_end = fields->size() + m_field_iter;
+  m_field_iter = fields->begin();
+  m_field_end = fields->end();
   m_null_bytes = rdb_converter->get_null_bytes();
 }
 
