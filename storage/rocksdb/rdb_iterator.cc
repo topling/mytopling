@@ -34,9 +34,6 @@
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 
-// intentional hide function get_tx_from_thd
-#define get_tx_from_thd(thd) thd->m_rdb_trx
-
 namespace myrocks {
 
 // If the iterator is not valid it might be because of EOF but might be due
@@ -350,7 +347,7 @@ void Rdb_iterator_base::setup_scan_iterator(
     if (snap) {
       m_scan_it_snapshot = snap;
     } else  if (!read_current) {
-      Rdb_transaction *const tx = m_thd->m_rdb_trx;
+      Rdb_transaction *const tx = get_tx_from_thd(m_thd);
       auto& ro = rdb_tx_acquire_snapshot(*tx, m_table_type); // must by reference
       snap = ro.snapshot;
     }
@@ -371,7 +368,7 @@ void Rdb_iterator_base::refresh_iter() {
 }
 
 void Rdb_iterator_base::finish_pin() {
-  auto tx = m_thd->m_rdb_trx;
+  auto tx = get_tx_from_thd(m_thd);
   rdb_tx_finish_pin(tx, m_table_type);
 }
 
@@ -563,7 +560,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
         break;
       }
       const rocksdb::Slice value = InvokeRocksIter_val();
-      auto tx = m_thd->m_rdb_trx;
+      auto tx = get_tx_from_thd(m_thd);
       if (rdb_should_hide_ttl_rec(m_kd, &value, *tx)) {
         continue;
       }
