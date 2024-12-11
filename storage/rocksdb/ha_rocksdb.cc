@@ -194,6 +194,7 @@ bool g_svr_read_only = false;
 
 static int mysql_value_to_bool(struct st_mysql_value *value,
                                bool *return_value);
+static class Rdb_ha_data *&get_ha_data(THD *const thd);
 
 /**
   Updates row counters based on the table type and operation type.
@@ -4143,7 +4144,9 @@ class Rdb_transaction {
     }
   }
 
+  size_t nth_set_params = 0;
   void set_params(THD *thd, TABLE_TYPE table_type) {
+    fprintf(stderr, "set_params: nth_set_params %zd m_row_lock_count %lld\n", nth_set_params++, m_row_lock_count);
     if (thd_tx_is_dd_trx(thd)) {
       assert(is_autocommit(*thd));
       assert(table_type == TABLE_TYPE::USER_TABLE);
@@ -4240,6 +4243,11 @@ class Rdb_transaction {
     assert(get_snapshot_ts() != 0);
 
     if (table_type == TABLE_TYPE::USER_TABLE) ++m_row_lock_count;
+
+    fprintf(stderr, "inc_lk_cnt: nth_set_params %zd m_row_lock_count %lld\n", nth_set_params, m_row_lock_count);
+    if (m_row_lock_count == 1015) {
+      fprintf(stderr, "inc_lk_cnt: nth_set_params %zd m_row_lock_count %lld 222\n", nth_set_params, m_row_lock_count);
+    }
   }
 
   ulonglong get_max_row_lock_count() const {
@@ -5476,9 +5484,11 @@ class Rdb_transaction {
     });
     Rdb_transaction_list::erase(this);
   }
-
+  static size_t& instance_cnt() { static size_t cnt = 0; return ++cnt; }
+  size_t seq = instance_cnt();
   explicit Rdb_transaction(THD *const thd)
       : m_thd(thd), m_tbl_io_perf(nullptr) {
+    fprintf(stderr, "Rdb_transaction thd %p, ha_data %p, cons %zd\n", m_thd, get_ha_data(m_thd), seq);
     m_read_opts[INTRINSIC_TMP].ignore_range_deletions =
         !rocksdb_enable_delete_range_for_drop_index;
     m_read_opts[USER_TABLE].ignore_range_deletions =
@@ -5488,6 +5498,7 @@ class Rdb_transaction {
   }
 
   virtual ~Rdb_transaction() {
+    fprintf(stderr, "Rdb_transaction thd %p, ha_data %p, dtor %zd\n", m_thd, get_ha_data(m_thd), seq);
     assert(statement_snapshot_type == snapshot_type::NONE);
     assert(!Rdb_transaction_list::contains(this));
   }
@@ -5548,6 +5559,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
 
   void release_lock(const Rdb_key_def &key_descr, const rocksdb::Slice &rowkey,
                     bool force) override {
+    fprintf(stderr, "release_lk: nth_set_params %zd m_row_lock_count %lld\n", nth_set_params, m_row_lock_count);
     assert(!is_ac_nl_ro_rc_transaction());
 
     if (!THDVAR(m_thd, lock_scanned_rows) || force) {
