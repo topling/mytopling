@@ -321,7 +321,7 @@ void Rdb_iterator_base::setup_scan_iterator(const rocksdb::Slice *const slice,
     if (snap) {
       m_scan_it_snapshot = snap;
     } else  if (!read_current) {
-      Rdb_transaction *const tx = m_thd->m_rdb_trx;
+      Rdb_transaction *const tx = get_tx_from_thd(m_thd);
       auto& ro = rdb_tx_acquire_snapshot(tx, m_table_type); // must by reference
       snap = ro.snapshot;
     }
@@ -522,7 +522,7 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
         break;
       }
       const rocksdb::Slice value = InvokeRocksIter_val();
-      auto tx = m_thd->m_rdb_trx;
+      auto tx = get_tx_from_thd(m_thd);
       if (rdb_should_hide_ttl_rec(*m_kd, &value, tx)) {
         continue;
       }
@@ -595,7 +595,7 @@ int Rdb_iterator_base::get(const rocksdb::Slice *key,
                            bool skip_ttl_check, bool skip_wait) {
   int rc = HA_EXIT_SUCCESS;
   m_valid = false;
-  Rdb_transaction *const tx = m_thd->m_rdb_trx;
+  Rdb_transaction *const tx = get_tx_from_thd(m_thd);
   rocksdb::Status s;
   if (type == RDB_LOCK_NONE) {
     s = rdb_tx_get(tx, m_kd->get_cf(), *key, value, m_table_type);
@@ -873,7 +873,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
 int Rdb_iterator_partial::materialize_prefix() {
   uint tmp;
   int rc = HA_EXIT_SUCCESS;
-  Rdb_transaction *const tx = m_thd->m_rdb_trx;
+  Rdb_transaction *const tx = get_tx_from_thd(m_thd);
   m_kd->get_infimum_key(m_cur_prefix_key, &tmp);
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                 m_cur_prefix_key_len);
