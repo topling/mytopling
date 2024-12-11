@@ -6552,7 +6552,9 @@ class Rdb_writebatch_impl : public Rdb_transaction {
       return;
     }
     auto& ro = const_cast<rocksdb::ReadOptions&>(m_read_opts[table_type]);
-    ro.StartPin();
+   #if 0 // disable for bugs: GetAndRefSuperVersion() called before FinishPin
+    ro.StartPin(); // for zero copy
+   #endif
     ro.async_io = rocksdb_async_queue_depth > 1;
     ro.async_queue_depth = rocksdb_async_queue_depth;
     m_batch.MultiGetFromBatchAndDB(rdb, m_read_opts[table_type], &column_family,
