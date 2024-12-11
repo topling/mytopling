@@ -7030,6 +7030,7 @@ static Rdb_ha_data *&get_ha_data(THD *const thd) {
   auto *&ha_data = get_ha_data_or_null(thd);
   if (unlikely(ha_data == nullptr)) {
     ha_data = new Rdb_ha_data();
+    thd->m_rdb_trx = nullptr;
   }
   return ha_data;
 }
@@ -7061,6 +7062,10 @@ Rdb_transaction *inline_get_tx_from_thd(THD *const thd) {
 #if 0
   return get_ha_data(thd)->get_trx();
 #else
+  #if !defined(NDEBUG)
+    auto tx = get_tx_from_thd(thd);
+    ROCKSDB_ASSERT_EQ(tx, thd->m_rdb_trx);
+  #endif
   return thd->m_rdb_trx;
 #endif
 }
