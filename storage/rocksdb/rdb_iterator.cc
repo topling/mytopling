@@ -34,6 +34,9 @@
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
 
+// intentional hide function get_tx_from_thd
+#define get_tx_from_thd(thd) thd->m_rdb_trx
+
 namespace myrocks {
 
 // If the iterator is not valid it might be because of EOF but might be due
@@ -679,7 +682,7 @@ int Rdb_iterator_base::get(const rocksdb::Slice *key,
                            rocksdb::PinnableSlice *value, Rdb_lock_type type,
                            bool skip_ttl_check, bool skip_wait) {
   m_valid = false;
-  Rdb_transaction *const tx = m_thd->m_rdb_trx;
+  Rdb_transaction *const tx = get_tx_from_thd(m_thd);
   rocksdb::Status s;
   if (type == RDB_LOCK_NONE) {
     s = rdb_tx_get(tx, m_kd.get_cf(), *key, value, m_table_type);
@@ -964,7 +967,7 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
 int Rdb_iterator_partial::materialize_prefix() {
   uint tmp;
   int rc = HA_EXIT_SUCCESS;
-  Rdb_transaction *const tx = m_thd->m_rdb_trx;
+  Rdb_transaction *const tx = get_tx_from_thd(m_thd);
   m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
   rocksdb::Slice cur_prefix_key((const char *)m_cur_prefix_key,
                                 m_cur_prefix_key_len);
