@@ -7018,10 +7018,17 @@ class [[nodiscard]] Rdb_ha_data {
   std::unique_ptr<Rdb_bulk_load_context> m_bulk_load_ctx;
 };
 
+__attribute_noinline__ static Rdb_ha_data* new_Rdb_ha_data() {
+  return new Rdb_ha_data();
+}
+__always_inline static // copyed from mysql_thd_api.cc: thd_ha_data
+void **my_core__thd_ha_data(const MYSQL_THD thd, const struct handlerton *hton) {
+  return &(const_cast<THD *>(thd))->get_ha_data(hton->slot)->ha_ptr;
+}
 __always_inline
 static Rdb_ha_data *&get_ha_data_or_null(THD *const thd) {
   Rdb_ha_data **ha_data =
-      reinterpret_cast<Rdb_ha_data **>(my_core::thd_ha_data(thd, rocksdb_hton));
+      reinterpret_cast<Rdb_ha_data **>(my_core__thd_ha_data(thd, rocksdb_hton));
   return *ha_data;
 }
 
@@ -7029,8 +7036,7 @@ __always_inline
 static Rdb_ha_data *&get_ha_data(THD *const thd) {
   auto *&ha_data = get_ha_data_or_null(thd);
   if (unlikely(ha_data == nullptr)) {
-    ha_data = new Rdb_ha_data();
-    thd->m_rdb_trx = nullptr;
+    ha_data = new_Rdb_ha_data();
   }
   return ha_data;
 }
@@ -7041,6 +7047,7 @@ static void destroy_ha_data(THD *const thd) {
   ha_data = nullptr;
 }
 
+ROCKSDB_FLATTEN
 Rdb_transaction *get_tx_from_thd(THD *const thd) {
   return get_ha_data(thd)->get_trx();
 }
@@ -7059,26 +7066,17 @@ void remove_tmp_table_handler(THD *const thd, ha_rocksdb *rocksdb_handler) {
 
 __always_inline
 Rdb_transaction *inline_get_tx_from_thd(THD *const thd) {
-#if 0
   return get_ha_data(thd)->get_trx();
-#else
-  #if !defined(NDEBUG)
-    auto tx = get_tx_from_thd(thd);
-    ROCKSDB_ASSERT_EQ(tx, thd->m_rdb_trx);
-  #endif
-  return thd->m_rdb_trx;
-#endif
 }
 // use inline in this translation unit
 #define get_tx_from_thd inline_get_tx_from_thd
 
 static void set_tx_on_thd(THD *const thd, Rdb_transaction *trx) {
-  thd->m_rdb_trx = trx;
   return get_ha_data(thd)->set_trx(trx);
 }
 
 bool thd_use_auto_sort(THD* thd) {
-  return thd->m_rdb_trx->use_auto_sort_sst();
+  return get_tx_from_thd(thd)->use_auto_sort_sst();
 }
 
 class Rdb_perf_context_guard {

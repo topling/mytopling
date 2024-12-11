@@ -33,6 +33,7 @@ namespace myrocks {
 using rocksdb::Slice;
 typedef rocksdb::Slice (*slice_ft)(void*); // key/value
 class ha_rocksdb;
+class Rdb_transaction;
 bool is_valid_iter_err(rocksdb::Iterator *scan_it);
 
 // If the iterator is not valid it might be because of EOF but might be due
