@@ -3614,12 +3614,14 @@ sub environment_setup {
   # ----------------------------------------------------
   # sst_dump
   # ----------------------------------------------------
-  my $exe_sst_dump=
-    mtr_exe_maybe_exists(
-           vs_config_dirs('storage/rocksdb', 'sst_dump'),
-           "$path_client_bindir/sst_dump",
-           "$basedir/storage/rocksdb/sst_dump");
-  $ENV{'MYSQL_SST_DUMP'}= native_path($exe_sst_dump);
+  if (!exists $ENV{'MYSQL_SST_DUMP'}) {
+    my $exe_sst_dump=
+      mtr_exe_maybe_exists(
+            vs_config_dirs('storage/rocksdb', 'sst_dump'),
+            "$path_client_bindir/sst_dump",
+            "$basedir/storage/rocksdb/sst_dump");
+    $ENV{'MYSQL_SST_DUMP'}= native_path($exe_sst_dump);
+  }
 }
 
 sub remove_vardir_subs() {
