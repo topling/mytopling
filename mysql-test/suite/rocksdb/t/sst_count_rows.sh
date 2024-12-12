@@ -14,8 +14,12 @@ while : ; do
   for f in `ls $1/mysqld.1/data/.rocksdb/*.sst`
   do
     # excluding system cf whose id is 1
-    SYSTEM_COLUMN_FAMILY=`$sst_dump --command=scan --show_properties --file=$f | \
+    SYSTEM_COLUMN_FAMILY=`$sst_dump --show_properties --file=$f | \
       grep "column family ID: 1" | wc -l`
+    if [ "${PIPESTATUS[0]}" != 0 ]; then
+      echo "cmd sst_dump = {"$sst_dump"} failed"
+      exit 1
+    fi
     if [[ "$SYSTEM_COLUMN_FAMILY" == '1' ]]; then
         continue
     fi
@@ -30,9 +34,9 @@ while : ; do
     TOTAL_E=$(($TOTAL_E+$EXISTS))
     # echo "${f##*/} $DELETED $EXISTS"
   done
-  if [ $TOTAL_E != "0" ] || ([ $wait_for_no_more_rows = "1" ] && [ $TOTAL_E = "0" ])
+  if [ $TOTAL_E != "0" ] || ([ "$wait_for_no_more_rows" = "1" ] && [ $TOTAL_E = "0" ])
   then
-    if [ $TOTAL_D = "0" ] || [ $wait_for_no_more_deletes = "0" ]
+    if [ $TOTAL_D = "0" ] || [ "$wait_for_no_more_deletes" = "0" ]
     then
       break
     fi
