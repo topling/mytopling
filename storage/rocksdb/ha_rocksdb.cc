@@ -13057,7 +13057,12 @@ static ha_rows scan_records_num_st(THD* thd, rocksdb::ColumnFamilyHandle* cf, ui
  #else
   auto iter = tx->get_iterator(ro, cf, USER_TABLE);
  #endif
-  iter->Seek(Slice((char*)&index_id_storage_form, 4));
+  if (cf->GetComparator()->IsReverseBytewise()) {
+    uint32_t prev_prefix = __bswap_32(index_id + 1);
+    iter->Seek(Slice((char*)&prev_prefix, 4));
+  } else {
+    iter->Seek(Slice((char*)&index_id_storage_form, 4));
+  }
   while (iter->Valid() && !NoAtomic(thd->killed)) {
     Slice key = iter->key();
     uint32_t index_id_prefix = unaligned_load<uint32_t>(key.data());
@@ -13096,6 +13101,11 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* 
   m_tx = get_or_create_tx(thd, USER_TABLE);
   uint32_t start = __bswap_32(index_id);
   uint32_t limit = __bswap_32(index_id + 1);
+  bool is_reverse = cfh->GetComparator()->IsReverseBytewise();
+  if (is_reverse) {
+    start = __bswap_32(index_id + 1);
+    limit = __bswap_32(index_id - 1);
+  }
   rocksdb::Range rng{{(char*)&start, 4}, {(char*)&limit, 4}};
   m_bounds.reserve(m_num_threads * 400);
   m_bounds.push_back({rng.start, 0});
@@ -13103,7 +13113,7 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* 
   s.PermitUncheckedError();
   if (m_bounds.size() >= 1) {
     uint32_t index_id_storage_form = __bswap_32(index_id);
-    m_bounds.erase(std::remove_if(m_bounds.begin(), m_bounds.end(),
+    m_bounds.erase(std::remove_if(m_bounds.begin() + 1, m_bounds.end(),
       [index_id_storage_form](const rocksdb::Anchor& a) {
         return *(const uint32_t*)a.user_key.data() != index_id_storage_form;
       }), m_bounds.end());
@@ -13127,10 +13137,26 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* 
     }
     std::sort(m_bounds.begin(), m_bounds.end());
     m_bounds.erase(std::unique(m_bounds.begin(), m_bounds.end()), m_bounds.end());
+    if (is_reverse) {
+      std::reverse(m_bounds.begin(), m_bounds.end());
+    }
     TERARK_VERIFY_S_EQ(Slice(m_bounds.front().user_key), rng.start);
     TERARK_VERIFY_S_EQ(Slice(m_bounds.back ().user_key), rng.limit);
     if (m_fixed_user_key_len) {
-      m_bounds.back().user_key.append(m_fixed_user_key_len - 4, '\0');
+      unsigned char padding_byte = is_reverse ? '\xFF' : '\0';
+      // 1. For ToplingSST, all anchors are full user keys, just
+      //    m_bounds.back() needs to be padded.
+      // 2. For BlockBasedTable, anchors may be prefix of full user keys, all
+      //    anchors in m_bounds need to be padded.
+      // 3. m_bounds.back() must be padded with `padding_byte`, others can be
+      //    padded with any byte, to be simple, we use `padding_byte` for all.
+      // 4. m_bounds[0] must not be padded
+      for (size_t i = 1 ; i < m_bounds.size(); i++) {
+        auto& k = m_bounds[i].user_key;
+        if (k.size() < m_fixed_user_key_len) {
+          k.append(m_fixed_user_key_len - k.size(), padding_byte);
+        }
+      }
     }
     m_range_rows.resize(m_bounds.size() - 1);
   }
