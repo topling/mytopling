@@ -13102,9 +13102,10 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* 
   rocksdb::Status s = rdb->ApproximateKeyAnchors(cfh, &rng, &m_bounds);
   s.PermitUncheckedError();
   if (m_bounds.size() >= 1) {
+    uint32_t index_id_storage_form = __bswap_32(index_id);
     m_bounds.erase(std::remove_if(m_bounds.begin(), m_bounds.end(),
-      [start](const rocksdb::Anchor& a) {
-        return *(const uint32_t*)a.user_key.data() != start;
+      [index_id_storage_form](const rocksdb::Anchor& a) {
+        return *(const uint32_t*)a.user_key.data() != index_id_storage_form;
       }), m_bounds.end());
     if (m_bounds.size() >= 1) {
       size_t max_bounds = m_num_threads * 200;
