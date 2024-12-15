@@ -4901,7 +4901,6 @@ class Rdb_transaction {
         arg.column_family = commit_info.get_cf(),
         arg.external_files = commit_info.get_committed_files(),
         arg.options = options;
-        arg.options.override_cf_id = commit_info.get_cf()->GetID();
 
         arg_map.emplace(commit_info.get_cf(), arg);
       } else {
@@ -4945,7 +4944,6 @@ class Rdb_transaction {
       ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
       FixMergeTableCFO(&cfo[0].options);
       cfo[0].options.memtable_factory = default_memtab_fac; // do not use CSPP
-      cfo[0].name = "default";
       std::vector<std::string> outputs;
       s = rocksdb::MergeTables(files.external_files, tmp_dbname, dbo, cfo, cf->GetID(), &outputs);
       ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
