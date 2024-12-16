@@ -12,6 +12,10 @@
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
+        "auto_compaction_max_wamp": 100000000,
+        "mark_for_compaction_max_wamp": 100000000,
+        "trivial_move_always_max_output_level": 500,
+        "trivial_move_max_file_size_multiplier": 40000,
         "default": "bb",
         "level_writers": [ "bb", "bb", "bb", "bb", "bb", "bb", "bb"]
       }
@@ -20,6 +24,10 @@
   "CFOptions": {
     "default": {
       "sst_partitioner_factory": "${rdb_partitioner}",
+      "write_buffer_size": "8M",
+      "max_write_buffer_size_to_maintain": "32M",
+      "target_file_size_base": "1M",
+      "target_file_size_multiplier": 1,
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },
@@ -35,6 +43,10 @@
     },
     "rev:order": {
       "sst_partitioner_factory": "${rdb_rev_partitioner}",
+      "write_buffer_size": "2M",
+      "max_write_buffer_size_to_maintain": "32M",
+      "target_file_size_base": "2M",
+      "target_file_size_multiplier": 1,
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },
