@@ -19,18 +19,22 @@
   },
   "CFOptions": {
     "default": {
+      "sst_partitioner_factory": "${rdb_partitioner}",
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },
     "encrypt": {
+      "sst_partitioner_factory": "${rdb_partitioner}",
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },
     "default_sk": {
+      "sst_partitioner_factory": "${rdb_partitioner}",
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },
     "rev:order": {
+      "sst_partitioner_factory": "${rdb_rev_partitioner}",
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },

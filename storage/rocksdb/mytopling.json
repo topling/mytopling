@@ -277,6 +277,16 @@
     }
   },
   "SstPartitionerFactory": {
+    "rdb_partitioner": {
+      "class": "Rdb_sst_partitioner_factory",
+      "params": {}
+    },
+    "rdb_rev_partitioner": {
+      "class": "Rdb_sst_partitioner_factory",
+      "params": {
+        "comparator": "${rev}"
+      }
+    },
     "by_prefix": {
       "class": "FixedPrefix",
       "params": {
