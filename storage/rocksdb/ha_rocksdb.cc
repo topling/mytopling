@@ -8922,6 +8922,15 @@ static bool rocksdb_notify_drop_table(THD *thd, const MDL_key *mdl_key,
 
 void GitInfoShowerWholeArchive();
 
+static enum_variable_source get_var_source(rocksdb::Slice name) {
+  auto src = enum_variable_source::COMPILED;
+  if (get_sysvar_source(name.data_, name.size_, &src)) {
+    // true indicate not found
+    ROCKSDB_DIE("get_sysvar_source(%s) not found", name.data_);
+  }
+  return src;
+}
+
 static void update_side_plugin_dbopt() {
   if (size_t(side_conf) == 1) {
     GitInfoShowerWholeArchive(); // enforce compiler & linker
@@ -8929,22 +8938,49 @@ static void update_side_plugin_dbopt() {
   auto repo_dbo = rdb_load_side_plugin(); // will exit if side_conf is null
 
   // 1. update repo_dbo
-  #define UpdateRepoDBO(field) repo_dbo->field = rocksdb_db_options->field
+  #define UpdateRepoDBO(field) \
+    if (get_var_source(ROCKSDB_PP_STR(ROCKSDB_PP_CAT2(rocksdb_, field))) \
+          != enum_variable_source::COMPILED) \
+      repo_dbo->field = rocksdb_db_options->field; \
+    else (void)0
   UpdateRepoDBO(create_if_missing);
   UpdateRepoDBO(two_write_queues);
   UpdateRepoDBO(manual_wal_flush);
   //UpdateRepoDBO(create_missing_column_families);
   UpdateRepoDBO(error_if_exists);
+  UpdateRepoDBO(compaction_readahead_size);
   UpdateRepoDBO(paranoid_checks);
   UpdateRepoDBO(allow_concurrent_memtable_write);
   UpdateRepoDBO(enable_write_thread_adaptive_yield);
+  UpdateRepoDBO(max_open_files);
+  UpdateRepoDBO(max_file_opening_threads);
+  UpdateRepoDBO(max_total_wal_size);
   UpdateRepoDBO(use_fsync);
+  UpdateRepoDBO(delete_obsolete_files_period_micros);
+  UpdateRepoDBO(max_background_jobs);
+  UpdateRepoDBO(max_background_flushes);
+  UpdateRepoDBO(max_background_compactions);
+  UpdateRepoDBO(max_subcompactions);
+  UpdateRepoDBO(max_log_file_size);
+  UpdateRepoDBO(log_file_time_to_roll);
+  UpdateRepoDBO(delete_obsolete_files_period_micros);
+  UpdateRepoDBO(keep_log_file_num);
+  UpdateRepoDBO(max_manifest_file_size);
+  UpdateRepoDBO(table_cache_numshardbits);
+  UpdateRepoDBO(WAL_ttl_seconds);
+  UpdateRepoDBO(WAL_size_limit_MB);
+  UpdateRepoDBO(manifest_preallocation_size);
   UpdateRepoDBO(use_direct_io_for_flush_and_compaction);
   UpdateRepoDBO(allow_mmap_reads);
   UpdateRepoDBO(allow_mmap_writes);
   UpdateRepoDBO(is_fd_close_on_exec);
+  UpdateRepoDBO(stats_dump_period_sec);
   UpdateRepoDBO(advise_random_on_open);
+  UpdateRepoDBO(db_write_buffer_size);
   UpdateRepoDBO(use_adaptive_mutex);
+  UpdateRepoDBO(bytes_per_sync);
+  UpdateRepoDBO(wal_bytes_per_sync);
+  UpdateRepoDBO(enable_thread_tracking);
   UpdateRepoDBO(enable_thread_tracking);
 
   // 2. assign repo_dbo to rocksdb_db_options
