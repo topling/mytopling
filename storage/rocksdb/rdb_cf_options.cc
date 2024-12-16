@@ -398,3 +398,19 @@ bool Rdb_cf_options::get_cf_options(const std::string &cf_name,
 }
 
 }  // namespace myrocks
+
+#include <topling/side_plugin_factory.h>
+namespace rocksdb {
+using myrocks::Rdb_sst_partitioner_factory;
+static
+std::shared_ptr<SstPartitionerFactory>
+JS_New_Rdb_sst_partitioner_factory(const json& js, const SidePluginRepo& repo) {
+  const Comparator* comparator = BytewiseComparator();
+  int num_levels = 7;
+  ROCKSDB_JSON_OPT_FACT(js, comparator);
+  ROCKSDB_JSON_OPT_PROP(js, num_levels);
+  return std::make_shared<Rdb_sst_partitioner_factory>
+          (comparator, num_levels, comparator->IsReverseBytewise());
+}
+ROCKSDB_FACTORY_REG("Rdb_sst_partitioner_factory", JS_New_Rdb_sst_partitioner_factory);
+}
