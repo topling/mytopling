@@ -129,7 +129,6 @@ public:
       //m_ttl_offset = 0;
       assert(0 == Rdb_key_def::calculate_index_flag_offset(
           lo->m_index_flags, Rdb_key_def::TTL_FLAG));
-      return;
     }
 
 #if !defined(NDEBUG)
@@ -146,7 +145,7 @@ public:
     if (!m_is_compact_worker) {
       // Case: TTL filtering is paused or expiration ts is 0 (happens on server
       // restart until the next compaction ts is calculated)
-      if (rdb_is_ttl_compaction_filter_paused() || m_wire->m_snapshot_timestamp == 0) {
+      if (rdb_is_ttl_compaction_filter_paused() || m_wire->m_expiration_timestamp == 0) {
         return false;
       }
     }
@@ -158,22 +157,22 @@ public:
       sql_print_error("Decoding ttl from PK value failed in compaction filter, "
                       "for index (%u,%u), val: %s",
                       m_prev_index.cf_id, m_prev_index.index_id, buf.c_str());
-      abort();
     }
     ttl_timestamp = rdb_netbuf_to_uint64((const uchar*)existing_value.data());
 
     /*
-      Filter out the record only if it is older than the oldest snapshot
+      Filter out the record only if it is older than the expiration
       timestamp.  This prevents any rows from expiring in the middle of
       long-running transactions.
     */
-    return ttl_timestamp + m_ttl_duration <= m_wire->m_snapshot_timestamp;
+    return ttl_timestamp + m_ttl_duration <= m_wire->m_expiration_timestamp;;
   }
 
   struct WireData {
+    void calculate_expiration_timestamp();
     void InitFromDB(uint32_t cf_id);
-    // Oldest snapshot timestamp at the time a TTL index is discovered
-    mutable uint64_t m_snapshot_timestamp = 0;
+    // Timestamp below which rows can be compacted away
+    uint64_t m_expiration_timestamp = 0; // 0 indicate HAS NO VALUE
 
     std::vector<GL_INDEX_ID> m_del_vec;
     std::vector<Rdb_index_info> m_idx_vec;
@@ -249,18 +248,36 @@ Rdb_compact_filter::~Rdb_compact_filter() {
   }
 }
 
-void Rdb_compact_filter::WireData::InitFromDB(uint32_t cf_id) {
-  m_snapshot_timestamp = 0;
-  if (rocksdb::DB* rdb = rdb_get_rocksdb_db()) {
-    if (!rdb->GetIntProperty(rocksdb::DB::Properties::kOldestSnapshotTime,
-                            &m_snapshot_timestamp) ||
-        m_snapshot_timestamp == 0) {
-      m_snapshot_timestamp = static_cast<uint64_t>(std::time(nullptr));
-    }
+void Rdb_compact_filter::WireData::calculate_expiration_timestamp() {
+  ROCKSDB_ASSERT_EQ(m_expiration_timestamp, 0);
+
+  uint64_t oldest_snapshot_timestamp = 0;
+  rocksdb::DB *const rdb = rdb_get_rocksdb_db();
+  if (!rdb->GetIntProperty(rocksdb::DB::Properties::kOldestSnapshotTime,
+                            &oldest_snapshot_timestamp) ||
+      oldest_snapshot_timestamp == 0) {
+    oldest_snapshot_timestamp = static_cast<uint64_t>(std::time(nullptr));
   }
+
+  m_expiration_timestamp = oldest_snapshot_timestamp;
+
   if (rdb_is_binlog_ttl_enabled()) {
-    minimize(m_snapshot_timestamp, rocksdb_binlog_ttl_compaction_timestamp);
+    m_expiration_timestamp =
+        std::min(rocksdb_binlog_ttl_compaction_timestamp.load(),
+                  m_expiration_timestamp);
   }
+
+#ifndef NDEBUG
+  int snapshot_ts = rdb_dbug_set_ttl_snapshot_ts();
+  if (snapshot_ts) {
+    m_expiration_timestamp =
+        static_cast<uint64_t>(std::time(nullptr)) + snapshot_ts;
+  }
+#endif
+}
+
+void Rdb_compact_filter::WireData::InitFromDB(uint32_t cf_id) {
+  calculate_expiration_timestamp();
   auto dman = rdb_get_dict_manager()->get_dict_manager_selector_const(cf_id);
   dman->get_ongoing_drop_indexes(&m_del_vec);
   if (dman->get_system_cf() && rdb_is_ttl_enabled()) {
@@ -323,7 +340,7 @@ struct Rdb_compact_filter_factory_SerDe : SerDeFunc<CompactionFilterFactory> {
     else {
       auto wire = std::make_shared<Rdb_compact_filter::WireData>();
       wire->InitFromDB(m_cp->cf_id);
-      dio << wire->m_snapshot_timestamp;
+      dio << wire->m_expiration_timestamp;
       dio << wire->m_del_vec;
       dio << wire->m_idx_vec;
       DEBG("job-%05d: Rdb_compact_filter_factory_SerDe::Serialize: job raw = %.3f GB, zip = %.3f GB, smallest_seqno = %lld",
@@ -337,7 +354,7 @@ struct Rdb_compact_filter_factory_SerDe : SerDeFunc<CompactionFilterFactory> {
     if (IsCompactionWorker()) {
       //ROCKSDB_VERIFY(terark::getEnvBool("MULTI_PROCESS"));
       auto wire = std::make_shared<Rdb_compact_filter::WireData>();
-      dio >> wire->m_snapshot_timestamp;
+      dio >> wire->m_expiration_timestamp;
       dio >> wire->m_del_vec;
       dio >> wire->m_idx_vec;
       fac->m_cp = this->m_cp;
