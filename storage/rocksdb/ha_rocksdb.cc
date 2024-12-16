@@ -1286,6 +1286,7 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
     }
     o = g_repo.m_impl->db_options.name2p->begin()->second;
     o->max_open_files = -1; // topling specific
+    o->listeners.push_back(listener);
     g_repo.Put("rdb_listener", json{
       {"class", "Rdb_event_listener"},
       {"params", {"empty", "param"}},
@@ -1299,11 +1300,9 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
 }
 static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
   std::shared_ptr<rocksdb::DBOptions> o;
-  auto listener = std::make_shared<Rdb_event_listener>(&ddl_manager);
   o = std::make_shared<rocksdb::DBOptions>();
   o->max_open_files = -2;  // auto-tune to 50% open_files_limit
   o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
-  o->listeners.push_back(listener);
 
   o->create_if_missing = true;
   o->max_subcompactions = DEFAULT_SUBCOMPACTIONS;
@@ -3664,6 +3663,7 @@ static rocksdb::DBOptions MergeTableDBOptions() {
   dbo.create_missing_column_families = true;
   dbo.info_log = nullptr;
   dbo.max_subcompactions = rocksdb_bulk_load_subcompactions;
+  dbo.listeners.clear(); // avoid doubling the listener effects
   return dbo;
 }
 
