@@ -76,7 +76,7 @@
     "block_cache": {
       "class": "LRUCache",
       "params": {
-        "capacity": "1G",
+        "capacity": "8G",
         "num_shard_bits": -1,
         "strict_capacity_limit": false,
         "high_pri_pool_ratio": 0.75,
@@ -107,9 +107,11 @@
     "bb": {
       "class": "BlockBasedTable",
       "params": {
+        "cache_index_and_filter_blocks": true,
+        "pin_l0_filter_and_index_blocks_in_cache": true,
         "block_cache": "${block_cache}",
-        "index_type": "kTwoLevelIndexSearch",
-        "block_size": "8K"
+        "//index_type": "kTwoLevelIndexSearch",
+        "//block_size": "8K"
       }
     },
     "sng": {
