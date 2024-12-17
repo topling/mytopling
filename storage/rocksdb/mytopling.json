@@ -355,10 +355,6 @@
       "template": "${default}",
       "//cf_paths": "/nvme-shared/mytopling/__tmp__"
     },
-    "__tmp_system__": {
-      "template": "${default}",
-      "//cf_paths": "/nvme-shared/mytopling/__tmp_system__"
-    },
     "__system__": {
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
@@ -370,6 +366,10 @@
       "check_flush_compaction_key_order": true,
       "paranoid_file_checks": true,
       "merge_operator": "${system_merge_op}"
+    },
+    "__tmp_system__": {
+      "template": "${__system__}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp_system__"
     },
     "sample": {
       "template": "default",
