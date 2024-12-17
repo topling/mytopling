@@ -38,6 +38,11 @@
 
 namespace myrocks {
 
+bool repo_support_dynamic_create_cf();
+rocksdb::Status
+repo_create_cf(const std::string& cfname, rocksdb::ColumnFamilyHandle** p_cfh);
+rocksdb::Status repo_drop_cf(rocksdb::ColumnFamilyHandle* cfh);
+
 /* Check if ColumnFamily name says it's a reverse-ordered CF */
 bool Rdb_cf_manager::is_cf_name_reverse(std::string_view name) {
   /* Empty string means the default CF is used. (TODO: can the default CF be
@@ -62,7 +67,9 @@ bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
   std::vector<std::string> tmp_cfs = {DEFAULT_TMP_CF_NAME,
                                       DEFAULT_TMP_SYSTEM_CF_NAME};
 
-  tmp_cfs.clear(); // !!MyTopling: Do not drop tmp cf
+  if (!repo_support_dynamic_create_cf()) {
+    tmp_cfs.clear(); // !!MyTopling: Do not drop tmp cf
+  }
 
   std::vector<std::string> default_cfs = {DEFAULT_CF_NAME,
                                           DEFAULT_SYSTEM_CF_NAME};
@@ -80,7 +87,7 @@ bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
           "RocksDB: Dropping column family %s with id %u on RocksDB for temp "
           "table",
           cf_name.c_str(), cf_id);
-      auto status = rdb->DropColumnFamily(cfh_ptr);
+      auto status = repo_drop_cf(cfh_ptr);
       if (status.ok()) {
         delete (cfh_ptr);
         continue;
@@ -171,7 +178,7 @@ std::shared_ptr<rocksdb::ColumnFamilyHandle> Rdb_cf_manager::get_or_create_cf(
 
   if (it != m_cf_name_map.end()) {
     cf_handle = it->second;
-  } else if (true) {
+  } else if (!repo_support_dynamic_create_cf()) {
     cf_handle = nullptr;
     // MyTopling does not support dynamic create cf.
     // cf_name was passed through from generate_cf_name.
@@ -197,7 +204,7 @@ std::shared_ptr<rocksdb::ColumnFamilyHandle> Rdb_cf_manager::get_or_create_cf(
 
     rocksdb::ColumnFamilyHandle *cf_handle_ptr = nullptr;
     const rocksdb::Status s =
-        rdb->CreateColumnFamily(opts, cf_name, &cf_handle_ptr);
+        repo_create_cf(cf_name, &cf_handle_ptr);
 
     if (s.ok()) {
       assert(cf_handle_ptr != nullptr);
@@ -322,7 +329,7 @@ int Rdb_cf_manager::remove_dropped_cf(Rdb_dict_manager *const dict_manager,
     return HA_EXIT_FAILURE;
   }
 
-  auto status = rdb->DropColumnFamily(cf_handle);
+  auto status = repo_drop_cf(cf_handle); (void)rdb;
 
   if (!status.ok()) {
     dict_manager->delete_dropped_cf(batch, cf_id);

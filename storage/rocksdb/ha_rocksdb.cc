@@ -151,6 +151,7 @@ Status MergeTables(const std::vector<std::string>& files, const std::string& dbn
                    uint32_t override_cf_id,
                    std::vector<std::string>* output);
 __attribute__((weak)) void TopTableSetSeqScan(bool val);
+bool MyToplingHas_DYNAMIC_CREATE_CF();
 }
 
 namespace myrocks {
@@ -190,6 +191,31 @@ namespace detail {
 using  rocksdb::json;
 static rocksdb::SidePluginRepo g_repo;
 static rocksdb::DB_MultiCF* g_dbm;
+static const char* side_conf_mtr = getenv("TOPLING_SIDEPLUGIN_CONF_MTR");
+bool repo_support_dynamic_create_cf() {
+  return rocksdb::MyToplingHas_DYNAMIC_CREATE_CF() && side_conf_mtr;
+}
+static std::string repo_cfo_refname(const std::string& cfname) {
+  std::string jstr;
+  if (Slice(cfname).starts_with("rev:")) {
+    jstr = "${rev:order}"; // CFOptions name in repo
+  } else if (cfname == DEFAULT_TMP_CF_NAME || cfname == DEFAULT_TMP_SYSTEM_CF_NAME) {
+    jstr = cfname;
+  } else {
+    jstr = "${default}";
+  }
+  return jstr;
+}
+rocksdb::Status
+repo_create_cf(const std::string& cfname, rocksdb::ColumnFamilyHandle** p_cfh) {
+  ROCKSDB_VERIFY(repo_support_dynamic_create_cf());
+  std::string jstr = repo_cfo_refname(cfname);
+  return g_dbm->CreateColumnFamily(cfname, jstr, p_cfh);
+}
+rocksdb::Status repo_drop_cf(rocksdb::ColumnFamilyHandle* cfh) {
+  ROCKSDB_VERIFY(repo_support_dynamic_create_cf());
+  return g_dbm->DropColumnFamily(cfh);
+}
 bool g_svr_read_only = false;
 
 static int mysql_value_to_bool(struct st_mysql_value *value,
@@ -315,7 +341,7 @@ static void rocksdb_flush_all_memtables(rocksdb::FlushOptions fopt =
 static void rocksdb_rw_sysvar_update_noop(THD *const, SYS_VAR *const,
                                           void *const, const void *const) {}
 
-static int rocksdb_delete_column_family(THD *const thd,
+static int rocksdb_delete_column_family(THD *const /* thd */,
                                         struct SYS_VAR *const /* var */,
                                         void *const /* var_ptr */,
                                         struct st_mysql_value *const value) {
@@ -333,19 +359,11 @@ static int rocksdb_delete_column_family(THD *const thd,
     my_error(ER_CANT_DROP_CF, MYF(0), cf);
     return HA_EXIT_FAILURE;
   }
-
-#if 1
- #if !defined(NDEBUG)
-  if (getenv("TOPLING_SIDEPLUGIN_CONF_MTR")) {
-    const char act[] = "now signal ready_to_restart_during_drop_cf";
-    debug_sync_set_action(thd, STRING_WITH_LEN(act));
-    return 0;
+  if (!repo_support_dynamic_create_cf()) {
+    my_error(ER_DELETE_CF_NOT_SUPPORTED, MYF(0));
+    return HA_EXIT_FAILURE;
   }
- #endif
-  (void)thd;
-  my_error(ER_DELETE_CF_NOT_SUPPORTED, MYF(0));
-  return HA_EXIT_FAILURE;
-#else
+
   auto &cf_manager = rdb_get_cf_manager();
   int ret = 0;
 
@@ -363,7 +381,6 @@ static int rocksdb_delete_column_family(THD *const thd,
   }
 
   return ret;
-#endif
 }
 
 ///////////////////////////////////////////////////////////
@@ -1186,7 +1203,7 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
               side_conf, s.ToString().c_str());
       ::exit(HA_EXIT_FAILURE);
     }
-    if (const char* side_conf_mtr = getenv("TOPLING_SIDEPLUGIN_CONF_MTR")) {
+    if (side_conf_mtr) {
       s = g_repo.ImportAutoFile(side_conf_mtr);
       if (!s.ok()) {
         fprintf(stderr, "Error ImportAutoFile(%s) for MTR = %s\n",
@@ -9396,12 +9413,13 @@ else {
         {"info_log", "${myrocks_logger}"},
         {"trash_dir", trash_dir},
         {"rate_bytes_per_sec", rocksdb_sst_mgr_rate_bytes_per_sec},
-        {"delete_existing_trash", true}
+        {"delete_existing_trash", true},
+        {"max_trash_db_ratio", (double)rocksdb_max_trash_db_ratio_pct / 100},
       }}
     }, rocksdb_db_options->sst_file_manager);
 
   std::vector<std::string> cf_names;
-if (side_conf) {
+if (side_conf && !repo_support_dynamic_create_cf()) {
   status = g_repo.ListCFs(".rocksdb", &cf_names);
 } else {
   status = rocksdb::DB::ListColumnFamilies(*rocksdb_db_options, rocksdb_datadir,
@@ -9599,6 +9617,15 @@ if (side_conf) {
       opts.disable_auto_compactions = true;
     }
     cf_descr.push_back(rocksdb::ColumnFamilyDescriptor(cf_names[i], opts));
+  }
+  if (repo_support_dynamic_create_cf()) {
+    json& cf_jsmap = g_repo.m_impl->db_js[".rocksdb"]["params"]["column_families"];
+    for (auto& cfname : cf_names) {
+      if (!cf_jsmap.contains(cfname)) {
+        cf_jsmap[cfname] = repo_cfo_refname(cfname);
+        sql_print_information("not in sideplugin cf %s, add it");
+      }
+    }
   }
 
   if (side_conf) {
@@ -16591,7 +16618,7 @@ void Rdb_drop_index_thread::run() {
         }
       }
 
-  #if 0 // !!MyTopling: never drop cf
+  if (repo_support_dynamic_create_cf()) {
       DBUG_EXECUTE_IF("rocksdb_drop_cf", {
         THD *thd = new THD();
         thd->thread_stack = reinterpret_cast<char *>(&(thd));
@@ -16651,7 +16678,7 @@ void Rdb_drop_index_thread::run() {
           delete thd;
         }
       });
-  #endif
+  } // repo_support_dynamic_create_cf()
     }
     RDB_MUTEX_LOCK_CHECK(m_signal_mutex);
   }
