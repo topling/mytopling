@@ -428,6 +428,10 @@
         },
         "column_families": {
           "default": "${default}",
+          "__system__": "${__system__}"
+        },
+        "//column_families": {
+          "default": "${default}",
           "__system__": "${__system__}",
           "default_sk": "${default}",
           "__tmp__": "${__tmp__}",
