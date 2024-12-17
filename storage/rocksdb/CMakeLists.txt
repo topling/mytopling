@@ -275,6 +275,7 @@ IF (WITH_FB_VECTORDB)
   # Suppress warnings brought by faiss header files
   ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-shadow-field FILES rdb_vector_db.cc rdb_vector_db.h)
   ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-unused-parameter FILES rdb_vector_db.cc rdb_vector_db.h)
+  SET(rocksdb_static_libs ${rocksdb_static_libs} ${FAISS_LIBRARY} ${BLAS_LIBRARIES} ${OPENMP_LIBRARY} -lgomp -lgfortran)
 ENDIF()
 
 IF (HAVE_ZLIB_H)
