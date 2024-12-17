@@ -106,8 +106,8 @@ void Rdb_cf_options::update(const std::string &cf_name,
   assert(!m_name_map.empty());
 }
 
-bool Rdb_cf_options::set_default(const std::string &default_config) {
-  rocksdb::ColumnFamilyOptions options;
+bool Rdb_cf_options_update(rocksdb::ColumnFamilyOptions& options,
+                           const std::string& default_config) {
   rocksdb::ConfigOptions config_options;
   config_options.input_strings_escaped = false;
   config_options.ignore_unknown_options = false;
@@ -123,7 +123,14 @@ bool Rdb_cf_options::set_default(const std::string &default_config) {
       return false;
     }
   }
+  return true;
+}
 
+bool Rdb_cf_options::set_default(const std::string& default_config) {
+  rocksdb::ColumnFamilyOptions options;
+  if (!Rdb_cf_options_update(options, default_config)) {
+    return false;
+  }
   m_default_config = default_config;
   return true;
 }

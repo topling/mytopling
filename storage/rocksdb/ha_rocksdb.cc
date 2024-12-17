@@ -8560,6 +8560,34 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
   }
 
   if (side_conf) {
+    bool Rdb_cf_options_update(rocksdb::ColumnFamilyOptions&, const std::string&);
+    std::string_view cfo_conf = rocksdb_default_cf_options;
+    std::string DEF_REV_CF_NAME = "rev:order";
+    json& cf_jsmap = g_repo.m_impl->db_js[".rocksdb"]["params"]["column_families"];
+    auto& cfo_map = *g_repo.m_impl->cf_options.name2p;
+    for (auto cfname : {DEFAULT_CF_NAME, DEFAULT_SYSTEM_CF_NAME, DEF_REV_CF_NAME}) {
+      if (!cfo_map.count(cfname)) {
+        rdb_fatal_error("missing CFOptions %s in %s", cfname.c_str(), side_conf);
+      }
+      Rdb_cf_options_update(*cfo_map[cfname], cfo_conf);
+    }
+    ROCKSDB_VERIFY(cfo_map[DEFAULT_SYSTEM_CF_NAME]->merge_operator != nullptr);
+    if (!repo_support_dynamic_create_cf()) {
+      cf_jsmap[DEF_REV_CF_NAME] = DEF_REV_CF_NAME; // cf must be defined
+    }
+    if (rocksdb_enable_tmp_table) {
+      for (auto cfname : {DEFAULT_TMP_CF_NAME, DEFAULT_TMP_SYSTEM_CF_NAME}) {
+        if (!cfo_map.count(cfname)) {
+          rdb_fatal_error("rocksdb_enable_tmp_table=1 but missing CFOptions %s in %s", cfname.c_str(), side_conf);
+        }
+        if (!repo_support_dynamic_create_cf()) {
+          cf_jsmap[cfname] = cfname; // cf must be defined
+        }
+      }
+      Rdb_cf_options_update(*cfo_map[DEFAULT_TMP_CF_NAME], cfo_conf);
+      ROCKSDB_VERIFY(cfo_map[DEFAULT_TMP_SYSTEM_CF_NAME]->merge_operator != nullptr);
+    }
+
     // disable auto compact and enable after all global objects are ready
     for (auto& kv : *g_repo.m_impl->cf_options.name2p) {
       kv.second->disable_auto_compactions = true;
