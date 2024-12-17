@@ -23,6 +23,8 @@
   },
   "CFOptions": {
     "default": {
+      "max_bytes_for_level_multiplier": 10,
+      "max_bytes_for_level_multiplier_additional": [],
       "sst_partitioner_factory": "${rdb_partitioner}",
       "write_buffer_size": "8M",
       "max_write_buffer_size_to_maintain": "32M",
@@ -42,6 +44,8 @@
       "memtable_factory": "${skiplist}"
     },
     "rev:order": {
+      "max_bytes_for_level_multiplier": 10,
+      "max_bytes_for_level_multiplier_additional": [],
       "sst_partitioner_factory": "${rdb_rev_partitioner}",
       "write_buffer_size": "2M",
       "max_write_buffer_size_to_maintain": "32M",
@@ -71,7 +75,16 @@
       }
     }
   },
-  "databases": {
+  "DBOptions": {
+    "dbopt": {
+      "db_log_dir": "",
+      "max_background_flushes": -1,
+      "max_background_compactions": -1,
+      "max_subcompactions": 1,
+      "max_level1_subcompactions": 1
+    }
+  },
+  "//databases": {
     ".rocksdb": {
       "params": {
         "column_families": {
