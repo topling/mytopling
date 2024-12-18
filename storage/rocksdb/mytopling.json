@@ -264,6 +264,13 @@
     "skiplist": {
       "class": "SkipList",
       "params": {}
+    },
+    "pair_check": {
+      "class": "PairCheckWBWI",
+      "params": {
+        "a": "${skiplist}",
+        "b": "${cspp}"
+      }
     }
   },
   "MergeOperator": {
