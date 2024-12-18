@@ -4927,6 +4927,8 @@ class Rdb_transaction {
       }
     }
 
+  // rocksdb_auto_sort_sst_factory also act as a knob for compact external sst
+  if (rocksdb_auto_sort_sst_factory) {
     std::vector<std::string> tmp_dirs;
     Ensure_cleanup tmp_dirs_clean([&]() {
       if (!terark::getEnvBool("BULK_LOAD_DEL_TMP", true)) {
@@ -4967,6 +4969,7 @@ class Rdb_transaction {
       files.external_files = std::move(outputs);
       tmp_dirs.push_back(tmp_dbname);
     }
+  }
 
     std::vector<rocksdb::IngestExternalFileArg> args;
     size_t file_count = 0;
