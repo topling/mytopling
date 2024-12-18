@@ -29,7 +29,6 @@ PARTITION custom_p2 VALUES IN (3, 6, 9)
 );
 SELECT DISTINCT(cf_name) FROM information_schema.rocksdb_cfstats WHERE cf_name='rev:testrevcomment';
 cf_name
-rev:testrevcomment
 DROP TABLE t1;
 CREATE TABLE t1 (
 c1 INT,
