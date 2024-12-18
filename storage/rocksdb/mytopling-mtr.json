@@ -23,6 +23,9 @@
   },
   "CFOptions": {
     "default": {
+      "level_compaction_dynamic_level_bytes": true,
+      "level_compaction_dynamic_file_size": true,
+      "allow_merge_memtables": true,
       "max_bytes_for_level_multiplier": 10,
       "max_bytes_for_level_multiplier_additional": [],
       "sst_partitioner_factory": "${rdb_partitioner}",
@@ -44,6 +47,9 @@
       "memtable_factory": "${skiplist}"
     },
     "rev:order": {
+      "level_compaction_dynamic_level_bytes": true,
+      "level_compaction_dynamic_file_size": true,
+      "allow_merge_memtables": true,
       "max_bytes_for_level_multiplier": 10,
       "max_bytes_for_level_multiplier_additional": [],
       "sst_partitioner_factory": "${rdb_rev_partitioner}",
@@ -55,6 +61,9 @@
       "memtable_factory": "${skiplist}"
     },
     "__tmp__": {
+      "level_compaction_dynamic_level_bytes": true,
+      "level_compaction_dynamic_file_size": true,
+      "allow_merge_memtables": true,
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     },
@@ -63,6 +72,9 @@
       "memtable_factory": "${skiplist}"
     },
     "__system__": {
+      "level_compaction_dynamic_level_bytes": true,
+      "level_compaction_dynamic_file_size": true,
+      "allow_merge_memtables": true,
       "min_filter_level": -1,
       "memtable_factory": "${skiplist}"
     }
