@@ -277,6 +277,7 @@ std::vector<std::string> Rdb_cf_manager::get_cf_names(void) const {
   }
   RDB_MUTEX_UNLOCK_CHECK(m_mutex);
 
+  std::sort(names.begin(), names.end());
   return names;
 }
 
