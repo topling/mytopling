@@ -448,10 +448,26 @@ bool Rdb_iterator_base::value_matches_prefix(const Slice &value,
                                              const Slice &prefix) const {
   // same symantic with Rdb_key_def::value_matches_prefix, this reduces
   // a memory read (m_kd.get_index_number() has 2 memory read)
+#if defined(NDEBUG)
   return value.size() >= Rdb_key_def::INDEX_NUMBER_SIZE &&
     // *(const uint32*)value.data() == m_index_number_storage_form &&
     rocksdb::MemoryEqual(value.data(), prefix.data(),
            std::min(value.size(), prefix.size()));
+#else
+  // This is equivalent to above code, but is easier to setup break pointers
+  auto val = value.data();
+  auto len = value.size();
+  if (unlikely(value.size() < Rdb_key_def::INDEX_NUMBER_SIZE))
+    return false;
+  auto idv = *(const uint32*)val;
+  if (unlikely(idv != m_index_number_storage_form))
+    return false;
+  if (len > prefix.size())
+      len = prefix.size();
+  auto pre = prefix.data();
+  //return memcmp(val, pre, len) == 0;
+  return rocksdb::MemoryEqual(val, pre, len);
+#endif
 }
 
 ROCKSDB_FLATTEN int Rdb_iterator_base::next() {
