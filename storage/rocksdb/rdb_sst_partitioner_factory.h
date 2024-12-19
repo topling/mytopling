@@ -56,6 +56,14 @@ inline std::string get_index_key(const Index_id index_id) {
  * bulk load data. Essentially, this creates "gaps" among SST files in LMAX to
  * place the bulk load SST files.
  */
+
+#ifdef __TOPLINGDB__
+  #define TAKE_ADDR &
+  #define DE_REF
+#else
+  #define TAKE_ADDR
+  #define DE_REF *
+#endif
 class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
  private:
   const rocksdb::Comparator *m_comparator;
@@ -121,19 +129,19 @@ class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
 
   rocksdb::PartitionerResult ShouldPartition(
       const rocksdb::PartitionerRequest &request) override {
-    assert(m_comparator->Compare(*request.current_user_key,
-                                 *request.prev_user_key) > 0);
+    assert(m_comparator->Compare(DE_REF request.current_user_key,
+                                 DE_REF request.prev_user_key) > 0);
 
-    if (m_comparator->Compare(*request.prev_user_key, m_max_index_key) > 0 ||
-        m_comparator->Compare(*request.current_user_key, m_min_index_key) < 0) {
+    if (m_comparator->Compare(DE_REF request.prev_user_key, m_max_index_key) > 0 ||
+        m_comparator->Compare(DE_REF request.current_user_key, m_min_index_key) < 0) {
       return rocksdb::PartitionerResult::kNotRequired;
     }
     for (const auto &index_key_range : m_index_key_ranges) {
       // partition sst file when the request keys cross index boundary
-      if (should_partition(index_key_range.first, request.prev_user_key,
-                           request.current_user_key) ||
-          should_partition(index_key_range.second, request.prev_user_key,
-                           request.current_user_key)) {
+      if (should_partition(index_key_range.first, TAKE_ADDR request.prev_user_key,
+                           TAKE_ADDR request.current_user_key) ||
+          should_partition(index_key_range.second, TAKE_ADDR request.prev_user_key,
+                           TAKE_ADDR request.current_user_key)) {
         return rocksdb::PartitionerResult::kRequired;
       }
     }

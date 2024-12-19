@@ -5864,7 +5864,9 @@ class Rdb_transaction_impl : public Rdb_transaction {
     tx_opts.max_write_batch_size = THDVAR(m_thd, write_batch_max_bytes);
     tx_opts.write_batch_flush_threshold =
         THDVAR(m_thd, write_batch_flush_threshold);
+#if ROCKSDB_MAJOR >= 9
     tx_opts.write_batch_track_timestamp_size = rocksdb_enable_udt_in_mem;
+#endif
 
     write_opts.protection_bytes_per_key =
         THDVAR(m_thd, protection_bytes_per_key);
@@ -9134,7 +9136,14 @@ static int rocksdb_init_internal(void *const p) {
   tx_db_options.custom_mutex_factory = std::make_shared<Rdb_mutex_factory>();
   tx_db_options.write_policy =
       static_cast<rocksdb::TxnDBWritePolicy>(rocksdb_write_policy);
+#if ROCKSDB_MAJOR >= 9
   tx_db_options.enable_udt_validation = !rocksdb_enable_udt_in_mem;
+#else
+  if (rocksdb_enable_udt_in_mem) {
+    sql_print_warning("RocksDB: ToplingDB does not support UDT, auto change rocksdb_enable_udt_in_mem to false");
+    rocksdb_enable_udt_in_mem = false;
+  }
+#endif
 
   status =
       check_rocksdb_options_compatibility(rocksdb_datadir, main_opts, cf_descr);

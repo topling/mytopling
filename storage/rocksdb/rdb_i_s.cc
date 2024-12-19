@@ -1820,6 +1820,10 @@ static std::string rdb_filename_without_path(const std::string &path) {
   /* Return everything after the slash (or backslash) */
   return path.substr(pos + 1);
 }
+#ifdef __TOPLINGDB__
+  #define rdb_filename_without_path(path) \
+          rdb_filename_without_path(rocksdb::stdstrof(props.first))
+#endif
 
 /*
   Support for INFORMATION_SCHEMA.ROCKSDB_SST_PROPS dynamic table

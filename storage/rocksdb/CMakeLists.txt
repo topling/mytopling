@@ -288,6 +288,10 @@ IF(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
   SET(rocksdb_static_libs ${rocksdb_static_libs} "-lrt")
 ENDIF()
 
+IF (HAVE_EXTERNAL_ROCKSDB)
+  include_directories(${EXTERNAL_ROCKSDB_DEP_INCLUDE})
+  SET(ROCKSDB_LIB_SOURCES ${CMAKE_SOURCE_DIR}/rocksdb/tools/sst_dump_tool.cc)
+ENDIF()
 ADD_LIBRARY(rocksdb_sources ${ROCKSDB_LIB_SOURCES})
 TARGET_LINK_LIBRARIES(rocksdb_sources ${rocksdb_static_libs})
 
