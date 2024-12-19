@@ -310,7 +310,7 @@ void Rdb_iterator_base::setup_scan_iterator(
     and
     re-create Iterator.
     */
-#if 0
+#if 1 // MyTopling: 0 cause rocksdb.iterator_bounds fail!
   if (m_scan_it_skips_bloom != skip_bloom) {
     release_scan_iterator();
   }
