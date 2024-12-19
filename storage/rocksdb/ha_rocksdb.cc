@@ -14136,6 +14136,10 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
     if (std::all_of(key_comment.begin(), key_comment.end(), is_cfname_char)) {
       cf_name = key_comment;
     }
+    else if (key_comment == PER_INDEX_CF_NAME) {
+      // get_or_create_cf will check and returns ER_PER_INDEX_CF_DEPRECATED
+      cf_name = key_comment;
+    }
   }
 
   // Now MyTopling allow user place a table into a pre-defined cf.
