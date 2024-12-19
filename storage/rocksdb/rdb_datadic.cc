@@ -1485,6 +1485,9 @@ static const std::map<char, size_t> UNPACK_HEADER_SIZES = {
     {RDB_UNPACK_COVERED_DATA_TAG, RDB_UNPACK_COVERED_HEADER_SIZE},
     {RDB_UNPACK_DATA_WITHOUT_LEN_TAG, RDB_UNPACK_DATA_WITHOUT_LEN_HEADER_SIZE}};
 #else
+static_assert(2 == RDB_UNPACK_DATA_TAG);
+static_assert(3 == RDB_UNPACK_COVERED_DATA_TAG);
+static_assert(4 == RDB_UNPACK_DATA_WITHOUT_LEN_TAG);
 static const std::array<unsigned char, RDB_UNPACK_DATA_WITHOUT_LEN_TAG + 1>
 UNPACK_HEADER_SIZES = {
   0, // index 0
@@ -1494,6 +1497,7 @@ UNPACK_HEADER_SIZES = {
   RDB_UNPACK_DATA_WITHOUT_LEN_HEADER_SIZE, // 4, RDB_UNPACK_DATA_WITHOUT_LEN_TAG
 };
 #endif
+
 /*
   @return The length in bytes of the header specified by the given tag
 */
