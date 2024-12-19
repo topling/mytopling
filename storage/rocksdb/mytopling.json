@@ -412,6 +412,8 @@
       "db_log_dir": "/nvme-shared/mytopling/log/.rocksdb",
       "wbwi_factory": "${cspp}",
       "statistics": "${stat}",
+      "manual_wal_flush": true,
+      "two_write_queues": true,
       "allow_mmap_reads": false
     }
   },

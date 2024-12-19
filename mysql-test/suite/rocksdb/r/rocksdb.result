@@ -902,6 +902,7 @@ rocksdb_allow_mmap_writes	OFF
 rocksdb_allow_to_start_after_corruption	OFF
 rocksdb_alter_column_default_inplace	ON
 rocksdb_alter_table_comment_inplace	OFF
+rocksdb_async_queue_depth	32
 rocksdb_binlog_ttl	OFF
 rocksdb_binlog_ttl_compaction_ts_interval_secs	3600
 rocksdb_binlog_ttl_compaction_ts_offset_secs	60
@@ -920,7 +921,10 @@ rocksdb_bulk_load_fail_if_not_bottommost_level	OFF
 rocksdb_bulk_load_history_size	10
 rocksdb_bulk_load_partial_index	ON
 rocksdb_bulk_load_size	1000
+rocksdb_bulk_load_subcompactions	3
 rocksdb_bulk_load_use_sst_partitioner	OFF
+rocksdb_bulk_sst_parallel_num	5
+rocksdb_bulk_sst_size	1073741824
 rocksdb_bypass_rpc_log_rejected	OFF
 rocksdb_bypass_rpc_on	ON
 rocksdb_bypass_rpc_rejected_log_ts_interval_secs	1
@@ -951,7 +955,7 @@ rocksdb_converter_record_cached_length	0
 rocksdb_corrupt_data_action	ERROR
 rocksdb_create_checkpoint	
 rocksdb_create_if_missing	ON
-rocksdb_create_missing_column_families	OFF
+rocksdb_create_missing_column_families	ON
 rocksdb_create_temporary_checkpoint	
 rocksdb_datadir	./.rocksdb
 rocksdb_db_write_buffer_size	0
@@ -972,6 +976,7 @@ rocksdb_delete_cf
 rocksdb_delete_obsolete_files_period_micros	21600000000
 rocksdb_disable_file_deletions	OFF
 rocksdb_disable_instant_ddl	OFF
+rocksdb_enable_auto_sort_sst	OFF
 rocksdb_enable_autoinc_compat_mode	OFF
 rocksdb_enable_bulk_load_api	ON
 rocksdb_enable_delete_range_for_drop_index	OFF
@@ -1000,6 +1005,7 @@ rocksdb_force_flush_memtable_now	OFF
 rocksdb_force_index_records_in_range	0
 rocksdb_ignore_unknown_options	ON
 rocksdb_index_type	kBinarySearch
+rocksdb_info_log_dir	
 rocksdb_info_log_level	error_level
 rocksdb_invalid_create_option_action	LOG
 rocksdb_io_error_action	ABORT_SERVER
@@ -1034,6 +1040,7 @@ rocksdb_merge_tmp_file_removal_delay_ms	0
 rocksdb_mrr_batch_size	100
 rocksdb_no_block_cache	OFF
 rocksdb_override_cf_options	
+rocksdb_parallel_read_threads	0
 rocksdb_paranoid_checks	ON
 rocksdb_partial_index_blind_delete	ON
 rocksdb_partial_index_ignore_killed	ON
@@ -1051,6 +1058,7 @@ rocksdb_read_free_rpl	OFF
 rocksdb_read_free_rpl_tables	.*
 rocksdb_records_in_range	50
 rocksdb_reset_stats	OFF
+rocksdb_reuse_iter	OFF
 rocksdb_rollback_on_timeout	OFF
 rocksdb_seconds_between_stat_computes	3600
 rocksdb_select_bypass_allow_filters	ON
@@ -1109,6 +1117,7 @@ rocksdb_write_batch_mem_free_threshold	0
 rocksdb_write_disable_wal	OFF
 rocksdb_write_ignore_missing_column_families	OFF
 rocksdb_write_policy	write_committed
+rocksdb_write_reduce_cpu	ON
 create table t47 (pk int primary key, col1 varchar(12)) ENGINE=RocksDB CHARSET=latin1;
 insert into t47 values (1, 'row1');
 insert into t47 values (2, 'row2');
