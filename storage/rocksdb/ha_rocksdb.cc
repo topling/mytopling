@@ -7918,6 +7918,7 @@ static void update_side_plugin_dbopt() {
   UpdateRepoDBO(error_if_exists);
   UpdateRepoDBO(compaction_readahead_size);
   UpdateRepoDBO(paranoid_checks);
+  UpdateRepoDBO(delayed_write_rate);
   UpdateRepoDBO(allow_concurrent_memtable_write);
   UpdateRepoDBO(enable_write_thread_adaptive_yield);
   UpdateRepoDBO(max_open_files);
@@ -7948,7 +7949,6 @@ static void update_side_plugin_dbopt() {
   UpdateRepoDBO(use_adaptive_mutex);
   UpdateRepoDBO(bytes_per_sync);
   UpdateRepoDBO(wal_bytes_per_sync);
-  UpdateRepoDBO(enable_thread_tracking);
   UpdateRepoDBO(enable_thread_tracking);
 
   // 2. assign repo_dbo to rocksdb_db_options
@@ -8187,6 +8187,7 @@ if (!g_svr_read_only) {
 
 if (side_conf) {
   rocksdb_stats = rocksdb_db_options->statistics;
+  rocksdb_stats->set_stats_level(rocksdb::StatsLevel(rocksdb_stats_level));
   rocksdb_stats_level = rocksdb_stats->get_stats_level();
   if (rocksdb_rate_limiter_bytes_per_sec != 0) {
     if (rocksdb_db_options->rate_limiter) {
@@ -8204,10 +8205,12 @@ if (side_conf) {
       }}, rocksdb_db_options->rate_limiter);
     }
   }
-  if (rocksdb_delayed_write_rate)
-    rocksdb_db_options->delayed_write_rate = rocksdb_delayed_write_rate;
-  else
-    rocksdb_delayed_write_rate = rocksdb_db_options->delayed_write_rate;
+  else {
+    if (rocksdb_db_options->rate_limiter) {
+      rocksdb_rate_limiter = rocksdb_db_options->rate_limiter;
+      rocksdb_rate_limiter_bytes_per_sec = rocksdb_rate_limiter->GetBytesPerSecond();
+    }
+  }
 }
 else {
   rocksdb_stats = rocksdb::CreateDBStatistics();
@@ -8225,13 +8228,13 @@ else {
   rocksdb_db_options->delayed_write_rate = rocksdb_delayed_write_rate;
 }
 
-  if (*rocksdb_info_log_dir) {
+  if (get_var_source("rocksdb_info_log_dir") != enum_variable_source::COMPILED) {
     rocksdb_db_options->db_log_dir = rocksdb_info_log_dir;
   }
   std::shared_ptr<Rdb_logger> myrocks_logger = std::make_shared<Rdb_logger>();
-#if 0 // DO NOT do this
-  rocksdb_db_options->info_log_level = rocksdb::InfoLogLevel(rocksdb_info_log_level);
-#endif
+  if (get_var_source("rocksdb_info_log_level") != enum_variable_source::COMPILED) {
+    rocksdb_db_options->info_log_level = rocksdb::InfoLogLevel(rocksdb_info_log_level);
+  }
   rocksdb::Status s = rocksdb::CreateLoggerFromOptions(
       rocksdb_datadir, *rocksdb_db_options, &rocksdb_db_options->info_log);
   if (s.ok()) {
