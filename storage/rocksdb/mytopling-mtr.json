@@ -87,9 +87,25 @@
       }
     }
   },
+  "Statistics": {
+    "stat": {
+      "class": "default",
+      "params": {
+        "stats_level": "kExceptHistogramOrTimers"
+      }
+    }
+  },
   "DBOptions": {
     "dbopt": {
       "db_log_dir": "",
+      "allow_concurrent_memtable_write": false,
+      "//create_missing_column_families": false,
+      "delayed_write_rate": 0,
+      "enable_thread_tracking": true,
+      "enable_write_thread_adaptive_yield": false,
+      "keep_log_file_num": 1000,
+      "stats_dump_period_sec": 600,
+      "max_log_file_size": 0,
       "max_background_flushes": -1,
       "max_background_compactions": -1,
       "max_subcompactions": 1,
