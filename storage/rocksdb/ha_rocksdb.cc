@@ -7954,7 +7954,7 @@ static void update_side_plugin_dbopt() {
   *rocksdb_db_options = *repo_dbo;
 
   // 3. overwrite g_repo dbo with rocksdb_db_options
-  g_repo.Put("dbopt", json{nullptr}, rocksdb_db_options);
+  g_repo.Put("dbopt", rocksdb_db_options);
 
   ROCKSDB_VERIFY_EQ((*g_repo.m_impl->db_options.name2p)["dbopt"].get(), rocksdb_db_options.get());
 }
