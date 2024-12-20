@@ -9714,13 +9714,11 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
     using namespace rocksdb;
     json& method = g_repo.m_impl->db_js[".rocksdb"]["method"];
     json& params = g_repo.m_impl->db_js[".rocksdb"]["params"];
-    if (rocksdb_datadir && '/' == rocksdb_datadir[0]) {
-      params["path"] = rocksdb_datadir;
-    } else {
-      using std::filesystem::path;
-      auto dir = path(mysql_unpacked_real_data_home) / rocksdb_datadir;
-      params["path"] = dir.string();
+    std::filesystem::path dir = rocksdb_datadir;
+    if (!dir.is_absolute()) {
+      dir = std::filesystem::path(mysql_unpacked_real_data_home) / dir;
     }
+    params["path"] = dir.string();
     params["txn_db_options"]["write_policy"] =
         enum_stdstr(TxnDBWritePolicy(rocksdb_write_policy));
     g_svr_read_only = method == "TransactionDB::OpenAsSecondary";
