@@ -1305,7 +1305,7 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
     o->listeners.push_back(listener);
     g_repo.Put("rdb_listener", json{
       {"class", "Rdb_event_listener"},
-      {"params", {"empty", "param"}},
+      {"params", {{"empty", "param"}}},
     }, listener);
   }
   else {
@@ -8199,9 +8199,9 @@ if (side_conf) {
       rocksdb_db_options->rate_limiter = rocksdb_rate_limiter;
       g_repo.Put("rate_limiter", json{
         {"class", "GenericRateLimiter"},
-        {"params",
+        {"params", {
           {"rate_bytes_per_sec", rocksdb_rate_limiter_bytes_per_sec},
-      }}, rocksdb_db_options->rate_limiter);
+      }}}, rocksdb_db_options->rate_limiter);
     }
   }
   else {
