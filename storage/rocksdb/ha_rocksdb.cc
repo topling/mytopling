@@ -9382,6 +9382,8 @@ else {
   std::shared_ptr<Rdb_logger> myrocks_logger = std::make_shared<Rdb_logger>();
   if (get_var_source("rocksdb_info_log_level") != enum_variable_source::COMPILED) {
     rocksdb_db_options->info_log_level = rocksdb::InfoLogLevel(rocksdb_info_log_level);
+  } else {
+    rocksdb_info_log_level = rocksdb_db_options->info_log_level;
   }
   rocksdb::Status s = rocksdb::CreateLoggerFromOptions(
       rocksdb_datadir, *rocksdb_db_options, &rocksdb_db_options->info_log);
