@@ -654,7 +654,6 @@ static int rocksdb_force_flush_memtable_now(
 static int rocksdb_compact_lzero() {
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: compact L0.");
-  rocksdb_flush_all_memtables();
 
   const Rdb_cf_manager &cf_manager = rdb_get_cf_manager();
   rocksdb::CompactionOptions c_options = rocksdb::CompactionOptions();
@@ -1318,11 +1317,11 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
 static std::shared_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
   std::shared_ptr<rocksdb::DBOptions> o;
   o = std::make_shared<rocksdb::DBOptions>();
-  o->max_open_files = -2;  // auto-tune to 50% open_files_limit
-  o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
 
   o->create_if_missing = true;
+  o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
   o->max_subcompactions = DEFAULT_SUBCOMPACTIONS;
+  o->max_open_files = -2;  // auto-tune to 50% open_files_limit
 
   o->two_write_queues = true;
   o->manual_wal_flush = true;
@@ -4159,7 +4158,7 @@ class Rdb_transaction {
                   THDVAR(m_thd, manual_compaction_bottommost_level)));
       if (!s.ok()) {
         // NO_LINT_DEBUG
-        sql_print_information(
+        sql_print_warning(
                         "MyRocks: compaction failed in bulk load. "
                         "status code = %d, status = %s",
                         s.code(), s.ToString().c_str());
