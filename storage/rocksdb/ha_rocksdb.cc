@@ -8609,6 +8609,7 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
   tx_db_options.write_policy =
       static_cast<rocksdb::TxnDBWritePolicy>(rocksdb_write_policy);
 
+if (repo_support_dynamic_create_cf()) { // just check in mtr
   status =
       check_rocksdb_options_compatibility(rocksdb_datadir, main_opts, cf_descr);
 
@@ -8624,6 +8625,7 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
         status, "Compatibility check against existing database options failed");
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
+}
 
   if (rocksdb_enable_tmp_table) {
     sql_print_error("MyTopling: rocksdb_enable_tmp_table must be off");
