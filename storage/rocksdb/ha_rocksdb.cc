@@ -9689,6 +9689,7 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
   }
 #endif
 
+if (repo_support_dynamic_create_cf()) { // just check in mtr
   status =
       check_rocksdb_options_compatibility(rocksdb_datadir, main_opts, cf_descr);
 
@@ -9704,6 +9705,7 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
         status, "Compatibility check against existing database options failed");
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
+}
 
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: Opening TransactionDB...");
