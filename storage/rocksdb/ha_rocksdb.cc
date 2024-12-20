@@ -81,8 +81,10 @@
 #include "rocksdb/utilities/checkpoint.h"
 #include "rocksdb/utilities/convenience.h"
 #include "rocksdb/utilities/memory_util.h"
+#include "rocksdb/utilities/options_util.h"
 #include "rocksdb/utilities/sim_cache.h"
 #include "rocksdb/utilities/write_batch_with_index.h"
+#include "table/block_based/block_based_table_factory.h"
 #include "util/stop_watch.h"
 #include "utilities/fault_injection_fs.h"
 
@@ -177,6 +179,8 @@ Status MergeTables(const std::vector<std::string>& files, const std::string& dbn
                    std::vector<std::string>* output);
 __attribute__((weak)) void TopTableSetSeqScan(bool val);
 bool MyToplingHas_DYNAMIC_CREATE_CF();
+void DispatcherTableFactoryUpdatePointer(TableFactory* self,
+    std::shared_ptr<TableFactory> Old, std::shared_ptr<TableFactory> New);
 }
 
 namespace myrocks {
@@ -7959,6 +7963,77 @@ static void update_side_plugin_dbopt() {
   ROCKSDB_VERIFY_EQ((*g_repo.m_impl->db_options.name2p)["dbopt"].get(), rocksdb_db_options.get());
 }
 
+static void RegisterBBTF(const std::string& name,
+                         std::shared_ptr<rocksdb::TableFactory> tf) {
+  if (!g_repo.m_impl->table_factory.p2name.count(tf.get())) {
+    g_repo.Put(name, tf); // for name
+  }
+  auto bbtf = dynamic_cast<rocksdb::BlockBasedTableFactory*>(tf.get());
+  ROCKSDB_VERIFY(bbtf != nullptr);
+  auto& bbopt = bbtf->table_options();
+  #define REPO_EXISTS_2(repo_field, bbopt_field) \
+      bbopt.bbopt_field && \
+      !g_repo.m_impl->repo_field.p2name.count(bbopt.bbopt_field.get())
+  #define REPO_EXISTS(field) REPO_EXISTS_2(field, field)
+  if (REPO_EXISTS_2(cache, block_cache)) {
+    g_repo.Put(name, bbopt.block_cache); // for the cf
+  }
+  if (REPO_EXISTS(persistent_cache)) {
+    g_repo.Put(name, bbopt.persistent_cache); // for the cf
+  }
+  if (REPO_EXISTS(filter_policy)) {
+    g_repo.Put(name, bbopt.filter_policy); // for the cf
+  }
+  if (REPO_EXISTS(flush_block_policy_factory)) {
+    g_repo.Put(name, bbopt.flush_block_policy_factory); // for the cf
+  }
+}
+
+static void RepoImportMyRocksCFOptions(Rdb_cf_options* cf_options_map) {
+  using namespace rocksdb;
+  auto& cfo_map = *g_repo.m_impl->cf_options.name2p;
+  const ColumnFamilyOptions& rdb_cfo = cf_options_map->get_defaults();
+  const std::shared_ptr<TableFactory> old_bb = g_repo["bb"];
+  const std::shared_ptr<TableFactory> new_bb = rdb_cfo.table_factory;
+  g_repo.Put("bytewise", rocksdb::BytewiseComparator());
+  RegisterBBTF("bb", new_bb); // `dispatch` ref to `bb` not change, update later
+  if (rdb_cfo.prefix_extractor) {
+    g_repo.Put("bb", rdb_cfo.prefix_extractor);
+  }
+  if (rdb_cfo.compaction_thread_limiter) {
+    g_repo.Put("bb", rdb_cfo.compaction_thread_limiter);
+  }
+  for (auto& [name, tf] : *g_repo.m_impl->table_factory.name2p) {
+    // noop if tf is a non-dispatcher
+    DispatcherTableFactoryUpdatePointer(tf.get(), old_bb, new_bb);
+  }
+  for (auto& [cfo_name, p_cfo] : cfo_map) {
+    ColumnFamilyOptions old = *p_cfo;
+    cf_options_map->get(cfo_name, p_cfo.get()); // update with myrocks config
+    if (p_cfo->table_factory == old_bb) {
+      p_cfo->table_factory = new_bb;
+    }
+    else if (Slice(p_cfo->table_factory->Name()) == "BlockBasedTable") {
+      // p_cfo->table_factory is a new created BlockBasedTableFactory,
+      // if there is no table factory options in rocksdb_default_cf_options
+      // or rocksdb_override_cf_options, it is unlikely goes here.
+      RegisterBBTF(cfo_name, p_cfo->table_factory);
+    }
+    else { // in this case, users should not set bloomfilter,
+      // prefix_extractor..., but we do not check it, for KISS!
+      p_cfo->table_factory = old.table_factory;
+    }
+    if (p_cfo->prefix_extractor &&
+        p_cfo->prefix_extractor != old.prefix_extractor) {
+      g_repo.Put(cfo_name, p_cfo->prefix_extractor); // for cfo_name
+    }
+    if (p_cfo->compaction_thread_limiter &&
+        p_cfo->compaction_thread_limiter != old.compaction_thread_limiter) {
+      g_repo.Put(cfo_name, p_cfo->compaction_thread_limiter); // for cfo_name
+    }
+  }
+}
+
 /*
   Storage Engine initialization function, invoked when plugin is loaded.
 */
@@ -8352,6 +8427,31 @@ else {
       }}
     }, rocksdb_db_options->sst_file_manager);
 
+  std::string DEF_REV_CF_NAME = "rev:order";
+  json& cf_jsmap = g_repo.m_impl->db_js[".rocksdb"]["params"]["column_families"];
+  auto& cfo_map = *g_repo.m_impl->cf_options.name2p;
+  for (auto& cfname : {DEFAULT_CF_NAME, DEFAULT_SYSTEM_CF_NAME, DEF_REV_CF_NAME}) {
+    if (!cfo_map.count(cfname)) {
+      rdb_fatal_error("missing CFOptions %s in %s", cfname.c_str(), side_conf);
+    }
+  }
+  ROCKSDB_VERIFY(cfo_map[DEFAULT_SYSTEM_CF_NAME]->merge_operator != nullptr);
+  if (!repo_support_dynamic_create_cf()) {
+    cf_jsmap[DEF_REV_CF_NAME] = DEF_REV_CF_NAME; // cf must be defined
+  }
+  if (rocksdb_enable_tmp_table) {
+    for (auto& cfname : {DEFAULT_TMP_CF_NAME, DEFAULT_TMP_SYSTEM_CF_NAME}) {
+      if (!cfo_map.count(cfname)) {
+        rdb_fatal_error("rocksdb_enable_tmp_table=1 but missing CFOptions %s in %s", cfname.c_str(), side_conf);
+      }
+      if (!repo_support_dynamic_create_cf()) {
+        cf_jsmap[cfname] = repo_cfo_refname(cfname); // cf must be defined
+      }
+    }
+    ROCKSDB_VERIFY(cfo_map[DEFAULT_TMP_SYSTEM_CF_NAME]->merge_operator != nullptr);
+  }
+
+  rocksdb::Status status;
   std::vector<std::string> cf_names;
 if (side_conf && !repo_support_dynamic_create_cf()) {
   status = g_repo.ListCFs(".rocksdb", &cf_names);
@@ -8384,6 +8484,19 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
     // NO_LINT_DEBUG
     sql_print_information("RocksDB: %ld column families found",
                           cf_names.size());
+  }
+  if (repo_support_dynamic_create_cf()) {
+    for (auto& cfname : cf_names) { // add listed cf to cf_jsmap
+      if (json& cfo_name = cf_jsmap[cfname]; cfo_name.is_null()) {
+        cfo_name = repo_cfo_refname(cfname); // the cfo must exists
+        sql_print_information("not in sideplugin cf %s, add it because in mtr", cfname.c_str());
+      } else if (!cfo_name.is_string()) {
+        sql_print_error("json column_families[%s] must be a string", cfname.c_str());
+        DBUG_RETURN(HA_EXIT_FAILURE);
+      }
+    }
+    cf_names.clear();
+    for (auto& item : cf_jsmap.items()) cf_names.push_back(item.key());
   }
 
   std::vector<rocksdb::ColumnFamilyDescriptor> cf_descr;
@@ -8518,6 +8631,8 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
   DBUG_EXECUTE_IF("rocksdb_init_failure_cf_options",
                   { DBUG_RETURN(HA_EXIT_FAILURE); });
 
+  RepoImportMyRocksCFOptions(cf_options_map.get());
+
   /*
     If there are no column families, we're creating the new database.
     Create one column family named "default".
@@ -8529,10 +8644,13 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: Column Families at start:");
   for (size_t i = 0; i < cf_names.size(); ++i) {
-    rocksdb::ColumnFamilyOptions opts;
-    if (!cf_options_map->get_cf_options(cf_names[i], &opts)) {
+    auto& cfo_name = cf_jsmap.at(cf_names[i]).get_ref<const std::string&>();
+    std::shared_ptr<rocksdb::ColumnFamilyOptions> p_cfo = g_repo[cfo_name];
+    if (!p_cfo) {
+      sql_print_error("Missing json cfo g_repo['%s']", cfo_name.c_str());
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
+    rocksdb::ColumnFamilyOptions& opts = *p_cfo;
 
     // NO_LINT_DEBUG
     sql_print_information("  cf=%s", cf_names[i].c_str());
@@ -8551,53 +8669,11 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
     if (!opts.disable_auto_compactions) {
       prev_compaction_enabled_cf_names.insert(cf_names[i]);
       opts.disable_auto_compactions = true;
+    } else {
+      if (!side_conf_mtr) // always enable after db open
+        prev_compaction_enabled_cf_names.insert(cf_names[i]);
     }
     cf_descr.push_back(rocksdb::ColumnFamilyDescriptor(cf_names[i], opts));
-  }
-  if (repo_support_dynamic_create_cf()) {
-    json& cf_jsmap = g_repo.m_impl->db_js[".rocksdb"]["params"]["column_families"];
-    for (auto& cfname : cf_names) {
-      if (!cf_jsmap.contains(cfname)) {
-        cf_jsmap[cfname] = repo_cfo_refname(cfname);
-        sql_print_information("not in sideplugin cf %s, add it");
-      }
-    }
-  }
-
-  if (side_conf) {
-    bool Rdb_cf_options_update(rocksdb::ColumnFamilyOptions&, const std::string&);
-    std::string_view cfo_conf = rocksdb_default_cf_options;
-    std::string DEF_REV_CF_NAME = "rev:order";
-    json& cf_jsmap = g_repo.m_impl->db_js[".rocksdb"]["params"]["column_families"];
-    auto& cfo_map = *g_repo.m_impl->cf_options.name2p;
-    for (auto cfname : {DEFAULT_CF_NAME, DEFAULT_SYSTEM_CF_NAME, DEF_REV_CF_NAME}) {
-      if (!cfo_map.count(cfname)) {
-        rdb_fatal_error("missing CFOptions %s in %s", cfname.c_str(), side_conf);
-      }
-      Rdb_cf_options_update(*cfo_map[cfname], cfo_conf);
-    }
-    ROCKSDB_VERIFY(cfo_map[DEFAULT_SYSTEM_CF_NAME]->merge_operator != nullptr);
-    if (!repo_support_dynamic_create_cf()) {
-      cf_jsmap[DEF_REV_CF_NAME] = DEF_REV_CF_NAME; // cf must be defined
-    }
-    if (rocksdb_enable_tmp_table) {
-      for (auto cfname : {DEFAULT_TMP_CF_NAME, DEFAULT_TMP_SYSTEM_CF_NAME}) {
-        if (!cfo_map.count(cfname)) {
-          rdb_fatal_error("rocksdb_enable_tmp_table=1 but missing CFOptions %s in %s", cfname.c_str(), side_conf);
-        }
-        if (!repo_support_dynamic_create_cf()) {
-          cf_jsmap[cfname] = cfname; // cf must be defined
-        }
-      }
-      Rdb_cf_options_update(*cfo_map[DEFAULT_TMP_CF_NAME], cfo_conf);
-      ROCKSDB_VERIFY(cfo_map[DEFAULT_TMP_SYSTEM_CF_NAME]->merge_operator != nullptr);
-    }
-
-    // disable auto compact and enable after all global objects are ready
-    for (auto& kv : *g_repo.m_impl->cf_options.name2p) {
-      kv.second->disable_auto_compactions = true;
-      prev_compaction_enabled_cf_names.insert(kv.first);
-    }
   }
 
   rocksdb::Options main_opts(*rocksdb_db_options,
@@ -8772,6 +8848,13 @@ if (!g_svr_read_only) {
   if (!status.ok()) {
     rdb_log_status_error(status, "Error enabling compaction");
     DBUG_RETURN(HA_EXIT_FAILURE);
+  }
+
+  if (!side_conf_mtr) {
+    for (auto& [cfo_name, p_cfo] : *g_repo.m_impl->cf_options.name2p) {
+      // all cf created later must enable auto compaction
+      p_cfo->disable_auto_compactions = false;
+    }
   }
 
 #ifndef HAVE_PSI_INTERFACE
