@@ -407,8 +407,8 @@ bool Rdb_cf_options::get_cf_options(const std::string &cf_name,
 }  // namespace myrocks
 
 #include <topling/side_plugin_factory.h>
-namespace rocksdb {
-using myrocks::Rdb_sst_partitioner_factory;
+namespace myrocks {
+using namespace rocksdb;
 static
 std::shared_ptr<SstPartitionerFactory>
 JS_New_Rdb_sst_partitioner_factory(const json& js, const SidePluginRepo& repo) {
@@ -420,4 +420,44 @@ JS_New_Rdb_sst_partitioner_factory(const json& js, const SidePluginRepo& repo) {
           (comparator, num_levels, comparator->IsReverseBytewise());
 }
 ROCKSDB_FACTORY_REG("Rdb_sst_partitioner_factory", JS_New_Rdb_sst_partitioner_factory);
-}
+
+struct Rdb_sst_partitioner_viewer : Rdb_sst_partitioner_factory {
+  std::string ToString(const json& d, const SidePluginRepo& repo) const {
+    std::vector<Index_id> index_ids;
+    {
+      const std::lock_guard<std::mutex> lock(m_index_ids_mutex);
+      index_ids.reserve(m_index_ids.size());
+      for (auto id : m_index_ids) index_ids.push_back(id);
+    }
+    bool html = JsonSmartBool(d, "html");
+    auto comparator = m_comparator;
+    json js;
+    js["class"] = "Rdb_sst_partitioner_factory";
+    ROCKSDB_JSON_SET_FACT(js, comparator);
+    js["is_reverse_cf"] = m_is_reverse_cf;
+    js["num_levels"] = m_num_levels;
+    js["index_ids_n"] = index_ids.size();
+    if (html)
+      js["index_ids"] = json(std::move(index_ids)).dump();
+    else
+      js["index_ids"] = std::move(index_ids);
+    return JsonToString(js, d);
+  }
+};
+
+class Rdb_sst_partitioner_Manip : public PluginManipFunc<SstPartitionerFactory> {
+  void Update(SstPartitionerFactory*, const json&, const json&,
+              const SidePluginRepo &) const override {}
+  std::string ToString(const SstPartitionerFactory &fac,
+                       const json &dump_options,
+                       const SidePluginRepo& repo) const override {
+    if (auto f = dynamic_cast<const Rdb_sst_partitioner_factory*>(&fac)) {
+      auto viewer = static_cast<const Rdb_sst_partitioner_viewer*>(f);
+      return viewer->ToString(dump_options, repo);
+    }
+    THROW_InvalidArgument("Unknow SstPartitionerFactory");
+  }
+};
+ROCKSDB_REG_PluginManip("Rdb_sst_partitioner_factory", Rdb_sst_partitioner_Manip);
+
+}  // namespace myrocks
