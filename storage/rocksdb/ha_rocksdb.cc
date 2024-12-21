@@ -9799,13 +9799,12 @@ if (repo_support_dynamic_create_cf()) { // just check in mtr
         enum_stdstr(TxnDBWritePolicy(rocksdb_write_policy));
     g_svr_read_only = method == "TransactionDB::OpenAsSecondary";
     //fprintf(stderr, "g_svr_read_only = %d\n", g_svr_read_only);
-    DB_MultiCF* dbm = nullptr;
-    status = g_repo.OpenDB(&dbm);
+    status = g_repo.OpenDB(&g_dbm);
     if (!status.ok()) {
       rdb_log_status_error(status, "Error g_repo.OpenDB");
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
-    rdb = dynamic_cast<rocksdb::TransactionDB*>(dbm->db);
+    rdb = dynamic_cast<rocksdb::TransactionDB*>(g_dbm->db);
     if (!rdb) {
       rdb_log_status_error(status, "Error DB defined in conf must be TransactionDB");
       DBUG_RETURN(HA_EXIT_FAILURE);
@@ -9815,8 +9814,7 @@ if (repo_support_dynamic_create_cf()) { // just check in mtr
       rdb_log_status_error(status, "Error g_repo.StartHttpServer");
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
-    cf_handles = dbm->cf_handles;
-    g_dbm = dbm;
+    cf_handles = g_dbm->cf_handles;
   }
   else {
     status = rocksdb::TransactionDB::Open(
