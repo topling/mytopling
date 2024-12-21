@@ -1,4 +1,12 @@
 {
+  "Cache": {
+    "block_cache": {
+      "class": "LRUCache",
+      "params": {
+        "capacity": "512M"
+      }
+    }
+  },
   "TableFactory": {
     "sng": {
       "class": "SingleFastTable",
@@ -26,57 +34,59 @@
       "level_compaction_dynamic_level_bytes": true,
       "level_compaction_dynamic_file_size": true,
       "allow_merge_memtables": true,
+      "disable_auto_compactions": false,
       "max_bytes_for_level_multiplier": 10,
-      "max_bytes_for_level_multiplier_additional": [],
+      "max_bytes_for_level_multiplier_additional": [1,1,1,1,1,1,1],
+      "max_compaction_bytes": 1677721600,
       "sst_partitioner_factory": "${rdb_partitioner}",
       "write_buffer_size": "8M",
-      "max_write_buffer_size_to_maintain": "32M",
-      "target_file_size_base": "1M",
+      "max_write_buffer_size_to_maintain": "128K",
+      "max_write_buffer_number": 2,
+      "target_file_size_base": "64M",
       "target_file_size_multiplier": 1,
-      "min_filter_level": -1,
+      "max_bytes_for_level_base": "256M",
+      "soft_pending_compaction_bytes_limit": "64G",
+      "hard_pending_compaction_bytes_limit": "256G",
+      "min_filter_level": 0,
       "memtable_factory": "${skiplist}"
     },
     "encrypt": {
-      "sst_partitioner_factory": "${rdb_partitioner}",
-      "min_filter_level": -1,
-      "memtable_factory": "${skiplist}"
+      "template": "${default}",
+      "cf_paths": "/nvme-shared/mytopling/encrypt"
     },
     "default_sk": {
-      "sst_partitioner_factory": "${rdb_partitioner}",
-      "min_filter_level": -1,
-      "memtable_factory": "${skiplist}"
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/default_sk"
     },
     "rev:order": {
-      "level_compaction_dynamic_level_bytes": true,
-      "level_compaction_dynamic_file_size": true,
-      "allow_merge_memtables": true,
-      "max_bytes_for_level_multiplier": 10,
-      "max_bytes_for_level_multiplier_additional": [],
+      "template": "${default}",
       "sst_partitioner_factory": "${rdb_rev_partitioner}",
-      "write_buffer_size": "2M",
-      "max_write_buffer_size_to_maintain": "32M",
-      "target_file_size_base": "2M",
-      "target_file_size_multiplier": 1,
-      "min_filter_level": -1,
-      "memtable_factory": "${skiplist}"
+      "comparator": "${rev}"
     },
     "__tmp__": {
+      "template": "${default}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp__"
+    },
+    "__system__": {
+      "disable_auto_compactions": false,
+      "target_file_size_base": "64M",
+      "target_file_size_multiplier": 1,
+      "max_bytes_for_level_base": "256M",
+      "max_compaction_bytes": 1677721600,
       "level_compaction_dynamic_level_bytes": true,
       "level_compaction_dynamic_file_size": true,
       "allow_merge_memtables": true,
-      "min_filter_level": -1,
+      "paranoid_file_checks": false,
+      "min_filter_level": 0,
       "memtable_factory": "${skiplist}"
     },
     "__tmp_system__": {
-      "min_filter_level": -1,
-      "memtable_factory": "${skiplist}"
+      "template": "${__system__}",
+      "//cf_paths": "/nvme-shared/mytopling/__tmp_system__"
     },
-    "__system__": {
-      "level_compaction_dynamic_level_bytes": true,
-      "level_compaction_dynamic_file_size": true,
-      "allow_merge_memtables": true,
-      "min_filter_level": -1,
-      "memtable_factory": "${skiplist}"
+    "sample": {
+      "template": "default",
+      "cf_paths": "/path/to/sample/cf"
     }
   },
   "CompactionExecutorFactory": {
@@ -98,18 +108,25 @@
   "DBOptions": {
     "dbopt": {
       "db_log_dir": "",
+      "info_log_level": "ERROR_LEVEL",
+      "avoid_unnecessary_blocking_io": false,
       "allow_concurrent_memtable_write": false,
+      "write_dbid_to_manifest": false,
+      "verify_sst_unique_id_in_manifest": true,
+      "enforce_single_del_contracts": false,
       "//create_missing_column_families": false,
       "delayed_write_rate": 0,
       "enable_thread_tracking": true,
       "enable_write_thread_adaptive_yield": false,
       "keep_log_file_num": 1000,
+      "//periodic_compaction_seconds": 2592000,
       "stats_dump_period_sec": 600,
+      "stats_persist_period_sec": 600,
       "max_log_file_size": 0,
       "max_background_flushes": -1,
       "max_background_compactions": -1,
       "max_subcompactions": 1,
-      "max_level1_subcompactions": 1
+      "max_level1_subcompactions": 0
     }
   },
   "//databases": {

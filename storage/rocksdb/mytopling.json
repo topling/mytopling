@@ -79,13 +79,19 @@
         "capacity": "8G",
         "num_shard_bits": -1,
         "strict_capacity_limit": false,
-        "high_pri_pool_ratio": 0.75,
+        "high_pri_pool_ratio": 0.0,
         "use_adaptive_mutex": false,
         "metadata_charge_policy": "kFullChargeCacheMetadata"
       }
     }
   },
   "Comparator": {
+    "bytewise": {
+      "class": "BytewiseComparator",
+      "params": {
+        "need-not-any-param": "keep empty"
+      }
+    },
     "rev": {
       "class": "ReverseBytewiseComparator",
       "params": {
@@ -288,7 +294,9 @@
   "SstPartitionerFactory": {
     "rdb_partitioner": {
       "class": "Rdb_sst_partitioner_factory",
-      "params": {}
+      "params": {
+        "comparator": "${bytewise}"
+      }
     },
     "rdb_rev_partitioner": {
       "class": "Rdb_sst_partitioner_factory",
