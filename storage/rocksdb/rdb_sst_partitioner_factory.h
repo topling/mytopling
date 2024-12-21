@@ -153,6 +153,7 @@ class Rdb_index_boundary_sst_partitioner : public rocksdb::SstPartitioner {
  * see comments in Rdb_index_boundary_sst_partitioner.
  */
 class Rdb_sst_partitioner_factory : public rocksdb::SstPartitionerFactory {
+protected:
   const rocksdb::Comparator *m_comparator;
   const int m_num_levels;
   const bool m_is_reverse_cf;
