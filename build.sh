@@ -1,7 +1,12 @@
 #!/bin/bash
 PDIR=`cd ..; pwd`
 
-BUILD_DIR=${BUILD_DIR:-build-rls}
+type=${type:-rls}
+type_dbg=Debug
+type_rls=Release
+type_afr=RelWithDebInfo
+eval 'CMAKE_BUILD_TYPE=$type_'${type}
+BUILD_DIR=${BUILD_DIR:-build-${type}}
 mkdir -p ${BUILD_DIR}
 cd ${BUILD_DIR}
 #CXX_HOME=${CXX_HOME:-/opt/rh/gcc-toolset-9/root}
@@ -45,7 +50,7 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       $FORCE_CPU_ARCH \
       -DWITH_ZLIB=system \
       -DWITH_ZSTD=bundled \
-      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
       -DCMAKE_INSTALL_PREFIX=/opt/mytopling-rls \
       -DMYSQL_UNIX_ADDR=/var/lib/mysql/mysql.sock \
       "$@" ..
