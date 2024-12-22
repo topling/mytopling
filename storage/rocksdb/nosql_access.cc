@@ -1523,14 +1523,6 @@ class select_exec {
       return rdb_tx_get(m_tx, cf, key_slice, value_slice, m_table_type);
     }
 
-    void multi_get(rocksdb::ColumnFamilyHandle& cf, size_t size,
-                   bool sorted_input, const rocksdb::Slice *key_slices,
-                   rocksdb::PinnableSlice *value_slices,
-                   rocksdb::Status *statuses) {
-      rdb_tx_multi_get(m_tx, cf, size, key_slices, value_slices, m_table_type,
-                       statuses, sorted_input);
-    }
-
     void report_error(rocksdb::Status s) {
       if (s.IsIOError() || s.IsCorruption()) {
         rdb_handle_io_error(s, RDB_IO_ERROR_GENERAL);
