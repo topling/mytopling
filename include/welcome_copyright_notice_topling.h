@@ -37,12 +37,12 @@
   (strcmp(first_year, COPYRIGHT_NOTICE_CURRENT_YEAR)                           \
        ? "Copyright (c) " first_year ", " COPYRIGHT_NOTICE_CURRENT_YEAR        \
          ", "                                                                  \
-         "Topling and/or its affiliates.\n\nOracle is a "                      \
+         "Topling and/or its affiliates.\n\nTopling is a "                     \
          "registered trademark of Topling Corporation and/or its\naffiliates. "\
          "Other names may be trademarks of their respective\nowners.\n"        \
        : "Copyright (c) " first_year                                           \
          ", Topling and/or its affiliates."                                    \
-         "\n\nOracle is a registered trademark of "                            \
+         "\n\nTopling is a registered trademark of "                           \
          "Topling Corporation and/or its\naffiliates. Other names may be "     \
          "trademarks of their respective\nowners.\n")
 
