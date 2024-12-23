@@ -6,6 +6,8 @@ if [ -z "${type}" ]; then
 fi
 mydir=`dirname $0`
 mydir=`cd $mydir; pwd`
+export LANG=C
+export LC_ALL=C
 export LD_LIBRARY_PATH=/node-shared/opt/gcc-12.1.0/lib64:/node-shared/lib
 export LD_LIBRARY_PATH=/opt/lib:$LD_LIBRARY_PATH
 export PATH=/node-shared/mytopling-${type}/bin:${PATH}
@@ -26,10 +28,17 @@ export BULK_LOAD_DEL_TMP=1
 datadir=/nvme-shared/mytopling/datadir
 #datadir=/nvme-shared/mytopling/lifuzhou-data/test_data
 rm -rf ${datadir}/.rocksdb/job-*
+rm -rf ${datadir}/.rocksdb/cspp-*.memtab-*
+rm -rf /ram-shared/mytopling/copydir/.rocksdb/job-*
 export ToplingZipTable_localTempDir=/tmp
 rm -f ${ToplingZipTable_localTempDir}/Topling-*
 ulimit -n 100000
 #sudo sysctl -w vm.max_map_count=8388608
+if [ `sysctl -n vm.max_map_count` -lt $((8<<20)) ]; then
+  sysctl vm.max_map_count >&2
+  echo please run: sudo sysctl -w vm.max_map_count=$((8<<20)) >&2
+  exit 1
+fi
 
 common_args=(
   --gdb
@@ -58,7 +67,8 @@ common_args=(
   --default_authentication_plugin=mysql_native_password
   --secure_file_priv=''
   --transaction_isolation=READ-COMMITTED
-  --verbose
+ #--verbose
+  --log-error-verbosity=3 # information
 )
 dram=`awk '$1 == "MemTotal:"{print $2*1024}' /proc/meminfo`
 part=`nproc`
@@ -76,6 +86,7 @@ innodb_args1=(
   --innodb_io_capacity=1000000
   --innodb_io_capacity_max=1000000
   --innodb_log_buffer_size=8388608
+  --innodb_log_buffer_size=134217728
   --innodb_log_compressed_pages=OFF
   --innodb_flush_method=O_DIRECT
   --innodb_log_file_size=1572864000
@@ -95,18 +106,28 @@ if [ $# -eq 0 ]; then
    #--rocksdb_write_disable_wal=ON  --rocksdb_flush_log_at_trx_commit=0
    #--rocksdb_write_disable_wal=OFF --rocksdb_flush_log_at_trx_commit=2
    #--rocksdb_info_log_level=debug_level
+   #--rocksdb_info_log_level=info_level
+    --rocksdb_info_log_level=warn_level
    #--rocksdb_bulk_load=ON
    #--rocksdb_enable_bulk_load_api=on
    #--rocksdb_master_skip_tx_api=on
     --rocksdb_max_row_locks=104857600
     --rocksdb_reuse_iter=on
     --rocksdb_bulk_load_subcompactions=3
+    --rocksdb_bulk_sst_size=1073741824 # 1G
+    --rocksdb_bulk_sst_parallel_num=5
+    --rocksdb_parallel_read_threads=32
+    --rocksdb_check_iterate_bounds=off
    #--rocksdb_write_policy=write_unprepared
     --rocksdb_write_policy=write_committed
+    --rocksdb_write_reduce_cpu=ON # use futex in WriteThread
    #--rocksdb_deadlock_detect=ON
     --rocksdb_mrr_batch_size=32 --rocksdb_async_queue_depth=32
     --rocksdb_lock_wait_timeout=10
     --rocksdb_print_snapshot_conflict_queries=1
+    --rocksdb_compaction_sequential_deletes=1
+   #--rocksdb_compaction_sequential_deletes_window=150000 # default=150000
+    --rocksdb_skip_bloom_filter_on_read=ON
   )
 elif [ "${1:0:12}" = "--initialize" ]; then
   rm -rf ${datadir}/*
