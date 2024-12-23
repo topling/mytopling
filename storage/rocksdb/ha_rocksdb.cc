@@ -9236,6 +9236,7 @@ std::vector<std::string> Rdb_open_tables_map::get_table_names(void) const {
   std::vector<std::string> names;
 
   RDB_MUTEX_LOCK_CHECK(m_mutex);
+  names.reserve(m_table_map.size());
   for (const auto &kv : m_table_map) {
     table_handler = kv.second;
     assert(table_handler != nullptr);
@@ -12895,7 +12896,7 @@ const std::string ha_rocksdb::generate_cf_name(uint index,
   if (cf_name.empty() && comment && TERARK_IF_DEBUG(1, strncmp(comment, "rev:", 4) == 0)) {
     // key_comment is from var comment(real key comment)
     auto is_cfname_char = [](const unsigned char c) {
-      return isalnum(c) || c == '-' || c == '_' || c == '.';
+      return isalnum(c) || c == '-' || c == '_' || c == '.' || c == ':';
     };
     if (std::all_of(key_comment.begin(), key_comment.end(), is_cfname_char)) {
       cf_name = key_comment;
