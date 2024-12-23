@@ -8699,16 +8699,6 @@ if (repo_support_dynamic_create_cf()) { // just check in mtr
   }
 }
 
-  if (rocksdb_enable_tmp_table) {
-    sql_print_error("MyTopling: rocksdb_enable_tmp_table must be off");
-    DBUG_RETURN(HA_EXIT_FAILURE);
-  }
-
-  if (rocksdb_use_default_sk_cf) {
-    sql_print_error("MyTopling: rocksdb_use_default_sk_cf must be off");
-    DBUG_RETURN(HA_EXIT_FAILURE);
-  }
-
   // NO_LINT_DEBUG
   sql_print_information("RocksDB: Opening TransactionDB...");
   auto t0 = rocksdb::Env::Default()->NowMicros();

@@ -44,16 +44,11 @@ rocksdb::Status repo_drop_cf(rocksdb::ColumnFamilyHandle* cfh);
 bool Rdb_cf_manager::is_cf_name_reverse(const char *const name) {
   /* nullptr means the default CF is used.. (TODO: can the default CF be
    * reverse?) */
-#if 0
+  // Now MyTopling allow rev cf if and only if:
+  // 1. the rev cf is predefined, if not, it will fail later
+  // 2. WriteBatchWithIndex is the default SkipList impl(Not CSPP_WBWI)
+  // 3. the rev cf TableFactory & MemTable can be Topling's impl
   return (name && !strncmp(name, "rev:", 4));
-#else
-  // MyTopling: reverse bytewise comparator makes things complicated,
-  // and the gain is very little, keep it simple stupid!
-  // topling memtab and sst are fast on iterator backward scan, thus
-  // it is not needed to use reverse bytewise comparator
-  (void)name; // use
-  return false; // MyTopling: Never use reverse bytewise comparator
-#endif
 }
 
 bool Rdb_cf_manager::init(rocksdb::DB *const rdb,
