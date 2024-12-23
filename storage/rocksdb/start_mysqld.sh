@@ -98,7 +98,8 @@ innodb_args1=(
 )
 
 if [ $# -eq 0 ]; then
-  rocksdb_args=(--plugin-load=ha_rocksdb_se.so
+  rocksdb_args=(
+   #--plugin-load=ha_rocksdb_se.so # static link does not need
     --rocksdb --default-storage-engine=rocksdb
     --rocksdb_datadir=${datadir}/.rocksdb
     #--rocksdb_bulk_load
