@@ -8455,12 +8455,8 @@ else {
 
   rocksdb::Status status;
   std::vector<std::string> cf_names;
-if (side_conf && !repo_support_dynamic_create_cf()) {
-  status = g_repo.ListCFs(".rocksdb", &cf_names);
-} else {
   status = rocksdb::DB::ListColumnFamilies(*rocksdb_db_options, rocksdb_datadir,
                                            &cf_names);
-}
   DBUG_EXECUTE_IF("rocksdb_init_failure_list_cf", {
     // Simulate ListColumnFamilies failure
     status = rocksdb::Status::Corruption();
@@ -8487,19 +8483,17 @@ if (side_conf && !repo_support_dynamic_create_cf()) {
     sql_print_information("RocksDB: %ld column families found",
                           cf_names.size());
   }
-  if (repo_support_dynamic_create_cf()) {
-    for (auto& cfname : cf_names) { // add listed cf to cf_jsmap
-      if (json& cfo_name = cf_jsmap[cfname]; cfo_name.is_null()) {
-        cfo_name = repo_cfo_refname(cfname); // the cfo must exists
-        sql_print_information("not in sideplugin cf %s, add it because in mtr", cfname.c_str());
-      } else if (!cfo_name.is_string()) {
-        sql_print_error("json column_families[%s] must be a string", cfname.c_str());
-        DBUG_RETURN(HA_EXIT_FAILURE);
-      }
+  for (auto& cfname : cf_names) { // add listed cf to cf_jsmap
+    if (json& cfo_name = cf_jsmap[cfname]; cfo_name.is_null()) {
+      cfo_name = repo_cfo_refname(cfname); // the cfo must exists
+      sql_print_information("sideplugin add missing cf: %s", cfname.c_str());
+    } else if (!cfo_name.is_string()) {
+      sql_print_error("json column_families[%s] must be a string", cfname.c_str());
+      DBUG_RETURN(HA_EXIT_FAILURE);
     }
-    cf_names.clear();
-    for (auto& item : cf_jsmap.items()) cf_names.push_back(item.key());
   }
+  cf_names.clear();
+  for (auto& item : cf_jsmap.items()) cf_names.push_back(item.key());
 
   std::vector<rocksdb::ColumnFamilyDescriptor> cf_descr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
