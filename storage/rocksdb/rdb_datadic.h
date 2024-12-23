@@ -1480,7 +1480,7 @@ class Rdb_ddl_manager : public Ensure_initialized {
   Rdb_cf_manager *m_cf_manager = nullptr;
 
   // Contains Rdb_tbl_def elements
-#if 0
+#if !defined(NDEBUG) // for mtr conform order to myrocks
   std::unordered_map<std::string, Rdb_tbl_def *> m_ddl_map;
 #else
   terark::hash_strmap<Rdb_tbl_def*> m_ddl_map;
