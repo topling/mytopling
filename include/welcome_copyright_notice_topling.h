@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, 2023, Oracle and/or its affiliates.
+/* Copyright (c) 2010, 2022, Topling and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -17,22 +17,17 @@
    GNU General Public License, version 2.0, for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
-
-#if 1
-#include "welcome_copyright_notice_topling.h"
-#else
-
-#define _welcome_copyright_notice_h_
+   along with this program */
 
 /**
-  @file include/welcome_copyright_notice.h
+  @file include/welcome_copyright_notice_topling.h
 */
+
+#pragma once
 
 #include <string.h>
 
-#define COPYRIGHT_NOTICE_CURRENT_YEAR "2023"
+#define COPYRIGHT_NOTICE_CURRENT_YEAR "2022"
 
 /*
   This define specifies copyright notice which is displayed by every MySQL
@@ -42,13 +37,13 @@
   (strcmp(first_year, COPYRIGHT_NOTICE_CURRENT_YEAR)                           \
        ? "Copyright (c) " first_year ", " COPYRIGHT_NOTICE_CURRENT_YEAR        \
          ", "                                                                  \
-         "Oracle and/or its affiliates.\n\nOracle is a "                       \
-         "registered trademark of Oracle Corporation and/or its\naffiliates. " \
+         "Topling and/or its affiliates.\n\nTopling is a "                     \
+         "registered trademark of Topling Corporation and/or its\naffiliates. "\
          "Other names may be trademarks of their respective\nowners.\n"        \
        : "Copyright (c) " first_year                                           \
-         ", Oracle and/or its affiliates."                                     \
-         "\n\nOracle is a registered trademark of "                            \
-         "Oracle Corporation and/or its\naffiliates. Other names may be "      \
+         ", Topling and/or its affiliates."                                    \
+         "\n\nTopling is a registered trademark of "                           \
+         "Topling Corporation and/or its\naffiliates. Other names may be "     \
          "trademarks of their respective\nowners.\n")
 
 #define ORACLE_GPL_LICENSE_TEXT                                               \
@@ -77,18 +72,18 @@
 #define ORACLE_COPYRIGHT_NOTICE(first_year)                                \
   (strcmp(first_year, COPYRIGHT_NOTICE_CURRENT_YEAR)                       \
        ? "/* Copyright (c) " first_year ", " COPYRIGHT_NOTICE_CURRENT_YEAR \
-         ", Oracle and/or its affiliates.  */\n"                           \
+         ", Topling and/or its affiliates.  */\n"                          \
          "\n"                                                              \
        : "/* Copyright (c) " first_year                                    \
-         ", Oracle and/or its affiliates.  */\n")
+         ", Topling and/or its affiliates.  */\n")
 
 #define ORACLE_GPL_COPYRIGHT_NOTICE(first_year)                            \
   (strcmp(first_year, COPYRIGHT_NOTICE_CURRENT_YEAR)                       \
        ? "/* Copyright (c) " first_year ", " COPYRIGHT_NOTICE_CURRENT_YEAR \
-         ", Oracle and/or its affiliates.\n"                               \
+         ", Topling and/or its affiliates.\n"                              \
          "\n" ORACLE_GPL_LICENSE_TEXT                                      \
        : "/* Copyright (c) " first_year                                    \
-         ", Oracle and/or its affiliates.\n"                               \
+         ", Topling and/or its affiliates.\n"                              \
          "\n" ORACLE_GPL_LICENSE_TEXT)
 
 #define ORACLE_GPL_FOSS_LICENSE_TEXT                                          \
@@ -117,17 +112,14 @@
   "   GNU General Public License, version 2.0, for more details.\n"           \
   "\n"                                                                        \
   "   You should have received a copy of the GNU General Public License\n"    \
-  "   along with this program; if not, write to the Free Software\n"          \
-  "   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  " \
-  "USA */\n"
+  "   along with this program */\n"
 
 #define ORACLE_GPL_FOSS_COPYRIGHT_NOTICE(first_year)                       \
   (strcmp(first_year, COPYRIGHT_NOTICE_CURRENT_YEAR)                       \
        ? "/* Copyright (c) " first_year ", " COPYRIGHT_NOTICE_CURRENT_YEAR \
-         ", Oracle and/or its affiliates.\n"                               \
+         ", Topling and/or its affiliates.\n"                              \
          "\n" ORACLE_GPL_FOSS_LICENSE_TEXT                                 \
        : "/* Copyright (c) " first_year                                    \
-         ", Oracle and/or its affiliates.\n"                               \
+         ", Topling and/or its affiliates.\n"                              \
          "\n" ORACLE_GPL_FOSS_LICENSE_TEXT)
 
-#endif /* _welcome_copyright_notice_h_ */
