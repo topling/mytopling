@@ -50,7 +50,6 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DROCKSDB_DISABLE_MARCH_NATIVE=on \
       $FORCE_CPU_ARCH \
       -DWITH_FB_VECTORDB=1 \
-      -DWITH_OPENMP=/usr \
       -DWITH_ZLIB=system \
       -DWITH_ZSTD=bundled \
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
