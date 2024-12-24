@@ -55,4 +55,5 @@ cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
       -DCMAKE_INSTALL_PREFIX=/opt/mytopling-rls \
       -DMYSQL_UNIX_ADDR=/var/lib/mysql/mysql.sock \
+      -Wno-dev \
       "$@" ..
