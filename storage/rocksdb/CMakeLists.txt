@@ -95,12 +95,8 @@ IF (CMAKE_COMPILER_IS_GNUCXX)
   add_compile_options(-fno-builtin-memcmp)
 ENDIF()
 
-IF (DEFINED FORCE_CPU_ARCH)
-  add_compile_options(-march=${FORCE_CPU_ARCH})
-ELSE()
 IF (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT ROCKSDB_DISABLE_MARCH_NATIVE)
   add_compile_options(-march=native)
-ENDIF()
 ENDIF()
 
 IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
