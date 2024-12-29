@@ -3870,6 +3870,26 @@ static void FixMergeTableCFO(rocksdb::ColumnFamilyOptions* cfo) {
   for (auto& x : cfo->max_bytes_for_level_multiplier_additional) x = 1;
 }
 
+static auto GetVec1CFO(rocksdb::ColumnFamilyHandle* cfh) {
+  std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
+  auto default_memtab_fac = cfo[0].options.memtable_factory;
+  auto s = cfh->GetDescriptor(&cfo[0]);
+  ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
+  FixMergeTableCFO(&cfo[0].options);
+  cfo[0].options.memtable_factory = default_memtab_fac; // do not use CSPP
+  return cfo;
+}
+
+static std::string CreateTempDir(const std::string& stem) {
+  std::string tmp_dbname = rocksdb_datadir;
+  tmp_dbname += "/";
+  tmp_dbname += stem;
+  tmp_dbname += "-XXXXXX";
+  auto p_mkdtemp = mkdtemp(tmp_dbname.data());
+  ROCKSDB_VERIFY(nullptr != p_mkdtemp);
+  return tmp_dbname;
+}
+
 /* This is the base class for transactions when interacting with rocksdb.
  */
 class Rdb_transaction {
@@ -4929,7 +4949,6 @@ class Rdb_transaction {
     }
 
   // rocksdb_auto_sort_sst_factory also act as a knob for compact external sst
-  if (rocksdb_auto_sort_sst_factory) {
     std::vector<std::string> tmp_dirs;
     Ensure_cleanup tmp_dirs_clean([&]() {
       if (!terark::getEnvBool("BULK_LOAD_DEL_TMP", true)) {
@@ -4950,27 +4969,18 @@ class Rdb_transaction {
         }
       }
     });
-    auto dbo = MergeTableDBOptions();
-    for (auto& [cf, files] : arg_map) {
-      std::string tmp_dbname = rocksdb_datadir;
-      tmp_dbname += "/";
-      tmp_dbname += cf->GetName();
-      tmp_dbname += "-XXXXXX";
-      auto p_mkdtemp = mkdtemp(tmp_dbname.data());
-      ROCKSDB_VERIFY(nullptr != p_mkdtemp);
-      std::vector<rocksdb::ColumnFamilyDescriptor> cfo(1);
-      auto default_memtab_fac = cfo[0].options.memtable_factory;
-      auto s = cf->GetDescriptor(&cfo[0]);
-      ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
-      FixMergeTableCFO(&cfo[0].options);
-      cfo[0].options.memtable_factory = default_memtab_fac; // do not use CSPP
-      std::vector<std::string> outputs;
-      s = rocksdb::MergeTables(files.external_files, tmp_dbname, dbo, cfo, cf->GetID(), &outputs);
-      ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
-      files.external_files = std::move(outputs);
-      tmp_dirs.push_back(tmp_dbname);
+    if (rocksdb_auto_sort_sst_factory) {
+      auto dbo = MergeTableDBOptions();
+      for (auto& [cf, files] : arg_map) {
+        std::string tmp_dbname = CreateTempDir(cf->GetName());
+        std::vector<rocksdb::ColumnFamilyDescriptor> cfo = GetVec1CFO(cf);
+        std::vector<std::string> outputs;
+        auto s = rocksdb::MergeTables(files.external_files, tmp_dbname, dbo, cfo, cf->GetID(), &outputs);
+        ROCKSDB_VERIFY_F(s.ok(), "%s", s.ToString().c_str());
+        files.external_files = std::move(outputs);
+        tmp_dirs.push_back(tmp_dbname);
+      }
     }
-  }
 
     std::vector<rocksdb::IngestExternalFileArg> args;
     size_t file_count = 0;
