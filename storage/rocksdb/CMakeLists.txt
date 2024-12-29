@@ -290,18 +290,23 @@ IF (HAVE_ZLIB_H)
   SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY})
 ENDIF()
 
-SET(rocksdb_static_libs ${rocksdb_static_libs} "-lstdc++fs")
 SET(rocksdb_static_libs ${rocksdb_static_libs} "-ldl" "-lpthread")
 IF(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
   SET(rocksdb_static_libs ${rocksdb_static_libs} "-lrt")
 ENDIF()
 
+# sst_dump_tool.cc is not needed, but ADD_LIBRARY needs src files, let it happy
+# this makes min diff to upstream myrocks
+SET(ROCKSDB_LIB_SOURCES ${ROCKSDB_ROOT}/tools/sst_dump_tool.cc)
+ADD_LIBRARY(rocksdb_sources ${ROCKSDB_LIB_SOURCES})
+TARGET_LINK_LIBRARIES(rocksdb_sources ${rocksdb_static_libs})
+
 IF (ROCKSDB_DYNAMIC_PLUGIN)
-  MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SE_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
-    LINK_LIBRARIES ${rocksdb_static_libs})
+  MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SE_SOURCES} STORAGE_ENGINE DEFAULT
+    MODULE_ONLY LINK_LIBRARIES rocksdb_sources)
 ELSE()
   MYSQL_ADD_PLUGIN(rocksdb_se ${ROCKSDB_SE_SOURCES} STORAGE_ENGINE MANDATORY
-    STATIC_ONLY LINK_LIBRARIES ${rocksdb_static_libs})
+    STATIC_ONLY LINK_LIBRARIES rocksdb_sources)
     # to fix linkage error on partition_base
     TARGET_LINK_LIBRARIES(rocksdb_se sql_main)
 ENDIF()
@@ -320,7 +325,7 @@ IF(WITH_EMBEDDED_SERVER)
   ADD_SUBDIRECTORY(unittest)
 ENDIF()
 
-IF (WITH_ROCKSDB_SE_STORAGE_ENGINE AND (NOT HAVE_EXTERNAL_ROCKSDB))
+IF (NOT HAVE_EXTERNAL_ROCKSDB)
   # TODO: read this file list from src.mk:TOOL_SOURCES
   ADD_LIBRARY(rocksdb_tool
     ${CMAKE_SOURCE_DIR}/rocksdb/tools/ldb_tool.cc
