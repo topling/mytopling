@@ -41,6 +41,7 @@ if [ `sysctl -n vm.max_map_count` -lt $((8<<20)) ]; then
 fi
 
 common_args=(
+  --no-defaults
   --gdb
  #--skip-stack-trace
   --datadir=${datadir}
@@ -100,8 +101,7 @@ if [ $# -eq 0 ]; then
   rocksdb_args=(
    #--plugin-load=ha_rocksdb_se.so # static link does not need
     --rocksdb --default-storage-engine=rocksdb
-    --rocksdb_datadir=${datadir}/.rocksdb
-    #--rocksdb_bulk_load
+   #--rocksdb_bulk_load
     --rocksdb_allow_concurrent_memtable_write=on
     --rocksdb_force_compute_memtable_stats=off
    #--rocksdb_write_disable_wal=ON  --rocksdb_flush_log_at_trx_commit=0
