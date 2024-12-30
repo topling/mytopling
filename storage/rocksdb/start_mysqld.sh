@@ -8,9 +8,27 @@ mydir=`dirname $0`
 mydir=`cd $mydir; pwd`
 export LANG=C
 export LC_ALL=C
-export LD_LIBRARY_PATH=/node-shared/opt/gcc-12.1.0/lib64:/node-shared/lib
-export LD_LIBRARY_PATH=/opt/lib:$LD_LIBRARY_PATH
-export PATH=/node-shared/mytopling-${type}/bin:${PATH}
+if [ -z "$LD_LIBRARY_PATH" ]; then
+  if [ -f /node-shared/mytopling-${type}/bin/mysqld ]; then
+    export LD_LIBRARY_PATH=/node-shared/opt/gcc-12.1.0/lib64:/node-shared/lib
+    export PATH=/node-shared/mytopling-${type}/bin:${PATH}
+  else
+    export LD_LIBRARY_PATH=/opt/lib
+    export PATH=/opt/mytopling-${type}/bin:${PATH}
+  fi
+fi
+if ! which mysqld; then
+  build_dir=`realpath ${mydir}/../../build-${type}`
+  if [ -f $build_dir/bin/mysqld ]; then
+    export PATH="$build_dir/bin:$PATH"
+    export LD_LIBRARY_PATH="$build_dir/library_output_directory:$build_dir/plugin_output_directory:$LD_LIBRARY_PATH"
+    echo Not found mysqld, use build $build_dir
+  else
+    echo Not found mysqld, stop >&2
+    exit 1
+  fi
+fi
+
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
 export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling.json
 #export TOPLING_SIDEPLUGIN_CONF=${mydir}/mytopling-community.json
@@ -43,6 +61,7 @@ fi
 common_args=(
   --no-defaults
   --gdb
+ #--debug
  #--skip-stack-trace
   --datadir=${datadir}
   --bind-address=0.0.0.0
@@ -140,6 +159,7 @@ fi
 if [ $type = dbg ]; then
   dbg="gdb --args"
 fi
+#dbg="strace -f -e signal,sigaction,signalfd"
 #dbg="gdb --args"
 #dbg="valgrind"
 binlog_args=(
