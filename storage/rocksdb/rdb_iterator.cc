@@ -162,7 +162,7 @@ void Rdb_iterator_base::init(THD *thd, ha_rocksdb *rocksdb_handler,
     }
   }
   if (INTRINSIC_TMP == new_table_type && nullptr == m_rocksdb_handler) {
-    //ROCKSDB_DIE("MyTopling does not support INTRINSIC_TMP table");
+    //ROCKSDB_DIE(MyToplingDistName " does not support INTRINSIC_TMP table");
     if (rocksdb_handler) {
       add_tmp_table_handler(thd, rocksdb_handler);
       m_rocksdb_handler = rocksdb_handler;

@@ -1239,7 +1239,7 @@ static std::shared_ptr<rocksdb::DBOptions> rdb_load_side_plugin() {
     }, listener);
   }
   else {
-    sql_print_error("RocksDB: MyTopling requires env TOPLING_SIDEPLUGIN_CONF");
+    sql_print_error("RocksDB: " MyToplingDistName " requires env TOPLING_SIDEPLUGIN_CONF");
     exit(HA_EXIT_FAILURE);
   }
   return o;
@@ -9764,7 +9764,7 @@ else {
   tx_db_options.enable_udt_validation = !rocksdb_enable_udt_in_mem;
 #else
   if (rocksdb_enable_udt_in_mem) {
-    sql_print_warning("RocksDB: MyTopling does not support UDT, auto change rocksdb_enable_udt_in_mem to false");
+    sql_print_warning("RocksDB: " MyToplingDistName " does not support UDT, auto change rocksdb_enable_udt_in_mem to false");
     rocksdb_enable_udt_in_mem = false;
   }
 #endif
