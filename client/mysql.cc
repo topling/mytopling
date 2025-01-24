@@ -3244,15 +3244,15 @@ static int com_help(String *buffer [[maybe_unused]],
       INFO_INFO);
 #else
   put_info(
-      "\nFor information about MyTopling products and services, visit:\n"
-      "   http://topling.cn/\n"
-      "MyTopling is compatible to MySQL, so MySQL Reference Manual can be\n"
-      "used for MyTopling.\n"
+      "\nFor information about " MyToplingDistName " products and services, visit:\n"
+      "   " MyToplingShopAddr "\n"
+      MyToplingDistName " is compatible to MySQL, so MySQL Reference Manual can be\n"
+      "used for " MyToplingDistName ".\n"
       "For developer information, including the MySQL Reference Manual, "
       "visit:\n"
-      "   http://dev.mysql.com/\n"
-      "To buy MyTopling Enterprise support, training, or other products, visit:\n"
-      "   https://topling.cn/\n",
+      "   https://dev.mysql.com/\n"
+      "To buy " MyToplingDistName " Enterprise support, training, or other products, visit:\n"
+      "   " MyToplingShopAddr "\n",
       INFO_INFO);
 #endif
 

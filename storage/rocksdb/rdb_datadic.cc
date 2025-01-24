@@ -6381,7 +6381,7 @@ void Rdb_dict_manager::get_all_index_info(std::vector<Rdb_index_info>* info_vec)
     auto key = iter->key();
     auto value = iter->value();
     if (key.size() <= 4) {
-      sql_print_error("MyTopling: get_all_index_info: key.size() = %zd, expected > 4", key.size());
+      sql_print_error(MyToplingDistName ": get_all_index_info: key.size() = %zd, expected > 4", key.size());
       abort();
     }
     const uint32_t itype = rdb_netbuf_to_uint32((const uchar*)key.data());
@@ -6389,7 +6389,7 @@ void Rdb_dict_manager::get_all_index_info(std::vector<Rdb_index_info>* info_vec)
       break;
     }
     if (key.size() < 12) {
-      sql_print_error("MyTopling: get_all_index_info: key.size() = %zd, expected == 12", key.size());
+      sql_print_error(MyToplingDistName ": get_all_index_info: key.size() = %zd, expected == 12", key.size());
       abort();
     }
     info_vec->push_back(Rdb_index_info());
