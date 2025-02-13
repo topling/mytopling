@@ -21,11 +21,15 @@ public:
     bool html = JsonSmartBool(dump_options, "html", true);
     json js;
     std::string mysql_git_hash(MYSQL_GIT_HASH);
-    js[MyToplingDistName]["git_sha"] = html ?
+    if (html && strcmp(MyToplingDistName, "MyTopling") == 0) {
+      js[MyToplingDistName]["git_sha"] =
         "<a href=\"https://github.com/topling/mytopling/commit/"
         + mysql_git_hash + "\">"
         + mysql_git_hash + "</a>"
-        : mysql_git_hash;
+        ;
+    } else {
+      js[MyToplingDistName]["git_sha"] = std::move(mysql_git_hash);
+    }
     js[MyToplingDistName]["git_date"] = MYSQL_GIT_DATE;
     JS_ModuleGitInfo_Add(js, html);
     return JsonToString(js, dump_options);
