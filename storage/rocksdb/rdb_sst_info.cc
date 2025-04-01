@@ -388,7 +388,8 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *db, const std::string &tablename,
 Rdb_sst_info::~Rdb_sst_info() {
   for (auto& [index_id, sst] : m_sst_map) {
     //SHIP_ASSERT(m_sst_file == nullptr);
-    sql_print_warning("index_id %d, sst file %s",
+    if (m_sst_file)
+      sql_print_warning("index_id %d, sst file %s",
         index_id, m_sst_file ? m_sst_file->get_name().c_str() : "(null)");
   }
 
