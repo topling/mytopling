@@ -483,16 +483,20 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
 
   int rc = 0;
 
-#if 0 // now MyTopling support ReverseBytewiseComparator
+#if !defined(MYTOPLING_WITH_REVERSE_CF)
   assert(m_kd.get_cf().GetComparator()->IsForwardBytewise());
 #endif
 
+#if defined(NDEBUG)
   const uint32_t refresh_interval = 10000;
   if (unlikely(++m_call_cnt >= refresh_interval)) {
     refresh_iter();
     m_call_cnt = 0;
   }
+#endif
 
+  // debug build act same as upstream myrocks
+  //const bool old_skip_next = TERARK_IF_DEBUG(true, skip_next);
   const bool old_skip_next = skip_next;
 
   for (;;) {
