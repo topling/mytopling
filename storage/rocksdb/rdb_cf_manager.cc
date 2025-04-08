@@ -162,6 +162,7 @@ void Rdb_cf_manager::cleanup() {
 */
 std::shared_ptr<rocksdb::ColumnFamilyHandle> Rdb_cf_manager::get_or_create_cf(
     rocksdb::DB *const rdb, const std::string &cf_name) {
+  (void)rdb; // remove 'unused param' warnings
   assert(rdb != nullptr);
   assert(!cf_name.empty());
   std::shared_ptr<rocksdb::ColumnFamilyHandle> cf_handle;
