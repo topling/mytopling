@@ -19125,10 +19125,10 @@ bool mysql_checksum_table(THD *thd, Table_ref *tables,
             } else {
               // Traverse fields in item_list order.
               for (auto it = item_list->begin(); it != item_list->end(); ++it) {
-                Item *item = *it;
+                Item *item2 = *it;
 
-                assert(item->type() == Item::FIELD_ITEM);
-                Field *f = static_cast<const Item_field *>(item)->field;
+                assert(item2->type() == Item::FIELD_ITEM);
+                Field *f = static_cast<const Item_field *>(item2)->field;
                 assert(bitmap_is_set(t->read_set, f->field_index()));
                 row_crc = compute_field_checksum(f, row_crc);
               }
