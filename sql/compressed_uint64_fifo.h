@@ -149,7 +149,7 @@ class [[nodiscard]] compressed_uint64_fifo final {
       return current_number;
     }
 
-    [[nodiscard]] const_iterator &operator++() noexcept {
+    const_iterator &operator++() noexcept {
       advance();
       return *this;
     }
