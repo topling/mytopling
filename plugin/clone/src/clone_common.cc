@@ -147,7 +147,7 @@ int Ha_clone_common_cbk::populate_synchronization_coordinates(
   if (!std::filesystem::exists(file_path)) {
     return 0;
   }
-  char info_mesg[512];
+  char info_mesg[FN_REFLEN + 128];
   snprintf(info_mesg, sizeof(info_mesg),
            "Reading gtid from binlog %s offset %s", full_file_name,
            std::to_string(binary_log_position_int).c_str());
