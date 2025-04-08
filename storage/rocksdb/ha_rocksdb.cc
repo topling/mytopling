@@ -9067,6 +9067,7 @@ static void RepoImportMyRocksCFOptions(Rdb_cf_options* cf_options_map) {
     // noop if tf is a non-dispatcher
     DispatcherTableFactoryUpdatePointer(tf.get(), old_bb, new_bb);
   }
+  size_t max_write_buffer_size = 0;
   for (auto& [cfo_name, p_cfo] : cfo_map) {
     ColumnFamilyOptions old = *p_cfo;
     cf_options_map->get(cfo_name, p_cfo.get()); // update with myrocks config
@@ -9091,6 +9092,12 @@ static void RepoImportMyRocksCFOptions(Rdb_cf_options* cf_options_map) {
         p_cfo->compaction_thread_limiter != old.compaction_thread_limiter) {
       g_repo.Put(cfo_name, p_cfo->compaction_thread_limiter); // for cfo_name
     }
+    terark::maximize(max_write_buffer_size, p_cfo->write_buffer_size);
+  }
+  ROCKSDB_ASSERT_EQ(g_repo.m_impl->db_options.name2p->at("dbopt").get(), rocksdb_db_options.get());
+  if (get_var_source("rocksdb_db_write_buffer_size") != enum_variable_source::COMPILED) {
+    if (!side_conf_mtr)
+      rocksdb_db_options->db_write_buffer_size = max_write_buffer_size;
   }
 }
 
