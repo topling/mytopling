@@ -840,7 +840,7 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
                                      const uchar *const new_data);
   int get_pk_for_update(struct update_row_info *const row_info);
   [[nodiscard]] int check_and_lock_unique_pk(
-      const struct update_row_info &row_info, THD*, bool *const found);
+      const struct update_row_info &row_info, THD*, Rdb_transaction*, bool *const found);
   int acquire_prefix_lock(const Rdb_key_def &kd, Rdb_transaction *tx,
                           const uchar *data)
       MY_ATTRIBUTE((__warn_unused_result__));

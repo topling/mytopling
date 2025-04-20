@@ -1532,6 +1532,8 @@ class select_exec {
       __attribute((unused)) int err = ha_rocksdb::rdb_error_to_mysql(s);
     }
 
+    Rdb_transaction* get_tx() const { return m_tx; }
+
    private:
     THD *m_thd;
     TABLE_TYPE m_table_type;
@@ -2394,6 +2396,7 @@ bool INLINE_ATTR select_exec::run_pk_point_query() {
     }
   } else {
     rocksdb::PinnableSlice value_slice;
+    Rdb_transaction* tx = get_tx_from_thd(m_thd);
     for (auto &writer : m_key_index_tuples) {
       if (handle_killed()) {
         return true;
@@ -2402,7 +2405,7 @@ bool INLINE_ATTR select_exec::run_pk_point_query() {
       value_slice.Reset();
 
       rocksdb::Slice key_slice = writer.get_key_slice();
-      auto rc = m_iterator->get(&key_slice, &value_slice, RDB_LOCK_NONE);
+      auto rc = m_iterator->get(tx, &key_slice, &value_slice, RDB_LOCK_NONE);
       if (rc == HA_ERR_KEY_NOT_FOUND) {
         continue;
       }
@@ -2449,7 +2452,7 @@ bool INLINE_ATTR select_exec::run_sk_point_query(txn_wrapper *txn) {
 
     rocksdb::PinnableSlice value;
     rocksdb::Slice key_slice = writer.get_key_slice();
-    int rc = m_iterator->get(&key_slice, &value, RDB_LOCK_NONE);
+    int rc = m_iterator->get(txn->get_tx(), &key_slice, &value, RDB_LOCK_NONE);
 
     if (rc == HA_ERR_KEY_NOT_FOUND) {
       continue;
