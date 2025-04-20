@@ -695,18 +695,15 @@ int Rdb_iterator_base::convert_iterator_status() const {
   return rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
 }
 
-int Rdb_iterator_base::get(const rocksdb::Slice *key,
+int Rdb_iterator_base::get(Rdb_transaction* tx, const rocksdb::Slice *key,
                            rocksdb::PinnableSlice *value, Rdb_lock_type type,
                            bool skip_ttl_check, bool skip_wait) {
   m_valid = false;
-  Rdb_transaction *const tx = get_tx_from_thd(m_thd);
-  rocksdb::Status s;
-  if (type == RDB_LOCK_NONE) {
-    s = rdb_tx_get(tx, m_kd.get_cf(), *key, value, m_table_type);
-  } else {
-    s = rdb_tx_get_for_update(tx, m_kd, *key, value, m_table_type,
+  rocksdb::Status s =
+    (type == RDB_LOCK_NONE) ? // avoid if..else copy Status s
+    rdb_tx_get(tx, m_kd.get_cf(), *key, value, m_table_type) :
+    rdb_tx_get_for_update(tx, m_kd, *key, value, m_table_type,
                               type == RDB_LOCK_WRITE, skip_wait);
-  }
 
   DBUG_EXECUTE_IF(
       "rocksdb_return_status_corrupted",
@@ -925,7 +922,8 @@ int Rdb_iterator_partial::seek_next_prefix(bool direction) {
   m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
   rocksdb::PinnableSlice value;
-  rc = Rdb_iterator_base::get(&cur_prefix_key, &value, RDB_LOCK_NONE,
+  Rdb_transaction* tx = get_tx_from_thd(m_thd);
+  rc = Rdb_iterator_base::get(tx, &cur_prefix_key, &value, RDB_LOCK_NONE,
                               false /* skip ttl check*/);
 
   if (rc == HA_ERR_KEY_NOT_FOUND) {
@@ -1260,7 +1258,8 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
   m_kd.get_infimum_key(m_cur_prefix_key, &tmp);
 
   rocksdb::PinnableSlice value;
-  rc = Rdb_iterator_base::get(&cur_prefix_key, &value, RDB_LOCK_NONE,
+  Rdb_transaction* tx = get_tx_from_thd(m_thd);
+  rc = Rdb_iterator_base::get(tx, &cur_prefix_key, &value, RDB_LOCK_NONE,
                               false /* skip ttl check*/);
 
   bool next_prefix = false;
@@ -1374,7 +1373,8 @@ int Rdb_iterator_partial::handle_get_result(
 
     rocksdb::Slice pk_key((const char *)m_sk_packed_tuple, size);
 
-    rc = m_iterator_pk.get(&pk_key, value, type, skip_ttl_check, skip_wait);
+    Rdb_transaction* tx = get_tx_from_thd(m_thd);
+    rc = m_iterator_pk.get(tx, &pk_key, value, type, skip_ttl_check, skip_wait);
     if (rc) return rc;
 
     // Unpack from PK format
@@ -1394,10 +1394,10 @@ int Rdb_iterator_partial::handle_get_result(
   return rc;
 }
 
-int Rdb_iterator_partial::get(const rocksdb::Slice *key,
+int Rdb_iterator_partial::get(Rdb_transaction* tx, const rocksdb::Slice *key,
                               rocksdb::PinnableSlice *value, Rdb_lock_type type,
                               bool skip_ttl_check, bool skip_wait) {
-  int rc = Rdb_iterator_base::get(key, value, type, skip_ttl_check, skip_wait);
+  int rc = Rdb_iterator_base::get(tx, key, value, type, skip_ttl_check, skip_wait);
   rc = handle_get_result(rc, key, value, type, skip_ttl_check, skip_wait);
   m_partial_valid = false;
   return rc;

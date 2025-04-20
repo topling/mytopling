@@ -72,7 +72,7 @@ class Rdb_iterator : public rocksdb::CacheAlignedNewDelete {
   virtual int seek(enum ha_rkey_function find_flag,
                    const rocksdb::Slice start_key, bool full_key_match,
                    const rocksdb::Slice end_key, bool read_current = false) = 0;
-  virtual int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+  virtual int get(Rdb_transaction*, const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
                   Rdb_lock_type type, bool skip_ttl_check = false,
                   bool skip_wait = false) = 0;
   virtual void multi_get(const std::vector<rocksdb::Slice> &key_slices,
@@ -123,7 +123,7 @@ class Rdb_iterator_base : public Rdb_iterator {
   int seek(enum ha_rkey_function find_flag, const rocksdb::Slice start_key,
            bool full_key_match, const rocksdb::Slice end_key,
            bool read_current = false) override;
-  int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+  int get(Rdb_transaction*, const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
           Rdb_lock_type type, bool skip_ttl_check = false,
           bool skip_wait = false) override;
   void multi_get(const std::vector<rocksdb::Slice> &key_slices,
@@ -299,10 +299,10 @@ class Rdb_iterator_proxy {
       return m_iter->seek(find_flag, start_key, full_key_match, end_key,
                           read_current);
     }
-    inline int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+    inline int get(Rdb_transaction* tx, const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
                    Rdb_lock_type type, bool skip_ttl_check = false,
                    bool skip_wait = false) {
-      return m_iter->get(key, value, type, skip_ttl_check, skip_wait);
+      return m_iter->get(tx, key, value, type, skip_ttl_check, skip_wait);
     }
     inline int next() { return m_next(m_iter); }
     inline int prev() { return m_prev(m_iter); }
@@ -441,7 +441,7 @@ class Rdb_iterator_partial : public Rdb_iterator_base {
   int seek(enum ha_rkey_function find_flag, const rocksdb::Slice start_key,
            bool full_key_match, const rocksdb::Slice end_key,
            bool read_current = false) override;
-  int get(const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
+  int get(Rdb_transaction*, const rocksdb::Slice *key, rocksdb::PinnableSlice *value,
           Rdb_lock_type type, bool skip_ttl_check = false,
           bool skip_wait = false) override;
   void multi_get(const std::vector<rocksdb::Slice> &key_slices,

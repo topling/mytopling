@@ -13206,7 +13206,7 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
                          m_tbl_def->get_table_type());
     bool skip_wait =
         m_locked_row_action == THR_NOWAIT || m_locked_row_action == THR_SKIP;
-    rc = get_pk_iterator()->get(&key_slice, &m_retrieved_record, m_lock_rows,
+    rc = get_pk_iterator()->get(tx, &key_slice, &m_retrieved_record, m_lock_rows,
                                 skip_ttl_check, skip_wait);
   }
 
@@ -13511,7 +13511,7 @@ int ha_rocksdb::get_row_by_sk(uchar *buf, const Rdb_key_def &kd,
 
   tx->acquire_snapshot(true /* acquire_now */, m_tbl_def->get_table_type());
 
-  int rc = m_iterator->get(key, &m_retrieved_record, RDB_LOCK_NONE);
+  int rc = m_iterator->get(tx, key, &m_retrieved_record, RDB_LOCK_NONE);
   if (rc) DBUG_RETURN(rc);
 
   const uint size =
@@ -14441,7 +14441,8 @@ int ha_rocksdb::get_pk_for_update(struct update_row_info *const row_info) {
     other            HA_ERR error code (can be SE-specific)
 */
 int ha_rocksdb::check_and_lock_unique_pk(const struct update_row_info &row_info,
-                                         THD* thd, bool *const found) {
+                                         THD* thd, Rdb_transaction* tx,
+                                         bool *const found) {
   assert(found != nullptr);
 
   assert(row_info.old_pk_slice.size() == 0 ||
@@ -14473,7 +14474,7 @@ int ha_rocksdb::check_and_lock_unique_pk(const struct update_row_info &row_info,
     2) T1 Get(empty) -> T1 Put(insert, not committed yet) -> T2 Get(empty)
        -> T2 Put(insert, blocked) -> T1 commit -> T2 commit(overwrite)
   */
-  int rc = get_pk_iterator()->get(&row_info.new_pk_slice,
+  int rc = get_pk_iterator()->get(tx, &row_info.new_pk_slice,
                                   ignore_pk_unique_check ? nullptr : pslice,
                                   m_lock_rows);
 
@@ -14653,7 +14654,8 @@ int ha_rocksdb::check_and_lock_sk(const uint key_id,
     get instead.
   */
   bool skip_ttl_check = !all_parts_used;
-  rc = iter.get(&new_slice, all_parts_used ? &m_retrieved_record : nullptr,
+  Rdb_transaction* tx = row_info.tx;
+  rc = iter.get(tx, &new_slice, all_parts_used ? &m_retrieved_record : nullptr,
                 m_lock_rows, skip_ttl_check);
   if (rc && rc != HA_ERR_KEY_NOT_FOUND) {
     return rc;
@@ -14739,7 +14741,7 @@ int ha_rocksdb::check_uniqueness_and_lock(
         found = false;
         rc = HA_EXIT_SUCCESS;
       } else {
-        rc = check_and_lock_unique_pk(row_info, thd, &found);
+        rc = check_and_lock_unique_pk(row_info, thd, tx, &found);
         DEBUG_SYNC(thd, "rocksdb.after_unique_pk_check");
       }
     } else {
