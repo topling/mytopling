@@ -536,6 +536,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
     }
   }
 
+  size_t reserve_row_len = 0;
   m_has_instant_fields = false;
   for (uint i = 0; i < m_table->s->fields; i++) {
     Field *const field = m_table->field[i];
@@ -585,9 +586,11 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
       auto varchar = reinterpret_cast<const Field_varstring *>(field);
       m_encoder_arr[i].m_field_length = varchar->field_length;
       m_encoder_arr[i].m_field_length_bytes = varchar->get_length_bytes();
+      reserve_row_len += varchar->field_length + 4;
     } else {
       m_encoder_arr[i].m_field_length = -1;
       m_encoder_arr[i].m_field_length_bytes = -1;
+      reserve_row_len += field->pack_length();
     }
 
     m_encoder_arr[i].m_is_instant_field = false;
@@ -635,6 +638,10 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
   assert(m_table->s->table_category == TABLE_CATEGORY_TEMPORARY ||
          ceil((double)m_table->s->null_fields / 8) ==
              (uint)m_null_bytes_length_in_record);
+
+  reserve_row_len += null_bytes_length;
+  reserve_row_len += 64; // more
+  m_storage_record.mem_realloc(reserve_row_len);
 }
 
 #ifdef NDEBUG
