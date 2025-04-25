@@ -766,6 +766,10 @@ static int rocksdb_check_bulk_load_unique_key_check(
     THD *const thd, struct SYS_VAR *var MY_ATTRIBUTE((__unused__)), void *save,
     struct st_mysql_value *value);
 
+static int rocksdb_set_skip_snapshot_validation(
+    THD *const thd, struct SYS_VAR *var MY_ATTRIBUTE((__unused__)), void *save,
+    struct st_mysql_value *value);
+
 static void rocksdb_set_max_background_jobs(THD *thd, struct SYS_VAR *const var,
                                             void *const var_ptr,
                                             const void *const save);
@@ -1648,7 +1652,7 @@ static MYSQL_THDVAR_BOOL(
     "Skips snapshot validation on locking reads. This makes MyRocks "
     "Repeatable Read behavior close to InnoDB -- forcing reading the "
     "newest data with locking reads.",
-    nullptr, nullptr, false);
+    rocksdb_set_skip_snapshot_validation, nullptr, false);
 
 static const char *const DEFAULT_READ_FREE_RPL_TABLES = ".*";
 
@@ -3910,6 +3914,8 @@ class Rdb_transaction {
 
   bool m_is_two_phase = false;
   bool m_use_auto_sort_sst = false;
+  bool m_var_bulk_load = false;
+  bool m_skip_snapshot_validation = false;
 
  private:
   std::unordered_set<Rdb_tbl_def *> modified_tables;
@@ -5506,6 +5512,16 @@ class Rdb_transaction {
     Rdb_transaction_list::erase(this);
   }
 
+  void set_var_bulk_load(bool b) { m_var_bulk_load = b; }
+  bool get_var_bulk_load() const { return m_var_bulk_load; }
+
+  void set_skip_snapshot_validation(bool b) {
+    m_skip_snapshot_validation = b;
+  }
+  bool get_skip_snapshot_validation() const {
+    return m_skip_snapshot_validation;
+  }
+
   explicit Rdb_transaction(THD *const thd)
       : m_thd(thd), m_tbl_io_perf(nullptr) {
     m_read_opts[INTRINSIC_TMP].ignore_range_deletions =
@@ -5514,6 +5530,8 @@ class Rdb_transaction {
         !rocksdb_enable_delete_range_for_drop_index;
     m_use_auto_sort_sst =
           rocksdb_enable_auto_sort_sst && rocksdb_auto_sort_sst_factory;
+    m_var_bulk_load = THDVAR(thd, bulk_load);
+    m_skip_snapshot_validation = THDVAR(thd, skip_snapshot_validation);
   }
 
   virtual ~Rdb_transaction() {
@@ -14886,7 +14904,7 @@ int ha_rocksdb::update_write_pk(const Rdb_key_def &kd,
     get_ha_data(ha_thd())->inc_total_tmp_table_size(row_size);
   }
 
-  if (rocksdb_enable_bulk_load_api && THDVAR(table->in_use, bulk_load) &&
+  if (rocksdb_enable_bulk_load_api && row_info.tx->get_var_bulk_load() &&
       !hidden_pk && !is_dd_update()) {
     /*
       Write the primary key directly to an SST file using an SstFileWriter
@@ -15240,7 +15258,7 @@ int ha_rocksdb::update_write_row(const uchar *const old_data,
 
   // Case: We skip both unique checks and rows locks only when bulk load is
   // enabled or if rocksdb_skip_locks_if_skip_unique_check is ON or DDSE upgrade
-  if (!THDVAR(table->in_use, bulk_load) &&
+  if (!row_info.tx->get_var_bulk_load() &&
       (!rocksdb_skip_locks_if_skip_unique_check ||
        !row_info.skip_unique_check) &&
       !dd::is_dd_engine_change_in_progress()) {
@@ -20723,6 +20741,10 @@ static int rocksdb_check_bulk_load(
     }
   }
 
+  if (tx) {
+    tx->set_var_bulk_load(new_value);
+  }
+
   *static_cast<bool *>(save) = new_value;
   return 0;
 }
@@ -20766,6 +20788,19 @@ static int rocksdb_check_bulk_load_unique_key_check(
     struct st_mysql_value *value) {
   // reuse the same logic
   return rocksdb_check_bulk_load_allow_unsorted(thd, var, save, value);
+}
+
+static int rocksdb_set_skip_snapshot_validation(
+    THD *const thd, struct SYS_VAR *var MY_ATTRIBUTE((__unused__)), void *save,
+    struct st_mysql_value *value) {
+  bool new_value;
+  if (mysql_value_to_bool(value, &new_value) != 0) {
+    return 1;
+  }
+  Rdb_transaction* tx = get_or_create_tx(thd, USER_TABLE);
+  tx->set_skip_snapshot_validation(new_value);
+  *static_cast<bool *>(save) = new_value;
+  return 0;
 }
 
 static void rocksdb_set_max_background_jobs(
@@ -21439,7 +21474,9 @@ rocksdb::Status rdb_tx_get_for_update(Rdb_transaction *tx,
                                       bool skip_wait) {
   auto *const thd = tx->get_thd();
   const auto do_validate = !(thd_tx_isolation(thd) <= ISO_READ_COMMITTED ||
-                             THDVAR(thd, skip_snapshot_validation));
+                          //THDVAR(thd, skip_snapshot_validation) // slow
+                            tx->get_skip_snapshot_validation() // fast
+                          );
   rocksdb::Status s = tx->get_for_update(kd, key, value, table_type, exclusive,
                                          do_validate, skip_wait);
 
