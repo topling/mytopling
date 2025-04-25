@@ -847,7 +847,7 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
   [[nodiscard]] int check_and_lock_sk(const uint key_id,
                                       const struct update_row_info &row_info,
                                       bool *const found);
-  [[nodiscard]] int check_uniqueness_and_lock(
+  [[nodiscard]] int check_uniqueness_and_lock(THD*,
       const struct update_row_info &row_info, bool pk_changed);
   int check_duplicate_sk(const TABLE *table_arg, const Rdb_key_def &key_def,
                          const rocksdb::Slice *key,

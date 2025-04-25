@@ -14708,16 +14708,14 @@ int ha_rocksdb::check_and_lock_sk(const uint key_id,
     HA_EXIT_SUCCESS  OK
     other            HA_ERR error code (can be SE-specific)
 */
-int ha_rocksdb::check_uniqueness_and_lock(
+int ha_rocksdb::check_uniqueness_and_lock(THD* thd,
     const struct update_row_info &row_info, bool pk_changed) {
   assert(
       (row_info.old_data == table->record[1] &&
        row_info.new_data == table->record[0]) ||
       (row_info.old_data == nullptr && row_info.new_data == table->record[0]));
 
-  THD *thd = ha_thd();
-  Rdb_transaction *const tx =
-      get_or_create_tx(thd, m_tbl_def->get_table_type());
+  Rdb_transaction *const tx = row_info.tx;
   tx->acquire_snapshot(false, m_tbl_def->get_table_type());
 
   /*
@@ -15214,7 +15212,7 @@ int ha_rocksdb::update_write_row(const uchar *const old_data,
   row_info.new_pk_unpack_info = nullptr;
   set_last_rowkey(old_data);
 
-  row_info.tx = get_or_create_tx(table->in_use, m_tbl_def->get_table_type());
+  row_info.tx = get_or_create_tx(thd, m_tbl_def->get_table_type());
 
   if (old_data != nullptr) {
     row_info.old_pk_slice =
@@ -15250,7 +15248,7 @@ int ha_rocksdb::update_write_row(const uchar *const old_data,
       Check to see if we are going to have failures because of unique
       keys.  Also lock the appropriate key values.
     */
-    rc = check_uniqueness_and_lock(row_info, pk_changed);
+    rc = check_uniqueness_and_lock(thd, row_info, pk_changed);
     if (rc != HA_EXIT_SUCCESS) {
       DBUG_RETURN(rc);
     }
