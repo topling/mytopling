@@ -287,10 +287,24 @@ class Rdb_converter {
   // buffer to hold data during encode_value_slice
   struct String : terark::valvec<char> {
     char* ptr() const { return p; }
-    void length(size_t sz) { assert(sz <= size()); risk_set_size(sz); }
+    void length(size_t sz MY_ATTRIBUTE((__unused__))) {
+      assert(sz <= size());
+      //risk_set_size(sz); // comment out, just for m_storage_record
+    }
     size_t length() const { return size(); }
     size_t alloced_length() const { return capacity(); }
-    void fill(size_t newsize, char ch) { resize(newsize, ch); }
+    void append(const char* buf, size_t len) {
+      // faster than valvec::append
+      memcpy(grow_no_init(len), buf, len);
+    }
+    void copy(const char* src, size_t len, const CHARSET_INFO*) {
+      assign(src, len);
+    }
+    void fill(size_t newsize, char ch) {
+      //resize(newsize, ch);
+      resize_no_init(newsize); // diff semantic with resize
+      memset(p, ch, newsize);  // coperate with lenght(0)
+    }
     void mem_free() { clear(); }
     void mem_realloc(size_t cap) { ensure_capacity(cap); }
     friend uchar* rdb_mysql_str_to_uchar_str(String* self) {

@@ -37,6 +37,7 @@
 
 namespace myrocks {
 
+template<class String>
 void dbug_modify_key_varchar8(String *on_disk_rec) {
   std::string res;
   // The key starts with index number
