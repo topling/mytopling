@@ -28,6 +28,7 @@
 // MyRocks header files
 #include "./rdb_datadic.h"
 
+#include <terark/valvec.hpp>
 #include <terark/valvec32.hpp>
 
 namespace myrocks {
@@ -284,6 +285,18 @@ class Rdb_converter {
   */
   my_core::ha_rows m_row_checksums_checked;
   // buffer to hold data during encode_value_slice
+  struct String : terark::valvec<char> {
+    char* ptr() const { return p; }
+    void length(size_t sz) { assert(sz <= size()); risk_set_size(sz); }
+    size_t length() const { return size(); }
+    size_t alloced_length() const { return capacity(); }
+    void fill(size_t newsize, char ch) { resize(newsize, ch); }
+    void mem_free() { clear(); }
+    void mem_realloc(size_t cap) { ensure_capacity(cap); }
+    friend uchar* rdb_mysql_str_to_uchar_str(String* self) {
+      return reinterpret_cast<uchar*>(self->p);
+    }
+  };
   String m_storage_record;
   /*
     For the active index, indicates which columns must be covered for the
