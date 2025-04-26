@@ -586,7 +586,7 @@ void Rdb_converter::setup_field_encoders(const dd::Table *dd_table) {
       auto varchar = reinterpret_cast<const Field_varstring *>(field);
       m_encoder_arr[i].m_field_length = varchar->field_length;
       m_encoder_arr[i].m_field_length_bytes = varchar->get_length_bytes();
-      reserve_row_len += varchar->field_length + 4;
+      reserve_row_len += varchar->pack_length() + 4;
     } else {
       m_encoder_arr[i].m_field_length = -1;
       m_encoder_arr[i].m_field_length_bytes = -1;
