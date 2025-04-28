@@ -40,7 +40,7 @@ Rdb_cond_var::Rdb_cond_var() { mysql_cond_init(0, &m_cond); }
 Rdb_cond_var::~Rdb_cond_var() { mysql_cond_destroy(&m_cond); }
 
 rocksdb::Status Rdb_cond_var::Wait(
-    const std::shared_ptr<rocksdb::TransactionDBMutex>& mutex_arg) {
+    rocksdb::TransactionDBMutex* mutex_arg) {
   return WaitFor(mutex_arg, ONE_YEAR_IN_MICROSECS);
 }
 
@@ -59,9 +59,9 @@ rocksdb::Status Rdb_cond_var::Wait(
 */
 
 rocksdb::Status Rdb_cond_var::WaitFor(
-    const std::shared_ptr<rocksdb::TransactionDBMutex>& mutex_arg,
+    rocksdb::TransactionDBMutex* mutex_arg,
     int64_t timeout_micros) {
-  auto *mutex_obj = reinterpret_cast<Rdb_mutex *>(mutex_arg.get());
+  auto *mutex_obj = reinterpret_cast<Rdb_mutex *>(mutex_arg);
   assert(mutex_obj != nullptr);
 
   mysql_mutex_t *const mutex_ptr = &mutex_obj->m_mutex;
