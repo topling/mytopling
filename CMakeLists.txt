@@ -872,7 +872,7 @@ ELSE()
   SET(PIC_EXT "")
 ENDIF()
 
-OPTION(WITH_JEMALLOC "Use jemalloc rather than builtin malloc/free etc." OFF)
+OPTION(WITH_JEMALLOC "Use jemalloc rather than builtin malloc/free etc." ON)
 IF(WITH_JEMALLOC)
   IF(EXISTS "${WITH_JEMALLOC}/lib")
     # If WITH_JEMALLOC points to a path
