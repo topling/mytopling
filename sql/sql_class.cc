@@ -2422,6 +2422,7 @@ void Query_arena::free_items() {
       thd->check_yield();
     }
     next = m_item_list->next_free;
+    __builtin_prefetch(next);
     m_item_list->delete_self();
   }
   /* Postcondition: free_list is 0 */
