@@ -1194,6 +1194,9 @@ ENDIF()
 # linking with jemalloc here since sql/sql_show.cc uses it.
 IF (WITH_JEMALLOC)
   TARGET_LINK_LIBRARIES(sql_main ${JEMALLOC_LIBRARY} ${MALLOC_LIBRARY})
+ENDIF()
+
+IF (FREEBSD)
   FIND_LIBRARY(UNWIND_LIBRARY
     NAMES libunwind${PIC_EXT}.a unwind
     HINTS ${WITH_UNWIND}/lib)
