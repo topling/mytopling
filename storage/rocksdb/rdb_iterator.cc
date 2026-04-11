@@ -27,6 +27,7 @@
 #include "storage/rocksdb/ha_rocksdb.h"
 
 #include "ha_rocksdb.h"
+#include "db/dbformat.h" // for MemoryEqual
 
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
