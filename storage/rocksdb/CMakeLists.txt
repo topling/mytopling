@@ -217,20 +217,11 @@ IF(HAVE_EXTERNAL_ROCKSDB)
   #SET(rocksdb_static_libs ${rocksdb_static_libs} "${ROCKSDB_LIB_PATH}/${ROCKSDB_LIB_NAME}")
   # topling specific: use shared lib, specified in build.sh
   IF(CMAKE_BUILD_TYPE STREQUAL "Release")
-    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb
-       -lterark-zbs-${TOPLING_LIB_GCC_VER}-r
-       -lterark-fsa-${TOPLING_LIB_GCC_VER}-r
-       -lterark-core-${TOPLING_LIB_GCC_VER}-r)
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb)
   ELSEIF(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug
-       -lterark-zbs-${TOPLING_LIB_GCC_VER}-d
-       -lterark-fsa-${TOPLING_LIB_GCC_VER}-d
-       -lterark-core-${TOPLING_LIB_GCC_VER}-d)
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug)
   ELSEIF(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug
-       -lterark-zbs-${TOPLING_LIB_GCC_VER}-a
-       -lterark-fsa-${TOPLING_LIB_GCC_VER}-a
-       -lterark-core-${TOPLING_LIB_GCC_VER}-a)
+    SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug)
   ELSE()
     message(ERROR "Unsupported CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
   ENDIF()
