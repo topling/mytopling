@@ -401,12 +401,17 @@ class Rdb_string_writer {
   terark::AutoGrownMemIO m_data;
 
  public:
+  // AutoGrownMemIO::clone() resets the write position, but for a writer the
+  // position is the length of what has been written so far -- restore it so a
+  // copy behaves exactly like the original.
   Rdb_string_writer(const Rdb_string_writer &rhs) {
     m_data.clone(rhs.m_data);
+    m_data.seek_unsafe(rhs.m_data.tell());
   }
 
   Rdb_string_writer &operator=(const Rdb_string_writer &rhs) {
     m_data.clone(rhs.m_data);
+    m_data.seek_unsafe(rhs.m_data.tell());
     return *this;
   }
 
