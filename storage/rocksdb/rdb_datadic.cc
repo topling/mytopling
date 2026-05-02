@@ -81,7 +81,13 @@ struct DcompactAutoInitMySQL {
   ~DcompactAutoInitMySQL() {  my_thread_global_end();  }
 };
 
-Rdb_key_def::Rdb_key_def() {
+// ~Rdb_key_def() passes m_pk_part_no/m_pack_info to my_free(), and setup()
+// tests m_maxlength; neither is part of the serialized index info.
+Rdb_key_def::Rdb_key_def()
+    : m_pk_part_no(nullptr),
+      m_pack_info(nullptr),
+      m_key_parts(0),
+      m_maxlength(0) {
   static DcompactAutoInitMySQL just_for_distributed_compaction;
   mysql_mutex_init(0, &m_mutex, MY_MUTEX_INIT_FAST);
 }
