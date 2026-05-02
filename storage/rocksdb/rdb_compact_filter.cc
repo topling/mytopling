@@ -129,15 +129,14 @@ public:
       //m_ttl_offset = 0;
       assert(0 == Rdb_key_def::calculate_index_flag_offset(
           lo->m_index_flags, Rdb_key_def::TTL_FLAG));
-    }
-
 #if !defined(NDEBUG)
-    if (rdb_dbug_set_ttl_ignore_pk() &&
-        lo->m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY) {
-      m_ttl_duration = 0;
-    }
+      // must be inside the `lo < end` guard: `lo` is dereferenced here
+      if (rdb_dbug_set_ttl_ignore_pk() &&
+          lo->m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY) {
+        m_ttl_duration = 0;
+      }
 #endif  // !defined(NDEBUG)
-
+    }
   }
 
   bool should_filter_ttl_rec(const rocksdb::Slice& /*key*/,
@@ -157,8 +156,19 @@ public:
       sql_print_error("Decoding ttl from PK value failed in compaction filter, "
                       "for index (%u,%u), val: %s",
                       m_prev_index.cf_id, m_prev_index.index_id, buf.c_str());
+      // Too short to hold a ttl timestamp: keep the record, do not read
+      // past the end.
+      return false;
     }
     ttl_timestamp = rdb_netbuf_to_uint64((const uchar*)existing_value.data());
+
+    /*
+      If the timestamp is max value, it means that this record will never expire
+      and should not be deleted. We will early return here to avoid overflow.
+    */
+    if (ttl_timestamp == std::numeric_limits<uint64_t>::max()) {
+      return false;
+    }
 
     /*
       Filter out the record only if it is older than the expiration
