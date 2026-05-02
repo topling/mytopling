@@ -510,6 +510,10 @@ int Rdb_index_stats::unmaterialize(const std::string &s,
               sizeof(stats.m_entry_single_deletes) +
               sizeof(stats.m_entry_merges) + sizeof(stats.m_entry_others);
   }
+  if (version >= INDEX_STATS_VERSION_WITH_NAME) {
+    // the length prefix of the index name
+    needed += sizeof(uint16);
+  }
 
   while (p < p2) {
     if (p + needed > p2) {
@@ -535,7 +539,10 @@ int Rdb_index_stats::unmaterialize(const std::string &s,
       stats.m_distinct_keys_per_prefix[i] = rdb_netbuf_read_uint64(&p);
     }
     if (version >= INDEX_STATS_VERSION_WITH_NAME) {
-      size_t namelen = rdb_netbuf_read_uint16(&p);
+      const size_t namelen = rdb_netbuf_read_uint16(&p);
+      if (p + namelen > p2) {
+        return HA_EXIT_FAILURE;
+      }
       stats.m_name.assign((const char*)p, namelen);
       p += namelen;
     }
