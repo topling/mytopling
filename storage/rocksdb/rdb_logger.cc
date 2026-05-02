@@ -48,7 +48,7 @@ void Rdb_logger::Logv(const rocksdb::InfoLogLevel log_level, const char *format,
   char msg[LOG_BUFF_MAX];
   vsnprintf(msg, sizeof(msg) - 1, f, ap);
 
-  log_errlog_formatted(mysql_log_level, msg);
+  log_errlog_formatted(mysql_log_level, "%s", msg);
 }
 
 void Rdb_logger::Logv(const char *format, va_list ap) {
