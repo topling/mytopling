@@ -18684,7 +18684,10 @@ int ha_rocksdb::inplace_populate_sk(
         DBUG_RETURN(res);
       }
       if ((res = fill_virtual_columns())) {
-        ha_index_end();
+        // The scan was started by ha_rnd_init() above, so it must be ended by
+        // ha_rnd_end() -- ha_index_end() would leave the sequence-scan state
+        // (m_iter_is_scan / TopTableSetSeqScan) set.
+        ha_rnd_end();
         DBUG_RETURN(res);
       }
       for (const auto& [index, auto_sort] : ivec) {
