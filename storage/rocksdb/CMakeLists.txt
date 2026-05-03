@@ -223,7 +223,7 @@ IF(HAVE_EXTERNAL_ROCKSDB)
   ELSEIF(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     SET(rocksdb_static_libs ${rocksdb_static_libs} -L${TOPLING_LIB_DIR} -lrocksdb_debug)
   ELSE()
-    message(ERROR "Unsupported CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
+    message(FATAL_ERROR "Unsupported CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
   ENDIF()
 ENDIF()
 
