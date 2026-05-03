@@ -191,6 +191,10 @@
       "class": "CSPPMemTabTable",
       "params": { }
     },
+    "offset_skiplist_sst": {
+      "class": "OffsetSkipListTable",
+      "params": { }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
@@ -203,6 +207,7 @@
         "readers": {
           "VecAutoSortTable": "auto_sort",
           "CSPPMemTabTable": "cspp_memtab_sst",
+          "OffsetSkipListTable": "offset_skiplist_sst",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng",
           "ToplingZipTable": "dzip"
@@ -249,6 +254,7 @@
         "chunk_size": "32K",
         "use_vm": true,
         "use_hugepage": false,
+        "convert_to_sst": "kFileMmap",
         "read_by_writer_token": true,
         "token_use_idle": true
       }
@@ -256,6 +262,15 @@
     "skiplist": {
       "class": "SkipList",
       "params": { "lookahead": 0 }
+    },
+    "offset_skiplist": {
+      "class": "OffsetSkipList",
+      "params": {
+        "mem_cap": "3G",
+        "lookahead": 0,
+        "convert_to_sst": "kFileMmap",
+        "sync_sst_file": false
+      }
     }
   },
   "WBWIFactory": {
@@ -409,6 +424,7 @@
       "max_log_file_size": "256M",
       "keep_log_file_num": 100,
       "memtable_as_log_index": true,
+      "memtable_crash_safe_recover": true,
       "max_total_wal_size": "5G",
       "db_write_buffer_size": "2560M",
       "//rate_limiter": "${rate_limiter}",

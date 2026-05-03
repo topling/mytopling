@@ -119,6 +119,10 @@
         "minPreadLen": 64
       }
     },
+    "offset_skiplist_sst": {
+      "class": "OffsetSkipListTable",
+      "params": { }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
@@ -127,7 +131,8 @@
           "VecAutoSortTable": "auto_sort",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng",
-          "ToplingZipTable": "dzip"
+          "ToplingZipTable": "dzip",
+          "OffsetSkipListTable": "offset_skiplist_sst"
         },
         "level_writers": [
           "sng", "sng",
@@ -165,6 +170,13 @@
     "skiplist": {
       "class": "SkipList",
       "params": { "lookahead": 0 }
+    },
+    "offset_skiplist": {
+      "class": "OffsetSkipList",
+      "params": {
+        "mem_cap": "2G",
+        "lookahead": 0
+      }
     }
   },
   "WBWIFactory": {
