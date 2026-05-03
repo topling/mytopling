@@ -14095,7 +14095,10 @@ bool binlog_is_ddl(const LEX* lex) {
     case SQLCOM_DROP_TABLE:
     case SQLCOM_DROP_INDEX:
     case SQLCOM_DROP_DB:
+    case SQLCOM_CREATE_VIEW:
     case SQLCOM_DROP_VIEW:
+    case SQLCOM_TRUNCATE:
+    case SQLCOM_RENAME_TABLE:
       ret = true; // log
       break;
     default:
