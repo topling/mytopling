@@ -69,12 +69,17 @@
         "indexType": "MainPatricia"
       }
     },
+    "offset_skiplist_sst": {
+      "class": "OffsetSkipListTable",
+      "params": { }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
         "default": "sng",
         "readers": {
           "VecAutoSortTable": "auto_sort",
+          "OffsetSkipListTable": "offset_skiplist_sst",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng"
         },
@@ -88,32 +93,18 @@
   "MemTableRepFactory": {
     "dyna": {
       "class": "Dyna",
-      "params": { "real_fac": "${cspp}" }
-    },
-    "cspp": {
-      "class": "cspp",
-      "params": {
-        "mem_cap": "2G",
-        "use_vm": true,
-        "use_hugepage": false,
-        "read_by_writer_token": true,
-        "token_use_idle": true
-      }
-    },
-    "cspp_small": {
-      "class": "cspp",
-      "params": {
-        "mem_cap": "32M",
-        "chunk_size": "32K",
-        "use_vm": true,
-        "use_hugepage": false,
-        "read_by_writer_token": true,
-        "token_use_idle": true
-      }
+      "params": { "real_fac": "${offset_skiplist}" }
     },
     "skiplist": {
       "class": "SkipList",
       "params": { "lookahead": 0 }
+    },
+    "offset_skiplist": {
+      "class": "OffsetSkipList",
+      "params": {
+        "mem_cap": "2G",
+        "lookahead": 0
+      }
     }
   },
   "WBWIFactory": {
@@ -157,7 +148,7 @@
       "target_file_size_base": "32M", "target_file_size_multiplier": 2,
       "soft_pending_compaction_bytes_limit": "1T",
       "hard_pending_compaction_bytes_limit": "2T",
-      "table_factory": "${bb}",
+      "table_factory": "${dispatch}",
       "html_user_key_coder": "${hex_key_coder}",
       "table_properties_collector_factories": [ "${tbl_prop_coll}" ],
       "paranoid_file_checks": false,
@@ -172,10 +163,10 @@
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
-      "memtable_factory": "${cspp_small}",
+      "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "16M",
       "target_file_size_base": "16M", "target_file_size_multiplier": 2,
-      "table_factory": "${bb}",
+      "table_factory": "${dispatch}",
       "merge_operator": "${system_merge_op}"
     }
   },
