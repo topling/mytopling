@@ -9,7 +9,7 @@ libdirs=(
   /node-shared/mytopling-$type/lib
   /node-shared/lib
 )
-libdirs=("${libdirs[@]}") # join array to one string
+libdirs="${libdirs[*]}" # join array to one string
 export LD_LIBRARY_PATH=${libdirs// /:}:${LD_LIBRARY_PATH}
 
 export ROCKSDB_KICK_OUT_OPTIONS_FILE=1
