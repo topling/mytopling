@@ -3860,6 +3860,10 @@ static rocksdb::DBOptions MergeTableDBOptions() {
   dbo.info_log = nullptr;
   dbo.max_subcompactions = rocksdb_bulk_load_subcompactions;
   dbo.listeners.clear(); // avoid doubling the listener effects
+  // The temp db is deleted right after merging, crash safe recover is useless
+  // here, and GetVec1CFO() deliberately uses a non-FileMmap memtable factory,
+  // which crash safe mode rejects.
+  dbo.memtable_crash_safe_recover = false;
   return dbo;
 }
 
