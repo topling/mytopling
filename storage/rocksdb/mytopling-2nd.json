@@ -91,6 +91,16 @@
         "forceNeedCompact": true
       }
     },
+    "simple": {
+      "class": "SimpleTopTable",
+      "params": {
+        "writeMethod": "kToplingFileWrite",
+        "fileWriteBufferSize": 8192,
+        "collectProperties": true,
+        "forceNeedCompact": false,
+        "debugLevel": 0
+      }
+    },
     "bb": {
       "class": "BlockBasedTable",
       "params": {
@@ -98,6 +108,32 @@
       }
     },
     "sng": "SingleFastTable",
+    "light_dzip": {
+      "comment1": "Disable value zip for faster compression speed",
+      "comment2": "Index and Tag(Seq+ValueType) will still be compressed",
+      "class": "ToplingZipTable",
+      "params": {
+        "//localTempDir": "/tmp",
+        "builderMinLevel": 0,
+        "//needCompactMaxLevel": 2,
+        "acceptCompressionRatio": 0.8,
+        "enableFixedLenHoleIndex": true,
+        "enableUintIndex": true,
+        "enableStatistics": false,
+        "warmupLevel": "kIndex",
+        "optimizeCpuL3Cache": true,
+        "offsetArrayBlockUnits": 0,
+        "sampleRatio": 0.01,
+        "keyRankCacheRatio": 0.001,
+        "checksumLevel": 0,
+        "entropyAlgo": "kNoEntropy",
+        "debugLevel": 0,
+        "large minDictZipValueSize will disable value zip": "10M",
+        "minDictZipValueSize": "10M",
+        "keyPrefixLen": 4,
+        "minPreadLen": -1
+      }
+    },
     "dzip": {
       "class": "ToplingZipTable",
       "params": {
@@ -119,19 +155,30 @@
         "minPreadLen": 64
       }
     },
+    "cspp_memtab_sst": {
+      "class": "CSPPMemTabTable",
+      "params": { }
+    },
+    "offset_skiplist_sst": {
+      "class": "OffsetSkipListTable",
+      "params": { }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
-        "default": "sng",
+        "default": "simple",
         "readers": {
           "VecAutoSortTable": "auto_sort",
+          "SimpleTopTable": "simple",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng",
-          "ToplingZipTable": "dzip"
+          "ToplingZipTable": "dzip",
+          "CSPPMemTabTable": "cspp_memtab_sst",
+          "OffsetSkipListTable": "offset_skiplist_sst"
         },
         "level_writers": [
-          "sng", "sng",
-          "dzip", "dzip", "dzip", "dzip", "dzip"
+          "simple", "simple",
+          "light_dzip", "dzip", "dzip", "dzip", "dzip"
         ]
       }
     }
@@ -165,6 +212,13 @@
     "skiplist": {
       "class": "SkipList",
       "params": { "lookahead": 0 }
+    },
+    "offset_skiplist": {
+      "class": "OffsetSkipList",
+      "params": {
+        "mem_cap": "2G",
+        "lookahead": 0
+      }
     }
   },
   "WBWIFactory": {
@@ -244,7 +298,7 @@
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
-      "wal_dir": "/dev/shm/mytopling/wal",
+      "//wal_dir": "/dev/shm/mytopling/wal",
       "//db_paths" : [
         "/path/to/local/filesystem/for/level/0",
         "/path/to/nfs/filesystem/for/level/1",
