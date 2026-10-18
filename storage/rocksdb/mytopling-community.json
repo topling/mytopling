@@ -72,6 +72,16 @@
         "forceNeedCompact": true
       }
     },
+    "simple": {
+      "class": "SimpleTopTable",
+      "params": {
+        "writeMethod": "kToplingFileWrite",
+        "fileWriteBufferSize": 8192,
+        "collectProperties": true,
+        "forceNeedCompact": false,
+        "debugLevel": 0
+      }
+    },
     "bb": {
       "class": "BlockBasedTable",
       "params": {
@@ -81,17 +91,23 @@
       }
     },
     "sng": "SingleFastTable",
+    "offset_skiplist_sst": {
+      "class": "OffsetSkipListTable",
+      "params": { }
+    },
     "dispatch": {
       "class": "DispatcherTable",
       "params": {
-        "default": "sng",
+        "default": "simple",
         "readers": {
           "VecAutoSortTable": "auto_sort",
+          "SimpleTopTable": "simple",
+          "OffsetSkipListTable": "offset_skiplist_sst",
           "BlockBasedTable": "bb",
           "SingleFastTable": "sng"
         },
         "level_writers": [
-          "sng", "sng",
+          "simple", "simple",
           "bb", "bb", "bb", "bb", "bb"
         ]
       }
@@ -100,32 +116,20 @@
   "MemTableRepFactory": {
     "dyna": {
       "class": "Dyna",
-      "params": { "real_fac": "${cspp}" }
-    },
-    "cspp": {
-      "class": "cspp",
-      "params": {
-        "mem_cap": "2G",
-        "use_vm": true,
-        "use_hugepage": true,
-        "read_by_writer_token": true,
-        "token_use_idle": true
-      }
-    },
-    "cspp_small": {
-      "class": "cspp",
-      "params": {
-        "mem_cap": "32M",
-        "chunk_size": "32K",
-        "use_vm": true,
-        "use_hugepage": false,
-        "read_by_writer_token": true,
-        "token_use_idle": true
-      }
+      "params": { "real_fac": "${offset_skiplist}" }
     },
     "skiplist": {
       "class": "SkipList",
       "params": { "lookahead": 0 }
+    },
+    "offset_skiplist": {
+      "class": "OffsetSkipList",
+      "params": {
+        "mem_cap": "3G",
+        "lookahead": 0,
+        "convert_to_sst": "kFileMmap",
+        "sync_sst_file": false
+      }
     }
   },
   "WBWIFactory": {
@@ -185,10 +189,10 @@
       "num_levels": 7, "max_bytes_for_level_multiplier": 10,
       "disable_auto_compactions": true,
       "level0_file_num_compaction_trigger": 4,
-      "memtable_factory": "${cspp_small}",
+      "memtable_factory": "${dyna}",
       "max_write_buffer_number": 4, "write_buffer_size": "16M",
       "target_file_size_base": "16M", "target_file_size_multiplier": 2,
-      "table_factory": "${bb}",
+      "table_factory": "${dispatch}",
       "merge_operator": "${system_merge_op}"
     }
   },
@@ -204,11 +208,13 @@
       "max_level1_subcompactions": 17,
       "max_log_file_size": "256M",
       "keep_log_file_num": 100,
+      "memtable_as_log_index": true,
+      "memtable_crash_safe_recover": true,
       "verify_sst_unique_id_in_manifest": false,
       "//write_buffer_manager": "${wbm}",
       "inplace_update_support": false,
       "WAL_size_limit_MB": 0,
-      "wal_dir": "/dev/shm/mytopling/wal",
+      "//wal_dir": "/dev/shm/mytopling/wal",
       "//db_paths" : [
         "/path/to/local/filesystem/for/level/0",
         "/path/to/nfs/filesystem/for/level/1",
