@@ -2677,6 +2677,13 @@ IF(DOXYGEN_FOUND)
   ENDIF()
 ENDIF(DOXYGEN_FOUND)
 
+IF(UNIX AND NOT APPLE)
+  # Must stay the last ADD_SUBDIRECTORY: install rules run in the order they
+  # are written, and this one strips what the ones before it installed, see
+  # cmake/install_debug_info.cmake.
+  ADD_SUBDIRECTORY(cmake/install_debug_info)
+ENDIF()
+
 INCLUDE(CPack)
 
 # C/CXX compiler flags consist of:

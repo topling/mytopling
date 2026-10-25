@@ -35,8 +35,11 @@ fi
 
 # both TOPLING_LIB_DIR=/node-shared/lib and -L/node-shared/lib need
 # be specified
+# The debug-info split walks what "cmake --install" records; leave the test
+# suite out of the install tree, it is 27k of the 27.5k entries.
 export LC_ALL=C
 cmake -DHAVE_EXTERNAL_ROCKSDB=1 -DROCKSDB_SRC_PATH=${PDIR}/toplingdb \
+      -DINSTALL_MYSQLTESTDIR= \
       -DTOPLING_CORE_HOME=${core} \
       -DTOPLING_LIB_DIR=/opt/toplingdb/lib \
       -DWITH_BOOST=${PDIR}/boost_1_77_0 \
