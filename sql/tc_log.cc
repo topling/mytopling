@@ -497,6 +497,20 @@ TC_LOG::enum_result TC_LOG_MMAP::commit(THD *thd, bool all) {
 
   if (all) {
     CONDITIONAL_SYNC_POINT_FOR_TIMESTAMP("before_commit_in_tc");
+    /*
+      Recovery replays this record only for a transaction that prepared in the
+      engines; for a plain single engine commit it is an msync+fsync of a
+      tc.log page per commit. XA COMMIT of a prepared branch does not go
+      through ha_commit_trans(), which is what sets rw_ha_count(), so only
+      the prepared state says that the engines did prepare.
+    */
+    if (xid) {
+      Transaction_ctx *trn_ctx = thd->get_transaction();
+      if (!trn_ctx->xid_state()->has_state(XID_STATE::XA_PREPARED) &&
+          (trn_ctx->no_2pc(Transaction_ctx::SESSION) ||
+           trn_ctx->rw_ha_count(Transaction_ctx::SESSION) <= 1))
+        xid = 0;
+    }
     if (xid)
       if (!(cookie = log_xid(xid)))
         return RESULT_ABORTED;  // Failed to log the transaction
