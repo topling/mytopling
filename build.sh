@@ -1,7 +1,15 @@
 #!/bin/bash
 PDIR=`cd ..; pwd`
 
-type=${type:-rls}
+# DEBUG_LEVEL is the only build-type switch: 0 Release, 1 RelWithDebInfo, 2 Debug.
+# type is derived from it, and drives the install prefix and the start scripts.
+DEBUG_LEVEL=${DEBUG_LEVEL:-0}
+case "${DEBUG_LEVEL}" in
+  0) type=rls ;;
+  1) type=afr ;;
+  2) type=dbg ;;
+  *) echo "bad DEBUG_LEVEL=${DEBUG_LEVEL}, must be 0, 1 or 2" >&2; exit 1 ;;
+esac
 type_dbg=Debug
 type_rls=Release
 type_afr=RelWithDebInfo
