@@ -1,0 +1,115 @@
+# Two phase commit and the transaction coordinator log.
+#
+# With the binary log off and more than one engine supporting prepare, the
+# server coordinates with the MMAP log: it writes the commit decision there and
+# syncs it, then the engines commit, and only then is the decision removed. A
+# crash in between leaves the decision in the coordinator log, so recovery has
+# to roll forward the engine that still holds the transaction prepared.
+#
+# That window is only a few milliseconds wide - the sync of the log page
+# dominates it - and holds no debug sync point, so this test does not kill at a
+# fixed place: a watcher spins on the coordinator log and kills the server the
+# moment a new XID lands in it.
+# The log is a shared mapping, so the XID is visible to the watcher before it
+# reaches the disk, and a killed process leaves the page cache - which is what
+# the restarting server reads - holding it.
+
+--source include/have_rocksdb.inc
+--source include/not_parallel.inc
+
+--echo # The binary log is off, so the MMAP log is the coordinator.
+SELECT @@log_bin;
+SELECT IF(VARIABLE_VALUE = 0, 'DUMMY', 'MMAP') AS tc_log
+  FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Tc_log_page_size';
+
+CREATE TABLE t1 (id INT PRIMARY KEY, v INT) ENGINE=rocksdb;
+CREATE TABLE i1 (id INT PRIMARY KEY, v INT) ENGINE=innodb;
+
+# The DDL above has already written to the log - atomic DDL is a two phase
+# transaction, since the data dictionary lives in InnoDB - so the watcher has
+# to react to a slot changing, not to a slot being non-zero.
+--exec rm -f $MYSQL_TMP_DIR/two_phase_commit_tc_log_watch.pl
+--write_file $MYSQL_TMP_DIR/two_phase_commit_tc_log_watch.pl
+use strict;
+use warnings;
+# argv: coordinator log path, server pid
+my ($log, $pid) = @ARGV;
+open(my $fh, '<', $log) or die "open $log: $!";
+my $zero = "\0" x 8;
+# The log keeps the XIDs of earlier commits on disk until their page is
+# synced again, so wait for a slot to *become* non-zero rather than for a
+# non-zero slot.
+my $prev;
+sysseek($fh, 8, 0) or die "seek: $!";
+my $got = sysread($fh, $prev, 1 << 20);
+die "read: $!" unless defined $got;
+printf "watching %s, %d bytes, server pid %s\n", $log, length($prev), $pid;
+my $cur;
+my $n = 0;
+while (1) {
+  last unless kill 0, $pid;
+  sysseek($fh, 8, 0) or die "seek: $!";
+  $got = sysread($fh, $cur, 1 << 20);
+  die "read: $!" unless defined $got;
+  last unless length($cur) == length($prev);
+  for (my $i = 0; $i < length($cur); $i += 8) {
+    my $slot = substr($cur, $i, 8);
+    next if $slot eq $zero;
+    next if substr($prev, $i, 8) eq $slot;
+    printf "xid %d in slot %d after %d polls, killing %s\n",
+        unpack('Q', $slot), $i / 8, $n, $pid;
+    kill 'KILL', $pid;
+    exit 0;
+  }
+  $prev = $cur;
+  $n++;
+}
+EOF
+
+--let $datadir = query_get_value(SELECT @@datadir, @@datadir, 1)
+--exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--exec perl $MYSQL_TMP_DIR/two_phase_commit_tc_log_watch.pl $datadir/tc.log `cat $MYSQLTEST_VARDIR/run/mysqld.1.pid` > $MYSQL_TMP_DIR/two_phase_commit_tc_log_watch.log 2>&1 &
+--sleep 1
+
+# A transaction that touches both engines prepares in both of them, writes the
+# decision to the coordinator log and then commits in the engines. The watcher
+# kills the server in the middle of that, so this connection dies.
+BEGIN;
+INSERT INTO t1 VALUES (1, 1);
+INSERT INTO i1 VALUES (1, 1);
+--send
+COMMIT;
+--error 2013,2006
+--reap
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+--disable_reconnect
+
+--echo # Recovery takes the decision from the coordinator log and commits the
+--echo # transaction instead of rolling it back.
+--let $assert_file = $MYSQLTEST_VARDIR/log/mysqld.1.err
+--let $assert_count = 1
+--let $assert_select = Recovering after a crash using tc.log
+--let $assert_text = recovery consults the coordinator log
+--source include/assert_grep.inc
+
+# Engines prepare and commit in the reverse of the order they were first used,
+# so the kill can land after InnoDB committed and before RocksDB did. Only the
+# engine still holding a prepared transaction is rolled forward, so match for at
+# least one roll forward instead of counting them; the SELECTs below prove that
+# both halves of the transaction are visible.
+--let $assert_count =
+--let $assert_match = Successfully committed 1 internal transaction
+--let $assert_select = Successfully committed 1 internal transaction
+--let $assert_text = recovery rolls the prepared engine forward
+--source include/assert_grep.inc
+
+SELECT * FROM t1;
+SELECT * FROM i1;
+
+DROP TABLE t1;
+DROP TABLE i1;
+
+# Leave nothing behind in the var directory, mtr compares it after the test.
+--remove_file $MYSQL_TMP_DIR/two_phase_commit_tc_log_watch.pl
+--remove_file $MYSQL_TMP_DIR/two_phase_commit_tc_log_watch.log

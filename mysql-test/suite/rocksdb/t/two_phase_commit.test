@@ -1,0 +1,184 @@
+# RocksDB registers a prepare hook unconditionally, so the engine takes part in
+# two phase commit and XA works whether or not the binary log is enabled.
+#
+# The server writes a transaction's XID to the transaction coordinator log only
+# when the transaction actually prepared in the engines. A transaction that
+# commits in a single engine in one phase skips the log instead of paying an
+# msync+fsync of a tc.log page on every commit.
+
+--source include/have_rocksdb.inc
+--source include/have_log_bin.inc
+--source include/not_parallel.inc
+
+# The server warns whenever an engine hands prepared transactions back to it
+# during recovery; that is expected here.
+--disable_query_log
+CALL mtr.add_suppression("Found [0-9]+ prepared XA transactions");
+--enable_query_log
+
+--echo # The engine takes part in two phase commit.
+SELECT XA FROM information_schema.engines WHERE engine = 'rocksdb';
+
+--echo # With the binary log in use the binlog itself is the coordinator, so the
+--echo # MMAP log is not even open.
+SELECT IF(VARIABLE_VALUE = 0, 'DUMMY', 'MMAP') AS tc_log
+  FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Tc_log_page_size';
+
+CREATE TABLE t1 (id INT PRIMARY KEY, v INT) ENGINE=rocksdb;
+CREATE TABLE i1 (id INT PRIMARY KEY, v INT) ENGINE=innodb;
+
+--echo # A one phase transaction commits without preparing.
+INSERT INTO t1 VALUES (0, 0);
+SELECT * FROM t1 ORDER BY id;
+
+--echo # XA in a single engine: prepare, recover, commit.
+XA START 'x1';
+INSERT INTO t1 VALUES (1, 1);
+XA END 'x1';
+XA PREPARE 'x1';
+XA RECOVER;
+XA COMMIT 'x1';
+SELECT * FROM t1 ORDER BY id;
+
+--echo # XA across two engines, resolved by a different connection.
+XA START 'x2';
+INSERT INTO t1 VALUES (2, 2);
+INSERT INTO i1 VALUES (2, 2);
+XA END 'x2';
+XA PREPARE 'x2';
+connect (con2,localhost,root,,);
+connection con2;
+XA RECOVER;
+XA COMMIT 'x2';
+connection default;
+disconnect con2;
+SELECT * FROM t1 ORDER BY id;
+SELECT * FROM i1 ORDER BY id;
+
+--echo # XA ROLLBACK of a prepared transaction.
+XA START 'x3';
+INSERT INTO t1 VALUES (3, 3);
+XA END 'x3';
+XA PREPARE 'x3';
+XA ROLLBACK 'x3';
+SELECT * FROM t1 ORDER BY id;
+
+--echo # XA COMMIT ONE PHASE does not go through the prepared state.
+XA START 'x6';
+INSERT INTO t1 VALUES (6, 6);
+XA END 'x6';
+XA COMMIT 'x6' ONE PHASE;
+SELECT * FROM t1 ORDER BY id;
+
+--echo # Without detaching, the prepared transaction stays with the handler and
+--echo # the XA COMMIT that resolves it comes back through the handler, not
+--echo # through rocksdb_commit_by_xid().
+SET @@session.xa_detach_on_prepare = 0;
+XA START 'x11';
+INSERT INTO t1 VALUES (11, 11);
+XA END 'x11';
+XA PREPARE 'x11';
+XA COMMIT 'x11';
+SET @@session.xa_detach_on_prepare = 1;
+SELECT * FROM t1 ORDER BY id;
+
+--echo # A detached branch outlives the connection that prepared it.
+connect (con3,localhost,root,,);
+connection con3;
+XA START 'x12';
+INSERT INTO t1 VALUES (12, 12);
+XA END 'x12';
+XA PREPARE 'x12';
+disconnect con3;
+connection default;
+XA COMMIT 'x12';
+SELECT * FROM t1 ORDER BY id;
+
+--echo # Prepared transactions survive a crash, and crash recovery keeps them
+--echo # resolvable instead of tripping over them. Both resolutions work on the
+--echo # recovered transaction: commit and rollback.
+XA START 'x5';
+INSERT INTO t1 VALUES (5, 5);
+XA END 'x5';
+XA PREPARE 'x5';
+XA START 'x4';
+INSERT INTO t1 VALUES (4, 4);
+XA END 'x4';
+XA PREPARE 'x4';
+--exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--exec kill -9 `head -1 $MYSQLTEST_VARDIR/run/mysqld.1.pid`
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+--disable_reconnect
+# The engine acknowledges the recovered transactions instead of letting the
+# server count them as failed prepares.
+--let $assert_file = $MYSQLTEST_VARDIR/log/mysqld.1.err
+--let $assert_count = 1
+--let $assert_select = Successfully prepared 2 XA transaction
+--let $assert_text = crash recovery acknowledges the prepared transactions
+--source include/assert_grep.inc
+XA RECOVER;
+XA COMMIT 'x5';
+XA ROLLBACK 'x4';
+SELECT * FROM t1 ORDER BY id;
+
+--echo # Without the binary log the engine still prepares, so XA works.
+--let $restart_parameters = restart: --skip-log-bin
+--source include/restart_mysqld.inc
+SELECT @@log_bin;
+SELECT XA FROM information_schema.engines WHERE engine = 'rocksdb';
+--echo # Without the binary log the server opens the MMAP coordinator log: the
+--echo # prepare hook forces a real coordinator, so the transactions below go
+--echo # through two phase commit. A user XID carries no my_xid, so the log
+--echo # never holds a record for the XA ones.
+SELECT IF(VARIABLE_VALUE = 0, 'DUMMY', 'MMAP') AS tc_log
+  FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Tc_log_page_size';
+
+--echo # XA across two engines, resolved by a different connection.
+XA START 'x7';
+INSERT INTO t1 VALUES (7, 7);
+INSERT INTO i1 VALUES (7, 7);
+XA END 'x7';
+XA PREPARE 'x7';
+connect (con2,localhost,root,,);
+connection con2;
+XA COMMIT 'x7';
+connection default;
+disconnect con2;
+SELECT * FROM t1 ORDER BY id;
+SELECT * FROM i1 ORDER BY id;
+
+--echo # A plain transaction spanning both engines prepares as well.
+BEGIN;
+INSERT INTO t1 VALUES (8, 8);
+INSERT INTO i1 VALUES (8, 8);
+COMMIT;
+SELECT * FROM t1 ORDER BY id;
+SELECT * FROM i1 ORDER BY id;
+
+--echo # A branch prepared while the binary log was off has no commit decision
+--echo # recorded anywhere, so the restart rolls it back instead of replaying it.
+XA START 'x9';
+INSERT INTO t1 VALUES (9, 9);
+XA END 'x9';
+XA PREPARE 'x9';
+--exec echo "restart" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--exec kill -9 `head -1 $MYSQLTEST_VARDIR/run/mysqld.1.pid`
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+--disable_reconnect
+XA RECOVER;
+--error ER_XAER_NOTA
+XA COMMIT 'x9';
+SELECT * FROM t1 ORDER BY id;
+
+--echo # The old startup switch is gone: the hook is no longer optional.
+--error ER_UNKNOWN_SYSTEM_VARIABLE
+SELECT @@rocksdb_two_phase_commit;
+
+# Back to the default configuration.
+--let $restart_parameters =
+--source include/restart_mysqld.inc
+
+DROP TABLE t1;
+DROP TABLE i1;

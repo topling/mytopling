@@ -1,0 +1,213 @@
+# The engine takes part in two phase commit.
+SELECT XA FROM information_schema.engines WHERE engine = 'rocksdb';
+XA
+YES
+# With the binary log in use the binlog itself is the coordinator, so the
+# MMAP log is not even open.
+SELECT IF(VARIABLE_VALUE = 0, 'DUMMY', 'MMAP') AS tc_log
+FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Tc_log_page_size';
+tc_log
+DUMMY
+CREATE TABLE t1 (id INT PRIMARY KEY, v INT) ENGINE=rocksdb;
+CREATE TABLE i1 (id INT PRIMARY KEY, v INT) ENGINE=innodb;
+# A one phase transaction commits without preparing.
+INSERT INTO t1 VALUES (0, 0);
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+# XA in a single engine: prepare, recover, commit.
+XA START 'x1';
+INSERT INTO t1 VALUES (1, 1);
+XA END 'x1';
+XA PREPARE 'x1';
+XA RECOVER;
+formatID	gtrid_length	bqual_length	data
+1	2	0	x1
+XA COMMIT 'x1';
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+# XA across two engines, resolved by a different connection.
+XA START 'x2';
+INSERT INTO t1 VALUES (2, 2);
+INSERT INTO i1 VALUES (2, 2);
+XA END 'x2';
+XA PREPARE 'x2';
+XA RECOVER;
+formatID	gtrid_length	bqual_length	data
+1	2	0	x2
+XA COMMIT 'x2';
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+SELECT * FROM i1 ORDER BY id;
+id	v
+2	2
+# XA ROLLBACK of a prepared transaction.
+XA START 'x3';
+INSERT INTO t1 VALUES (3, 3);
+XA END 'x3';
+XA PREPARE 'x3';
+XA ROLLBACK 'x3';
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+# XA COMMIT ONE PHASE does not go through the prepared state.
+XA START 'x6';
+INSERT INTO t1 VALUES (6, 6);
+XA END 'x6';
+XA COMMIT 'x6' ONE PHASE;
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+6	6
+# Without detaching, the prepared transaction stays with the handler and
+# the XA COMMIT that resolves it comes back through the handler, not
+# through rocksdb_commit_by_xid().
+SET @@session.xa_detach_on_prepare = 0;
+XA START 'x11';
+INSERT INTO t1 VALUES (11, 11);
+XA END 'x11';
+XA PREPARE 'x11';
+XA COMMIT 'x11';
+SET @@session.xa_detach_on_prepare = 1;
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+6	6
+11	11
+# A detached branch outlives the connection that prepared it.
+XA START 'x12';
+INSERT INTO t1 VALUES (12, 12);
+XA END 'x12';
+XA PREPARE 'x12';
+XA COMMIT 'x12';
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+6	6
+11	11
+12	12
+# Prepared transactions survive a crash, and crash recovery keeps them
+# resolvable instead of tripping over them. Both resolutions work on the
+# recovered transaction: commit and rollback.
+XA START 'x5';
+INSERT INTO t1 VALUES (5, 5);
+XA END 'x5';
+XA PREPARE 'x5';
+XA START 'x4';
+INSERT INTO t1 VALUES (4, 4);
+XA END 'x4';
+XA PREPARE 'x4';
+include/assert_grep.inc [crash recovery acknowledges the prepared transactions]
+XA RECOVER;
+formatID	gtrid_length	bqual_length	data
+1	2	0	x5
+1	2	0	x4
+XA COMMIT 'x5';
+XA ROLLBACK 'x4';
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+5	5
+6	6
+11	11
+12	12
+# Without the binary log the engine still prepares, so XA works.
+# restart: --skip-log-bin
+SELECT @@log_bin;
+@@log_bin
+0
+SELECT XA FROM information_schema.engines WHERE engine = 'rocksdb';
+XA
+YES
+# Without the binary log the server opens the MMAP coordinator log: the
+# prepare hook forces a real coordinator, so the transactions below go
+# through two phase commit. A user XID carries no my_xid, so the log
+# never holds a record for the XA ones.
+SELECT IF(VARIABLE_VALUE = 0, 'DUMMY', 'MMAP') AS tc_log
+FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Tc_log_page_size';
+tc_log
+MMAP
+# XA across two engines, resolved by a different connection.
+XA START 'x7';
+INSERT INTO t1 VALUES (7, 7);
+INSERT INTO i1 VALUES (7, 7);
+XA END 'x7';
+XA PREPARE 'x7';
+XA COMMIT 'x7';
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+5	5
+6	6
+7	7
+11	11
+12	12
+SELECT * FROM i1 ORDER BY id;
+id	v
+2	2
+7	7
+# A plain transaction spanning both engines prepares as well.
+BEGIN;
+INSERT INTO t1 VALUES (8, 8);
+INSERT INTO i1 VALUES (8, 8);
+COMMIT;
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+5	5
+6	6
+7	7
+8	8
+11	11
+12	12
+SELECT * FROM i1 ORDER BY id;
+id	v
+2	2
+7	7
+8	8
+# A branch prepared while the binary log was off has no commit decision
+# recorded anywhere, so the restart rolls it back instead of replaying it.
+XA START 'x9';
+INSERT INTO t1 VALUES (9, 9);
+XA END 'x9';
+XA PREPARE 'x9';
+XA RECOVER;
+formatID	gtrid_length	bqual_length	data
+XA COMMIT 'x9';
+ERROR XAE04: XAER_NOTA: Unknown XID
+SELECT * FROM t1 ORDER BY id;
+id	v
+0	0
+1	1
+2	2
+5	5
+6	6
+7	7
+8	8
+11	11
+12	12
+# The old startup switch is gone: the hook is no longer optional.
+SELECT @@rocksdb_two_phase_commit;
+ERROR HY000: Unknown system variable 'rocksdb_two_phase_commit'
+# restart
+DROP TABLE t1;
+DROP TABLE i1;

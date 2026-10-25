@@ -1,0 +1,36 @@
+# An XA PREPARE that fails after an engine has prepared leaves nothing to
+# resolve it later, so the prepared state has to be undone right away.
+
+--source include/have_rocksdb.inc
+--source include/have_debug.inc
+
+CREATE TABLE t1 (id INT PRIMARY KEY, v INT) ENGINE=rocksdb;
+CREATE TABLE i1 (id INT PRIMARY KEY, v INT) ENGINE=innodb;
+
+# rocksdb prepares last here, so the injected failure stands in for another
+# engine failing after rocksdb has prepared.
+SET SESSION debug = '+d,myrocks_prepare_detached_error';
+XA START 'xfail';
+INSERT INTO t1 VALUES (1, 1);
+INSERT INTO i1 VALUES (1, 1);
+XA END 'xfail';
+--error ER_INTERNAL_ERROR
+XA PREPARE 'xfail';
+SET SESSION debug = '-d,myrocks_prepare_detached_error';
+
+XA RECOVER;
+SELECT * FROM t1 ORDER BY id;
+SELECT * FROM i1 ORDER BY id;
+
+# Nothing holds the XID name, so the same one prepares again and commits.
+XA START 'xfail';
+INSERT INTO t1 VALUES (1, 1);
+INSERT INTO i1 VALUES (1, 1);
+XA END 'xfail';
+XA PREPARE 'xfail';
+XA COMMIT 'xfail';
+SELECT * FROM t1 ORDER BY id;
+SELECT * FROM i1 ORDER BY id;
+
+DROP TABLE t1;
+DROP TABLE i1;

@@ -1,0 +1,27 @@
+# The binary log is off, so the MMAP log is the coordinator.
+SELECT @@log_bin;
+@@log_bin
+0
+SELECT IF(VARIABLE_VALUE = 0, 'DUMMY', 'MMAP') AS tc_log
+FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Tc_log_page_size';
+tc_log
+MMAP
+CREATE TABLE t1 (id INT PRIMARY KEY, v INT) ENGINE=rocksdb;
+CREATE TABLE i1 (id INT PRIMARY KEY, v INT) ENGINE=innodb;
+BEGIN;
+INSERT INTO t1 VALUES (1, 1);
+INSERT INTO i1 VALUES (1, 1);
+COMMIT;
+Got one of the listed errors
+# Recovery takes the decision from the coordinator log and commits the
+# transaction instead of rolling it back.
+include/assert_grep.inc [recovery consults the coordinator log]
+include/assert_grep.inc [recovery rolls the prepared engine forward]
+SELECT * FROM t1;
+id	v
+1	1
+SELECT * FROM i1;
+id	v
+1	1
+DROP TABLE t1;
+DROP TABLE i1;
