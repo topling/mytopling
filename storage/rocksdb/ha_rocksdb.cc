@@ -5615,6 +5615,10 @@ class Rdb_transaction_impl : public Rdb_transaction {
                                                                     nullptr};
   std::array<std::unique_ptr<rocksdb::Transaction>, 2> m_rocksdb_reuse_tx{
       nullptr, nullptr};
+  // A prepared and detached transaction, owned by *_by_xid() from now on; this
+  // pointer only serves the rollback the server issues when a later engine
+  // fails to prepare.
+  rocksdb::Transaction *m_detached_tx = nullptr;
 
   void begin_rdb_tx(TABLE_TYPE table_type,
                     const rocksdb::WriteOptions &write_opts,
@@ -5676,6 +5680,24 @@ class Rdb_transaction_impl : public Rdb_transaction {
       std::string msg = "RocksDB error on COMMIT (Prepare): " + s.ToString();
       my_error(ER_INTERNAL_ERROR, MYF(0), msg.c_str());
       return false;
+    }
+    /*
+      A detached transaction is deleted by *_by_xid() when it is resolved;
+      keeping ownership here would make rollback() in the destructor undo a
+      transaction that is already prepared. Without detaching, the resolution
+      comes back through the handler and still needs the transaction.
+    */
+    if (m_thd->lex->sql_command == SQLCOM_XA_PREPARE &&
+        is_xa_tran_detached_on_prepare(m_thd)) {
+      // The handler object outlives the transaction and serves the statements
+      // that follow, which start from no snapshot.
+      release_snapshot(TABLE_TYPE::USER_TABLE);
+      m_detached_tx = m_rocksdb_tx[TABLE_TYPE::USER_TABLE].release();
+      // Stands in for a later engine failing to prepare.
+      DBUG_EXECUTE_IF("myrocks_prepare_detached_error", {
+        my_error(ER_INTERNAL_ERROR, MYF(0), "simulated prepare failure");
+        return false;
+      });
     }
     return true;
   }
@@ -5774,6 +5796,16 @@ class Rdb_transaction_impl : public Rdb_transaction {
 
  public:
   void rollback() override {
+    if (m_detached_tx != nullptr) {
+      // A later engine failed to prepare, so there is no decision for XID
+      // resolution to resolve and the transaction has to be undone here.
+      const rocksdb::Status s = m_detached_tx->Rollback();
+      if (!s.ok()) {
+        rdb_log_status_error(s);
+      }
+      delete m_detached_tx;
+      m_detached_tx = nullptr;
+    }
     if (m_rocksdb_tx[TABLE_TYPE::USER_TABLE]) {
       release_snapshot(TABLE_TYPE::USER_TABLE);
       // Record the writebatch size before it is rolled back. The size changes
@@ -6212,6 +6244,9 @@ class Rdb_transaction_impl : public Rdb_transaction {
   }
 
   void start_tx(TABLE_TYPE table_type) override {
+    // The statement that prepared a detached transaction is over, and another
+    // connection may already have resolved and deleted it.
+    m_detached_tx = nullptr;
     rocksdb::TransactionOptions tx_opts;
     rocksdb::WriteOptions write_opts;
     tx_opts.set_snapshot = false;
@@ -6353,6 +6388,9 @@ class Rdb_transaction_impl : public Rdb_transaction {
   }
 
   virtual ~Rdb_transaction_impl() override {
+    // A detached transaction that was never rolled back is prepared in the
+    // database and belongs to XID resolution, not to this object.
+    m_detached_tx = nullptr;
     rollback();
 
     // Remove from the global list before all other processing is started.
@@ -7512,6 +7550,45 @@ static xa_status_code rocksdb_rollback_by_xid(
   DBUG_RETURN(XA_OK);
 }
 
+/*
+  The prepared state is already in the transaction database, and recovery
+  compares it through rocksdb_set_prepared_in_tc_by_xid(); there is nothing to
+  record per transaction. Without the hook the server warns (ER_ILLEGAL_HA) on
+  every XA PREPARE that touches this engine.
+*/
+static int rocksdb_set_prepared_in_tc(handlerton *const hton,
+                                      THD *const thd) {
+  DBUG_ENTER_FUNC();
+
+  (void)hton;
+  (void)thd;
+
+  DBUG_RETURN(0);
+}
+
+/*
+  The server learned from the binary log that this transaction was prepared in
+  the transaction coordinator. InnoDB stores that fact persistently and replays
+  it through its recover_prepared_in_tc hook; this engine keeps no such state
+  and deliberately leaves the binary log as the source of truth. All there is
+  to do here is confirm that the transaction is still prepared: without this
+  hook the server counts every recovered external XA transaction as a failure
+  and logs ER_BINLOG_CRASH_RECOVERY_ENGINE_RESULTS as an error.
+*/
+static xa_status_code rocksdb_set_prepared_in_tc_by_xid(
+    handlerton *const hton MY_ATTRIBUTE((__unused__)), XID *const xid) {
+  DBUG_ENTER_FUNC();
+
+  assert(hton != nullptr);
+  assert(xid != nullptr);
+  assert(rdb != nullptr);
+
+  const auto name = rdb_xid_to_string(*xid);
+  rocksdb::Transaction *const trx = rdb->GetTransactionByName(name);
+
+  DBUG_RETURN(trx == nullptr ? XAER_NOTA : XA_OK);
+}
+
 /**
   Rebuilds an XID from a serialized version stored in a string.
 */
@@ -7640,7 +7717,7 @@ static bool rocksdb_update_binlog_pos(
 
 static int rocksdb_recover(handlerton *const hton [[maybe_unused]],
                            XA_recover_txn *const xid_list, uint len,
-                           MEM_ROOT *mem_root [[maybe_unused]]) {
+                           MEM_ROOT *mem_root) {
   if (len == 0 || xid_list == nullptr) {
     return HA_EXIT_SUCCESS;
   }
@@ -7655,6 +7732,17 @@ static int rocksdb_recover(handlerton *const hton [[maybe_unused]],
     }
     auto name = trans->GetName();
     rdb_xid_from_string(name, &xid_list[count].id);
+    /*
+      The server builds the MDL backup of a recovered transaction from
+      mod_tables, which must be a real list: we do not track the tables of a
+      prepared transaction and hand over an empty one, so DDL is not held off
+      while it waits for its decision.
+    */
+    auto *mod_tables = new (mem_root) List<st_handler_tablename>();
+    if (mod_tables == nullptr) {
+      break;
+    }
+    xid_list[count].mod_tables = mod_tables;
     count++;
   }
   return count;
@@ -9320,6 +9408,8 @@ if (!g_svr_read_only) {
   rocksdb_hton->prepare = rocksdb_prepare;
   rocksdb_hton->commit_by_xid = rocksdb_commit_by_xid;
   rocksdb_hton->rollback_by_xid = rocksdb_rollback_by_xid;
+  rocksdb_hton->set_prepared_in_tc = rocksdb_set_prepared_in_tc;
+  rocksdb_hton->set_prepared_in_tc_by_xid = rocksdb_set_prepared_in_tc_by_xid;
   rocksdb_hton->recover_binlog_pos = rocksdb_recover_binlog_pos;
   rocksdb_hton->update_binlog_pos = rocksdb_update_binlog_pos;
   rocksdb_hton->recover = rocksdb_recover;
