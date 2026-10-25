@@ -4513,6 +4513,12 @@ class Rdb_transaction {
       const std::vector<rocksdb::IngestExternalFileArg> &args) {
     assert(!is_ac_nl_ro_rc_transaction());
 
+    // MergeTables can drop all TTL-expired entries and leave no file, and
+    // IngestExternalFiles rejects an empty external_files list.
+    if (args.empty()) {
+      return rocksdb::Status::OK();
+    }
+
     auto ctx = get_bulk_load_ctx();
     auto &bulk_load_index_registry = ctx->bulk_load_index_registry();
     rocksdb::Status s = rdb->IngestExternalFiles(args);
@@ -4989,6 +4995,10 @@ class Rdb_transaction {
     std::vector<rocksdb::IngestExternalFileArg> args;
     size_t file_count = 0;
     for (auto &cf_files_pair : arg_map) {
+      // MergeTables may drop all TTL-expired entries and leave no file.
+      if (cf_files_pair.second.external_files.empty()) {
+        continue;
+      }
       args.push_back(cf_files_pair.second);
       file_count += cf_files_pair.second.external_files.size();
     }
