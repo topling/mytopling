@@ -64,6 +64,12 @@ IF(UNIX)
     SET(COMMON_CXX_FLAGS             "-std=c++17 -fno-omit-frame-pointer")
   ENDIF()
 
+  # Not to be interposed by definition; clang has the flag from 13 on.
+  IF(MY_COMPILER_IS_GNU OR
+     (MY_COMPILER_IS_CLANG AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13))
+    STRING_APPEND(COMMON_CXX_FLAGS " -fno-semantic-interposition")
+  ENDIF()
+
   # Faster TLS model
   IF(MY_COMPILER_IS_GNU_OR_CLANG AND NOT SOLARIS AND NOT LINUX_RHEL6)
     STRING_APPEND(COMMON_C_FLAGS     " -ftls-model=initial-exec")
