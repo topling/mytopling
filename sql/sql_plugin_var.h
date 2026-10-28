@@ -239,6 +239,10 @@ class sys_var_pluginvar : public sys_var {
                 (plugin_var_arg->flags & PLUGIN_VAR_PERSIST_AS_READ_ONLY
                      ? PERSIST_AS_READ_ONLY
                      : 0) |
+                (test_all_bits(plugin_var_arg->flags,
+                               PLUGIN_VAR_HINTUPDATEABLE | PLUGIN_VAR_THDLOCAL)
+                     ? HINT_UPDATEABLE
+                     : 0) |
                 (plugin_var_arg->flags & PLUGIN_VAR_SENSITIVE ? SENSITIVE : 0),
             0, (plugin_var_arg->flags & PLUGIN_VAR_NOCMDOPT) ? -1 : 0,
             (plugin_var_arg->flags & PLUGIN_VAR_NOCMDARG
@@ -257,6 +261,9 @@ class sys_var_pluginvar : public sys_var {
         orig_pluginvar_name(plugin_var_arg->name) {
     plugin_var->name = name_arg;
     is_plugin = true;
+    /* A SET_VAR hint is applied and reverted in the session scope. */
+    if (plugin_var_arg->flags & PLUGIN_VAR_HINTUPDATEABLE)
+      assert(plugin_var_arg->flags & PLUGIN_VAR_THDLOCAL);
   }
   sys_var_pluginvar *cast_pluginvar() override { return this; }
   bool check_update_type(Item_result type) override;
@@ -292,6 +299,15 @@ class sys_var_pluginvar : public sys_var {
   bool is_non_persistent() override {
     return (plugin_var->flags & PLUGIN_VAR_NOPERSIST);
   }
+  /**
+    Create item from plugin variable session value.
+
+    @param  thd  pointer to THD object
+
+    @return pointer to Item object or NULL if it's
+            impossible to obtain the value.
+  */
+  Item *copy_value(THD *thd) override;
   void set_is_plugin(bool val) override { is_plugin = val; }
 };
 

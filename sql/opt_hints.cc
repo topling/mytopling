@@ -804,7 +804,11 @@ void Sys_var_hint::update_vars(THD *thd) {
       Item *save_value =
           var->m_var_tracker.access_system_variable<Item *>(thd, f).value_or(
               nullptr);
-      if (!var->update(thd)) hint_var->save_value = save_value;
+      // Without the old value restore_vars() cannot undo the update, so a
+      // variable whose value cannot be copied is left alone.
+      if (save_value != nullptr) {
+        if (!var->update(thd)) hint_var->save_value = save_value;
+      }
     }
     thd->pop_internal_handler();
     error_handler.reset_state();
