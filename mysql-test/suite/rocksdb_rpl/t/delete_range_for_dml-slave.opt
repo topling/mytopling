@@ -1,0 +1,1 @@
+--rocksdb_enable_delete_range_for_drop_index=ON

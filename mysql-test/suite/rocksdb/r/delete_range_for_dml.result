@@ -1,0 +1,273 @@
+SET SESSION sql_log_bin = 0;
+SET SESSION rocksdb_records_in_range = 10;
+SELECT @@rocksdb_use_range_del;
+@@rocksdb_use_range_del
+0
+SELECT /*+ SET_VAR(rocksdb_use_range_del=ON) */
+@@rocksdb_use_range_del;
+@@rocksdb_use_range_del
+1
+SELECT @@rocksdb_use_range_del;
+@@rocksdb_use_range_del
+0
+SELECT /*+ SET_VAR(rocksdb_lock_wait_timeout=7) */ @@rocksdb_lock_wait_timeout;
+@@rocksdb_lock_wait_timeout
+1
+Warnings:
+Warning	3637	Variable 'rocksdb_lock_wait_timeout' cannot be set using SET_VAR hint.
+SHOW WARNINGS;
+Level	Code	Message
+Warning	3637	Variable 'rocksdb_lock_wait_timeout' cannot be set using SET_VAR hint.
+SELECT @@rocksdb_lock_wait_timeout;
+@@rocksdb_lock_wait_timeout
+1
+CREATE TABLE t1 (k INT NOT NULL, v INT, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t1 VALUES (1,10),(2,20),(3,30),(4,40),(5,50),(6,60),(7,70),(8,80),
+(9,90),(10,100),(11,110),(12,120);
+DELETE FROM t1 WHERE k = 12;
+SELECT ROW_COUNT();
+ROW_COUNT()
+1
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+1,2,3,4,5,6,7,8,9,10,11
+INSERT INTO t1 VALUES (12,120);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t1 WHERE k BETWEEN 5 AND 8;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+1,2,3,4,9,10,11,12
+INSERT INTO t1 VALUES (6,61),(7,71);
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+1,2,3,4,6,7,9,10,11,12
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t1 WHERE k < 3;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t1 WHERE k >= 11;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+3,4,6,7,9,10
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t1 WHERE k = 4;
+SELECT ROW_COUNT();
+ROW_COUNT()
+1
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t1 WHERE k IN (9,10);
+SELECT ROW_COUNT();
+ROW_COUNT()
+2
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+3,6,7
+CREATE TABLE t2 (u INT UNSIGNED NOT NULL, PRIMARY KEY (u)) ENGINE=rocksdb;
+INSERT INTO t2 VALUES (0),(1),(2147483648),(4294967295);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t2 WHERE u > 4294967296;
+SELECT ROW_COUNT();
+ROW_COUNT()
+0
+SELECT GROUP_CONCAT(u ORDER BY u) FROM t2;
+GROUP_CONCAT(u ORDER BY u)
+0,1,2147483648,4294967295
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t2 WHERE u >= 4294967295;
+SELECT ROW_COUNT();
+ROW_COUNT()
+1
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t2 WHERE u < 1;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+SELECT GROUP_CONCAT(u ORDER BY u) FROM t2;
+GROUP_CONCAT(u ORDER BY u)
+1,2147483648
+CREATE TABLE t3 (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a,b)) ENGINE=rocksdb;
+INSERT INTO t3 VALUES (1,1),(1,2),(1,3),(2,1),(2,2),(2,3),(3,1),(3,3);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t3 WHERE a = 1 AND b > 2;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t3;
+GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b)
+1:1,1:2,2:1,2:2,2:3,3:1,3:3
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t3 WHERE a >= 2 AND b = 3;
+SELECT ROW_COUNT();
+ROW_COUNT()
+2
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t3;
+GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b)
+1:1,1:2,2:1,2:2,3:1
+CREATE TABLE t4 (k INT NOT NULL, v INT, PRIMARY KEY (k), KEY v_idx (v))
+ENGINE=rocksdb;
+INSERT INTO t4 VALUES (1,10),(2,20),(3,30),(4,40),(5,50);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t4 WHERE k BETWEEN 2 AND 4;
+SELECT ROW_COUNT();
+ROW_COUNT()
+3
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t4;
+GROUP_CONCAT(k ORDER BY k)
+1,5
+SELECT GROUP_CONCAT(v ORDER BY v) FROM t4 FORCE INDEX (v_idx) WHERE v > 0;
+GROUP_CONCAT(v ORDER BY v)
+10,50
+CREATE TABLE t5_log (k INT) ENGINE=rocksdb;
+CREATE TABLE t5 (k INT NOT NULL, v INT, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t5 VALUES (1,1),(2,2),(3,3),(4,4);
+CREATE TRIGGER t5_bd BEFORE DELETE ON t5 FOR EACH ROW
+INSERT INTO t5_log VALUES (OLD.k);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t5 WHERE k BETWEEN 2 AND 3;
+SELECT ROW_COUNT();
+ROW_COUNT()
+2
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t5_log;
+GROUP_CONCAT(k ORDER BY k)
+2,3
+DROP TRIGGER t5_bd;
+CREATE TABLE t6 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t6 VALUES (1),(2),(3),(4),(5);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t6 WHERE k < 4 LIMIT 2;
+SELECT ROW_COUNT();
+ROW_COUNT()
+2
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t6;
+GROUP_CONCAT(k ORDER BY k)
+3,4,5
+CREATE TABLE t7 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t7 VALUES (1),(2),(3),(4);
+BEGIN;
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t7 WHERE k BETWEEN 2 AND 3;
+SELECT ROW_COUNT();
+ROW_COUNT()
+2
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t7;
+GROUP_CONCAT(k ORDER BY k)
+1,4
+COMMIT;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t7;
+GROUP_CONCAT(k ORDER BY k)
+1,4
+CREATE TABLE t8 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t8 VALUES (1),(2),(3),(4),(5),(6);
+SET SESSION sql_log_bin = 0;
+SET SESSION rocksdb_master_skip_tx_api = 1;
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t8 WHERE k BETWEEN 2 AND 4;
+SELECT ROW_COUNT();
+ROW_COUNT()
+3
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t8;
+GROUP_CONCAT(k ORDER BY k)
+1,5,6
+CREATE TABLE t9 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t9 VALUES (1),(2),(3),(4),(5),(6);
+CREATE FUNCTION f_del() RETURNS INT MODIFIES SQL DATA BEGIN DELETE FROM t9 WHERE k BETWEEN 2 AND 4; RETURN (SELECT COUNT(*) FROM t9 WHERE k BETWEEN 2 AND 4); END|
+SET SESSION rocksdb_use_range_del = ON;
+SELECT f_del();
+f_del()
+0
+SET SESSION rocksdb_use_range_del = OFF;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t9;
+GROUP_CONCAT(k ORDER BY k)
+1,5,6
+DROP FUNCTION f_del;
+CREATE TABLE t10 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t10 VALUES (1),(2),(3),(4),(5),(6);
+SET GLOBAL rocksdb_enable_delete_range_for_drop_index = OFF;
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t10 WHERE k BETWEEN 2 AND 4;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t10;
+GROUP_CONCAT(k ORDER BY k)
+1,5,6
+SET GLOBAL rocksdb_enable_delete_range_for_drop_index = ON;
+CREATE TABLE t11 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t11 VALUES (1),(2),(3),(4),(5),(6),(7),(8);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t11 WHERE k BETWEEN 3 AND 6;
+SELECT ROW_COUNT();
+ROW_COUNT()
+10
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t11;
+GROUP_CONCAT(k ORDER BY k)
+1,2,7,8
+# Kill and restart
+SET SESSION sql_log_bin = 0;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t11;
+GROUP_CONCAT(k ORDER BY k)
+1,2,7,8
+SET SESSION debug = "d,crash_commit_before";
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t11 WHERE k BETWEEN 1 AND 2;
+SET SESSION sql_log_bin = 0;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t11;
+GROUP_CONCAT(k ORDER BY k)
+1,2,7,8
+SET SESSION debug = "d,crash_commit_after";
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t11 WHERE k BETWEEN 1 AND 2;
+SET SESSION sql_log_bin = 0;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t11;
+GROUP_CONCAT(k ORDER BY k)
+7,8
+DROP TABLE t1,t2,t3,t4,t5,t5_log,t6,t7,t8,t9,t10,t11;
+CREATE TABLE t12 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t12 VALUES (1),(2),(3),(4),(5);
+SET GLOBAL rocksdb_enable_delete_range_for_drop_index = OFF;
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t12 WHERE k BETWEEN 2 AND 4;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t12;
+GROUP_CONCAT(k ORDER BY k)
+1,5
+SET SESSION sql_log_bin = 0;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t12;
+GROUP_CONCAT(k ORDER BY k)
+1,5
+SET GLOBAL rocksdb_enable_delete_range_for_drop_index = ON;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t12;
+GROUP_CONCAT(k ORDER BY k)
+1,5
+SET GLOBAL rocksdb_enable_delete_range_for_drop_index = OFF;
+INSERT INTO t12 VALUES (3);
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t12;
+GROUP_CONCAT(k ORDER BY k)
+1,3,5
+SET GLOBAL rocksdb_enable_delete_range_for_drop_index = ON;
+DROP TABLE t12;
+CREATE TABLE t13 (k INT NOT NULL, v INT, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t13 VALUES (1,1),(2,2),(3,3),(4,4),(5,5);
+SET debug_sync = 'rocksdb.delete_range_staged WAIT_FOR rocksdb.delete_range_resume';
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t13 WHERE k BETWEEN 2 AND 4;
+SET @kill_id = (SELECT id FROM information_schema.processlist WHERE state = 'debug sync point: rocksdb.delete_range_staged');
+KILL QUERY @kill_id;
+SET debug_sync = 'now SIGNAL rocksdb.delete_range_resume';
+ERROR 70100: Query execution was interrupted
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t13;
+GROUP_CONCAT(k ORDER BY k)
+1,2,3,4,5
+DELETE FROM t13 WHERE k = 5;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t13;
+GROUP_CONCAT(k ORDER BY k)
+1,2,3,4
+SET debug_sync = 'RESET';
+DROP TABLE t13;

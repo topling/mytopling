@@ -1,0 +1,49 @@
+--source include/have_rocksdb.inc
+--source include/master-slave.inc
+
+#
+# A statement based applier runs the DELETE again, and it must delete the rows
+# it finds, one by one: a range deletion would delete whatever is in the range
+# on the replica, which is not what the statement says. Handler_delete counts
+# the rows a statement deleted, so it tells the two paths apart.
+#
+connection master;
+# A statement event is the only way to make the applier run the DELETE again.
+# The plugin refuses statement based logging for its own writes otherwise.
+SET SESSION binlog_format = 'STATEMENT';
+SET SESSION rocksdb_unsafe_for_binlog = 1;
+CREATE TABLE t1 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t1 VALUES (1),(2),(3),(4),(5),(6);
+--source include/sync_slave_sql_with_master.inc
+
+connection slave;
+SET @handler_delete_on_slave =
+    (SELECT variable_value FROM performance_schema.global_status
+     WHERE variable_name = 'Handler_delete');
+
+connection master;
+SET SESSION binlog_format = 'STATEMENT';
+SET SESSION rocksdb_unsafe_for_binlog = 1;
+SET @handler_delete_on_master =
+    (SELECT variable_value FROM performance_schema.global_status
+     WHERE variable_name = 'Handler_delete');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t1 WHERE k BETWEEN 2 AND 4;
+SELECT (SELECT variable_value FROM performance_schema.global_status
+        WHERE variable_name = 'Handler_delete') - @handler_delete_on_master
+       AS rows_deleted_one_by_one_on_master;
+# The staged deletion is in the prepared batch only if prepare() flushed it.
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+--source include/sync_slave_sql_with_master.inc
+
+connection slave;
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+SELECT (SELECT variable_value FROM performance_schema.global_status
+        WHERE variable_name = 'Handler_delete') - @handler_delete_on_slave
+       AS rows_deleted_one_by_one_on_slave;
+
+connection master;
+DROP TABLE t1;
+--source include/sync_slave_sql_with_master.inc
+
+--source include/rpl_end.inc

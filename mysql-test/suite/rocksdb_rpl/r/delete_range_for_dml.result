@@ -1,0 +1,40 @@
+include/master-slave.inc
+Warnings:
+Note	####	Sending passwords in plain text without SSL/TLS is extremely insecure.
+Note	####	Storing MySQL user name or password information in the master info repository is not secure and is therefore not recommended. Please consider using the USER and PASSWORD connection options for START SLAVE; see the 'START SLAVE Syntax' in the MySQL Manual for more information.
+[connection master]
+SET SESSION binlog_format = 'STATEMENT';
+SET SESSION rocksdb_unsafe_for_binlog = 1;
+CREATE TABLE t1 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t1 VALUES (1),(2),(3),(4),(5),(6);
+include/sync_slave_sql_with_master.inc
+SET @handler_delete_on_slave =
+(SELECT variable_value FROM performance_schema.global_status
+WHERE variable_name = 'Handler_delete');
+SET SESSION binlog_format = 'STATEMENT';
+SET SESSION rocksdb_unsafe_for_binlog = 1;
+SET @handler_delete_on_master =
+(SELECT variable_value FROM performance_schema.global_status
+WHERE variable_name = 'Handler_delete');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t1 WHERE k BETWEEN 2 AND 4;
+SELECT (SELECT variable_value FROM performance_schema.global_status
+WHERE variable_name = 'Handler_delete') - @handler_delete_on_master
+AS rows_deleted_one_by_one_on_master;
+rows_deleted_one_by_one_on_master
+0
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+1,5,6
+include/sync_slave_sql_with_master.inc
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t1;
+GROUP_CONCAT(k ORDER BY k)
+1,5,6
+SELECT (SELECT variable_value FROM performance_schema.global_status
+WHERE variable_name = 'Handler_delete') - @handler_delete_on_slave
+AS rows_deleted_one_by_one_on_slave;
+rows_deleted_one_by_one_on_slave
+3
+DROP TABLE t1;
+include/sync_slave_sql_with_master.inc
+include/rpl_end.inc
