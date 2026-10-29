@@ -5524,10 +5524,6 @@ class Rdb_transaction {
 
   explicit Rdb_transaction(THD *const thd)
       : m_thd(thd), m_tbl_io_perf(nullptr) {
-    m_read_opts[INTRINSIC_TMP].ignore_range_deletions =
-        !rocksdb_enable_delete_range_for_drop_index;
-    m_read_opts[USER_TABLE].ignore_range_deletions =
-        !rocksdb_enable_delete_range_for_drop_index;
     m_use_auto_sort_sst =
           rocksdb_enable_auto_sort_sst && rocksdb_auto_sort_sst_factory;
   }
@@ -6298,8 +6294,6 @@ class Rdb_transaction_impl : public Rdb_transaction {
 
       begin_rdb_tx(table_type, write_opts, tx_opts);
       m_read_opts[table_type] = rocksdb::ReadOptions();
-      m_read_opts[table_type].ignore_range_deletions =
-          !rocksdb_enable_delete_range_for_drop_index;
 
       set_initial_savepoint();
 
@@ -6422,8 +6416,6 @@ class Rdb_writebatch_impl : public Rdb_transaction {
   void reset() {
     m_batch.Clear();
     m_read_opts[USER_TABLE] = rocksdb::ReadOptions();
-    m_read_opts[USER_TABLE].ignore_range_deletions =
-        !rocksdb_enable_delete_range_for_drop_index;
     reset_flags();
   }
 
@@ -13368,7 +13360,6 @@ static ha_rows scan_records_num_st(THD* thd, rocksdb::ColumnFamilyHandle* cf, ui
   uint32_t index_id_storage_form = __bswap_32(index_id);
   ha_rows rows = 0;
   rocksdb::ReadOptions ro;
-  ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
   auto tx = get_or_create_tx(thd, USER_TABLE);
   ro.snapshot = tx->m_read_opts[USER_TABLE].snapshot;
   ro.cache_sst_file_iter = false;
@@ -13484,7 +13475,6 @@ ScanRecordsParallel::ScanRecordsParallel(THD* thd, rocksdb::ColumnFamilyHandle* 
 }
 void ScanRecordsParallel::thread_proc() {
   rocksdb::ReadOptions ro;
-  ro.ignore_range_deletions = !rocksdb_enable_delete_range_for_drop_index;
   ro.snapshot = m_tx->m_read_opts[USER_TABLE].snapshot;
   ro.cache_sst_file_iter = false;
   ro.fixed_user_key_len = m_fixed_user_key_len;
@@ -16822,8 +16812,6 @@ void Rdb_drop_index_thread::run() {
           read_opts.timestamp = &rocksdb_max_timestamp_slice;
         }
        #endif
-        read_opts.ignore_range_deletions =
-            !rocksdb_enable_delete_range_for_drop_index;
 
         for (const auto d : indices) {
           uint32 cf_flags = 0;
@@ -17469,8 +17457,6 @@ static int calculate_cardinality_table_scan(
     read_opts.timestamp = &rocksdb_max_timestamp_slice;
   }
  #endif
-  read_opts.ignore_range_deletions =
-        !rocksdb_enable_delete_range_for_drop_index;
 
   Rdb_tbl_card_coll cardinality_collector(rocksdb_table_stats_sampling_pct);
 
@@ -21536,8 +21522,6 @@ std::unique_ptr<rocksdb::Iterator> rdb_tx_get_iterator(
         read_opts.timestamp = tx->get_tx_read_timestamp_slice();
       }
      #endif
-      read_opts.ignore_range_deletions =
-            !rocksdb_enable_delete_range_for_drop_index;
       return std::unique_ptr<rocksdb::Iterator>(
           rdb->NewIterator(read_opts, &cf));
     } else {
