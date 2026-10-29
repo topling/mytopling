@@ -4078,6 +4078,34 @@ class Rdb_transaction {
 
   [[nodiscard]] rocksdb::Status flush_staged_range_deletes(
       rocksdb::WriteBatchBase &wb) {
+    if (!m_staged_range_deletes.empty()) {
+      // They are all on the primary key, so all in one column family, and
+      // DeleteFilesInRanges takes them in one pass. A file a range covers in
+      // full holds rows of this statement's range and nothing else, so it can
+      // go before the deletion, which then only has the files a range cuts and
+      // what is written later to shadow.
+      const size_t n = m_staged_range_deletes.size();
+      std::vector<rocksdb::Slice> starts;
+      std::vector<rocksdb::Slice> limits;
+      std::vector<rocksdb::RangePtr> rp;
+      starts.reserve(n);
+      limits.reserve(n);
+      rp.reserve(n);
+      for (const auto &range : m_staged_range_deletes) {
+        assert(range.cfh == m_staged_range_deletes[0].cfh);
+        starts.emplace_back(range.start);
+        limits.emplace_back(range.limit);
+      }
+      for (size_t i = 0; i < n; ++i) rp.emplace_back(&starts[i], &limits[i]);
+      auto *db = rdb->GetBaseDB();
+      auto *cfh = m_staged_range_deletes[0].cfh;
+      const auto s = rocksdb::DeleteFilesInRanges(db, cfh, rp.data(), n, false);
+      if (!s.ok()) {
+        // NO_LINT_DEBUG
+        sql_print_warning("RocksDB: Failed to call DeleteFilesInRanges: %s",
+                          s.ToString().c_str());
+      }
+    }
     rocksdb::Status status;
     std::vector<Staged_range_delete> not_written;
     for (const auto &range : m_staged_range_deletes) {
