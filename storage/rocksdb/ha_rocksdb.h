@@ -697,6 +697,9 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
                             uint n_ranges, uint mode,
                             HANDLER_BUFFER *buf) override;
   int multi_range_read_next(char **range_info) override;
+  ha_rows ha_deleted_rows_by_range(void) override {
+    return m_delete_range_rows;
+  }
 
   // Note: the following is only used by DS-MRR, so not needed for MyRocks:
   // longlong get_memory_buffer_size() const override { return 1024; }
@@ -737,6 +740,13 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
   // if true, MRR code has enabled keyread (and should disable it back)
   bool mrr_enabled_keyread;
   bool mrr_used_cpk;
+
+  // if true, the ranges were turned into range deletions and nothing is read
+  bool m_delete_range_scan;
+  // how many rows those range deletions are estimated to remove
+  ha_rows m_delete_range_rows;
+  bool try_delete_range_scan(RANGE_SEQ_IF *seq, void *seq_init_param,
+                             uint n_ranges, uint mode);
 
   int mrr_fill_buffer();
   void mrr_free_rows();

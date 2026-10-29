@@ -49,6 +49,7 @@
 #include <mysql/psi/mysql_table.h>
 #include <mysql/thread_pool_priv.h>
 #include <mysys_err.h>
+#include "my_bit.h"  // my_count_bits
 #include "my_sys.h"
 #include "mysqld_error.h"
 #include "scope_guard.h"
@@ -58,6 +59,7 @@
 #include "sql/dd/dd.h"                       // dd::get_dictionary
 #include "sql/dd/dictionary.h"               // dd::Dictionary
 #include "sql/debug_sync.h"
+#include "sql/range_optimizer/range_optimizer.h"
 #include "sql/rpl_rli.h"
 #include "sql/sql_audit.h"
 #include "sql/sql_class.h"
@@ -66,6 +68,7 @@
 #include "sql/sql_table.h"
 #include "sql/sql_thd_internal_api.h"
 #include "sql/strfunc.h"
+#include "sql/table_trigger_dispatcher.h"
 
 /* RocksDB includes */
 #include "db/dbformat.h"
@@ -3119,6 +3122,18 @@ static MYSQL_SYSVAR_BOOL(enable_delete_range_for_drop_index,
                          "Enable drop table/index by delete range", nullptr,
                          nullptr, false);
 
+// A per statement switch, given as a SET_VAR optimizer hint on that DELETE, so
+// that it is in effect exactly while the statement runs.
+static MYSQL_THDVAR_BOOL(
+    use_range_del,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_HINTUPDATEABLE,
+    "Delete a primary key range of a DELETE by one range deletion instead of "
+    "reading the rows; set it for one statement with "
+    "SET_VAR(rocksdb_use_range_del=ON). No row is read, so the affected "
+    "row count is an estimate, and a row another transaction commits between "
+    "the statement's snapshot and its commit is deleted as well",
+    nullptr, nullptr, false);
+
 static MYSQL_SYSVAR_BOOL(alter_table_comment_inplace,
                          rocksdb_alter_table_comment_inplace,
                          PLUGIN_VAR_RQCMDARG,
@@ -3426,6 +3441,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(alter_table_comment_inplace),
     MYSQL_SYSVAR(column_default_value_as_expression),
     MYSQL_SYSVAR(enable_delete_range_for_drop_index),
+    MYSQL_SYSVAR(use_range_del),
     MYSQL_SYSVAR(max_intrinsic_tmp_table_write_count),
     MYSQL_SYSVAR(corrupt_data_action),
     MYSQL_SYSVAR(invalid_create_option_action),
@@ -4038,6 +4054,48 @@ class Rdb_transaction {
     }
     m_auto_incr_map.clear();
     return s;
+  }
+
+  /*
+    A range deletion cannot go into the WriteBatchWithIndex: it is not indexed
+    there, so it would neither be seen by this transaction's own reads nor
+    survive RollbackToSavePoint(). It is appended to the underlying WriteBatch
+    right before prepare/commit instead, where nothing can roll it back anymore.
+  */
+  struct Staged_range_delete {
+    rocksdb::ColumnFamilyHandle *cfh;
+    std::string start;
+    std::string limit;
+  };
+  std::vector<Staged_range_delete> m_staged_range_deletes;
+  size_t m_staged_range_deletes_at_savepoint = 0;
+
+  void stage_range_delete(rocksdb::ColumnFamilyHandle *const cfh,
+                          const std::string &start, const std::string &limit) {
+    m_staged_range_deletes.push_back({cfh, start, limit});
+    ++m_write_count[TABLE_TYPE::USER_TABLE];
+  }
+
+  [[nodiscard]] rocksdb::Status flush_staged_range_deletes(
+      rocksdb::WriteBatchBase &wb) {
+    rocksdb::Status status;
+    std::vector<Staged_range_delete> not_written;
+    for (const auto &range : m_staged_range_deletes) {
+      const auto s = wb.DeleteRange(range.cfh, rocksdb::Slice(range.start),
+                                    rocksdb::Slice(range.limit));
+      if (s.ok()) continue;
+      // One range that cannot be written does not make the others fail, and
+      // the commit is going to fail anyway, so all of them are reported.
+      if (status.ok()) status = s;
+      // NO_LINT_DEBUG
+      sql_print_warning("RocksDB: Failed to call DeleteRange: %s",
+                        s.ToString().c_str());
+      not_written.push_back(range);
+    }
+    // What is left in the vector is what the batch does not hold.
+    m_staged_range_deletes.swap(not_written);
+    m_staged_range_deletes_at_savepoint = 0;
+    return status;
   }
 
   void reset_flags() {
@@ -5340,6 +5398,9 @@ class Rdb_transaction {
 
     modified_tables.clear();
 
+    m_staged_range_deletes.clear();
+    m_staged_range_deletes_at_savepoint = 0;
+
     m_binlog_ttl_read_filtering_ts = m_thd->binlog_ttl_read_filtering_ts = 0;
 
     Rdb_transaction_list::reinsert_without_snapshot(this);
@@ -5410,6 +5471,7 @@ class Rdb_transaction {
     */
     do_set_savepoint();
     m_writes_at_last_savepoint = m_write_count[USER_TABLE];
+    m_staged_range_deletes_at_savepoint = m_staged_range_deletes.size();
   }
 
   /*
@@ -5436,6 +5498,7 @@ class Rdb_transaction {
 
       do_set_savepoint();
       m_writes_at_last_savepoint = m_write_count[USER_TABLE];
+      m_staged_range_deletes_at_savepoint = m_staged_range_deletes.size();
     }
 
     return HA_EXIT_SUCCESS;
@@ -5460,6 +5523,7 @@ class Rdb_transaction {
       */
       do_set_savepoint();
       m_write_count[USER_TABLE] = m_writes_at_last_savepoint;
+      m_staged_range_deletes.resize(m_staged_range_deletes_at_savepoint);
     }
   }
 
@@ -5658,6 +5722,11 @@ class Rdb_transaction_impl : public Rdb_transaction {
     auto s = merge_auto_incr_map(*m_rocksdb_tx[TABLE_TYPE::USER_TABLE]
                                       ->GetWriteBatch()
                                       ->GetWriteBatch());
+    if (s.ok()) {
+      s = flush_staged_range_deletes(*m_rocksdb_tx[TABLE_TYPE::USER_TABLE]
+                                          ->GetWriteBatch()
+                                          ->GetWriteBatch());
+    }
 #ifndef NDEBUG
     DBUG_EXECUTE_IF("myrocks_prepare_io_error",
                     dbug_change_status_to_io_error(&s););
@@ -5712,6 +5781,15 @@ class Rdb_transaction_impl : public Rdb_transaction {
 
     s = merge_auto_incr_map(
         *m_rocksdb_tx[table_type]->GetWriteBatch()->GetWriteBatch());
+    if (s.ok() && table_type == USER_TABLE) {
+      // On the two phase path prepare() has already written these into the
+      // batch it handed to Prepare(), and a prepared batch cannot change.
+      assert(m_staged_range_deletes.empty() ||
+             m_rocksdb_tx[table_type]->GetState() !=
+                 rocksdb::Transaction::PREPARED);
+      s = flush_staged_range_deletes(
+          *m_rocksdb_tx[table_type]->GetWriteBatch()->GetWriteBatch());
+    }
 #ifndef DBUG_OFF
     DBUG_EXECUTE_IF("myrocks_commit_merge_io_error",
                     dbug_change_status_to_io_error(&s););
@@ -10778,6 +10856,8 @@ ha_rocksdb::ha_rocksdb(my_core::handlerton *const hton,
       mrr_n_elements(0),
       mrr_enabled_keyread(false),
       mrr_used_cpk(false),
+      m_delete_range_scan(false),
+      m_delete_range_rows(0),
       m_in_rpl_delete_rows(false),
       m_in_rpl_update_rows(false),
       m_need_build_decoder(false) {}
@@ -15808,6 +15888,8 @@ int ha_rocksdb::reset() {
   m_pk_iterator.reset(nullptr);
   m_converter->reset_buffer();
   m_no_read_locking = false;
+  m_delete_range_scan = false;
+  m_delete_range_rows = 0;
   DBUG_RETURN(HA_EXIT_SUCCESS);
 }
 
@@ -21829,11 +21911,414 @@ class Mrr_sec_key_rowid_source : public Mrr_rowid_source {
   bool eof() override { return err != 0; }
 };
 
+/*
+  The DELETE below runs as one range deletion per key range instead of one row
+  at a time, so it reads no row and evaluates no condition: the ranges have to
+  select exactly the rows the WHERE clause selects. That needs every top level
+  conjunct to compare one primary key part against a constant the range
+  optimizer can turn into an exact bound, which is what comparable_in_index()
+  and the type test below establish.
+
+  A range deletion shadows every older key in the range, so a row another
+  transaction commits between the statement's snapshot and its commit is
+  deleted as well, though the statement never saw it.
+*/
+struct Rdb_pk_range_info {
+  ulonglong parts = 0;        // bit i: the WHERE clause constrains part i
+  ulonglong range_parts = 0;  // bit i: part i is constrained by an inequality
+};
+
+static int rdb_pk_part_of_field(const TABLE &table, const uint keyno,
+                                const Field &field) {
+  const KEY &key = table.key_info[keyno];
+  for (uint i = 0; i < key.user_defined_key_parts; i++) {
+    if (key.key_part[i].field->eq(&field)) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+/*
+  Integer parts only: storing any other constant into the key part may round or
+  truncate it, and the stored value is what the range bound is made of.
+*/
+static bool rdb_pk_part_value_is_exact(const Field &field, Item *const value) {
+  if (value->type() == Item::SUBSELECT_ITEM) return false;
+  if (value->is_non_deterministic()) return false;
+  // A bound statement parameter reports INNER_TABLE_BIT, so const_item() is
+  // false for it; this runs at execution time, where const_for_execution() is
+  // the question to ask.
+  if (!value->const_for_execution()) return false;
+  // is_null() asserts on a parameter that was never bound.
+  if (value->type() == Item::PARAM_ITEM &&
+      down_cast<Item_param *>(value)->param_state() == Item_param::NO_VALUE)
+    return false;
+  if (value->is_null()) return false;
+
+  switch (field.real_type()) {
+    case MYSQL_TYPE_TINY:
+    case MYSQL_TYPE_SHORT:
+    case MYSQL_TYPE_INT24:
+    case MYSQL_TYPE_LONG:
+    case MYSQL_TYPE_LONGLONG:
+      break;
+    default:
+      return false;
+  }
+  if (value->result_type() != INT_RESULT) return false;
+
+  // "int_col > 4294967296" selects nothing, but is packed as 4294967295.
+  const ulonglong max_value = field.get_max_int_value();
+  const longlong int_value = value->val_int();
+  if (value->unsigned_flag) {
+    return static_cast<ulonglong>(int_value) <= max_value;
+  }
+  if (field.is_unsigned()) {
+    return int_value >= 0 && static_cast<ulonglong>(int_value) <= max_value;
+  }
+  return int_value >= -static_cast<longlong>(max_value) - 1 &&
+         int_value <= static_cast<longlong>(max_value);
+}
+
+static bool rdb_pk_range_part(Item *const cond, const Field &field,
+                              Item *const value, const Item_func::Functype comp,
+                              TABLE &table, const uint keyno,
+                              Rdb_pk_range_info *const info) {
+  if (!rdb_pk_part_value_is_exact(field, value)) return false;
+
+  const int part = rdb_pk_part_of_field(table, keyno, field);
+  if (part < 0) return false;
+
+  const KEY_PART_INFO &key_part =
+      table.key_info[keyno].key_part[static_cast<uint>(part)];
+  // A prefix part is equal for many column values, and a reversed part sorts
+  // the other way round.
+  if ((key_part.key_part_flag &
+       (HA_REVERSE_SORT | HA_PART_KEY_SEG | HA_BLOB_PART)) != 0)
+    return false;
+  if (!key_part.field->optimize_range(keyno, static_cast<uint>(part)))
+    return false;
+  if (!comparable_in_index(cond, &field, Field::itRAW, comp, value))
+    return false;
+
+  info->parts |= 1ULL << part;
+  if (comp != Item_func::EQ_FUNC && comp != Item_func::EQUAL_FUNC)
+    info->range_parts |= 1ULL << part;
+  return true;
+}
+
+/*
+  Records which key parts the WHERE clause constrains. OR is a union of
+  rectangles, NOT (...) is everything else, and a NOT between/between or NOT
+  IN/IN is the complement of a range: none of them is a plain range of key
+  part values.
+*/
+static bool rdb_pk_range_conjuncts(Item *const cond, TABLE &table,
+                                   const uint keyno,
+                                   Rdb_pk_range_info *const info) {
+  switch (cond->type()) {
+    case Item::COND_ITEM:
+      if (down_cast<Item_cond *>(cond)->functype() != Item_func::COND_AND_FUNC)
+        return false;
+      for (Item &arg : *down_cast<Item_cond *>(cond)->argument_list()) {
+        if (!rdb_pk_range_conjuncts(&arg, table, keyno, info)) return false;
+      }
+      return true;
+    case Item::FUNC_ITEM: {
+      Item_func *const func = down_cast<Item_func *>(cond);
+      Item_func::Functype comp = func->functype();
+      switch (comp) {
+        case Item_func::EQ_FUNC:
+        case Item_func::EQUAL_FUNC:
+        case Item_func::LT_FUNC:
+        case Item_func::LE_FUNC:
+        case Item_func::GT_FUNC:
+        case Item_func::GE_FUNC: {
+          Item *const arg0 = func->arguments()[0];
+          Item *const arg1 = func->arguments()[1];
+          Field *field = nullptr;
+          Item *value = nullptr;
+          if (arg0->type() == Item::FIELD_ITEM && arg1->const_for_execution()) {
+            field = down_cast<Item_field *>(arg0)->field;
+            value = arg1;
+          } else if (arg1->type() == Item::FIELD_ITEM &&
+                     arg0->const_for_execution()) {
+            field = down_cast<Item_field *>(arg1)->field;
+            value = arg0;
+            comp = down_cast<Item_bool_func2 *>(func)->rev_functype();
+          }
+          if (field == nullptr || value == nullptr) return false;
+          return rdb_pk_range_part(cond, *field, value, comp, table, keyno,
+                                   info);
+        }
+        case Item_func::BETWEEN: {
+          Item_func_between *const between =
+              down_cast<Item_func_between *>(func);
+          if (between->negated) return false;
+          Item *const arg0 = between->arguments()[0];
+          if (arg0->type() != Item::FIELD_ITEM) return false;
+          Field *const field = down_cast<Item_field *>(arg0)->field;
+          if (field == nullptr) return false;
+          return rdb_pk_range_part(cond, *field, between->arguments()[1],
+                                   Item_func::GE_FUNC, table, keyno, info) &&
+                 rdb_pk_range_part(cond, *field, between->arguments()[2],
+                                   Item_func::LE_FUNC, table, keyno, info);
+        }
+        case Item_func::IN_FUNC: {
+          Item_func_in *const in = down_cast<Item_func_in *>(func);
+          if (in->negated) return false;
+          Item *const arg0 = in->arguments()[0];
+          if (arg0->type() != Item::FIELD_ITEM) return false;
+          Field *const field = down_cast<Item_field *>(arg0)->field;
+          if (field == nullptr) return false;
+          for (uint i = 1; i < in->argument_count(); i++) {
+            if (!rdb_pk_range_part(cond, *field, in->arguments()[i],
+                                   Item_func::EQ_FUNC, table, keyno, info))
+              return false;
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    }
+    default:
+      return false;
+  }
+}
+
+/*
+  The constrained parts have to be exactly 0..prefix_len-1. With a gap, or with
+  an inequality on a part that a later constraint follows, the range optimizer
+  cannot express the condition as ranges and widens them instead, leaving the
+  rest of the condition to be checked per row.
+*/
+static bool rdb_pk_range_prefix(Item *const where, TABLE &table,
+                                const uint keyno, uint *const prefix_len) {
+  Rdb_pk_range_info info;
+  if (!rdb_pk_range_conjuncts(where, table, keyno, &info)) return false;
+  if (info.parts == 0) return false;
+
+  uint len = 0;
+  while ((info.parts >> len) != 0) ++len;
+
+  const ulonglong prefix_mask = make_keypart_map(len - 1);
+  if (info.parts != prefix_mask) return false;
+  if ((info.range_parts & (prefix_mask >> 1)) != 0) return false;
+
+  *prefix_len = len;
+  return true;
+}
+
+// successor() would wrap into the 4 byte index number, that is, would put the
+// bound before the whole index.
+static bool rdb_key_bytes_are_all_ff(const uchar *const key, const uint len) {
+  for (uint i = INDEX_NUMBER_SIZE; i < len; i++) {
+    if (key[i] != 0xFF) return false;
+  }
+  return true;
+}
+
+/*
+  Turns the ranges the optimizer passes to multi_range_read_init() into the
+  same number of range deletions, and asks for no row to be read. The bound
+  translation matches records_in_range_internal(): a bound covers the leading
+  key parts only, "after this key part value" is its successor, and a bound
+  past every value of the leading parts is the end of the index.
+*/
+bool ha_rocksdb::try_delete_range_scan(RANGE_SEQ_IF *const seq,
+                                       void *const seq_init_param,
+                                       const uint n_ranges, const uint mode) {
+  THD *const thd = ha_thd();
+  if (thd == nullptr || !THDVAR(thd, use_range_del)) return false;
+  if (n_ranges == 0) return false;
+
+  // A range deletion carries no row image, so it cannot be row logged, and a
+  // write policy that keeps a prepared section rolls a prepared transaction
+  // back by inspecting its write batch.
+  if (mysql_bin_log.is_open() && thd->is_current_stmt_binlog_format_row() &&
+      !thd->is_current_stmt_binlog_disabled())
+    return false;
+  if (rocksdb_write_policy != rocksdb::TxnDBWritePolicy::WRITE_COMMITTED)
+    return false;
+
+  if (thd->lex->sql_command != SQLCOM_DELETE) return false;
+  // A replica applying the statement has to delete the same rows again, and a
+  // transaction would not see the range deletion in its own reads.
+  if (thd->rli_slave != nullptr) return false;
+  if (thd->in_multi_stmt_transaction_mode()) return false;
+  // A sub statement shares the transaction of its outer statement, which
+  // commits it, and its later statements do not see the staged deletion.
+  if (thd->in_sub_stmt != 0) return false;
+
+  if (table->s->tmp_table != NO_TMP_TABLE) return false;
+  if (m_tbl_def->get_table_type() != TABLE_TYPE::USER_TABLE) return false;
+  if (THDVAR(thd, bulk_load)) return false;
+  if (rocksdb_enable_udt_in_mem) return false;
+  if (table->part_info != nullptr) return false;
+  // A range deletion on the primary key leaves the secondary index entries
+  // behind, and a hidden primary key is not a range of the table's own rows.
+  if (table->s->keys != 1 || table->s->primary_key >= MAX_KEY) return false;
+  if (active_index != table->s->primary_key) return false;
+  if (m_pk_descr->m_is_reverse_cf) return false;
+  if (table->triggers != nullptr && table->triggers->has_delete_triggers())
+    return false;
+  // LIMIT stops after a number of rows, which one range deletion cannot do.
+  if (thd->lex->query_block->has_limit()) return false;
+  // With a join, the ranges do not decide alone which rows are deleted.
+  if (thd->lex->query_tables == nullptr ||
+      thd->lex->query_tables->next_global != nullptr ||
+      thd->lex->query_tables->table != table)
+    return false;
+  if (seq->init == nullptr || seq->next == nullptr) return false;
+  // Range checked for each record hands its own conditions to the handler.
+  if (seq->skip_record != nullptr) return false;
+
+  Item *const where = thd->lex->query_block->where_cond();
+  const uint keyno = table->s->primary_key;
+  uint prefix_len = 0;
+  if (where == nullptr ||
+      !rdb_pk_range_prefix(where, *table, keyno, &prefix_len))
+    return false;
+
+  const Rdb_key_def &kd = *m_pk_descr;
+  if (prefix_len > kd.get_key_parts()) return false;
+
+  Rdb_transaction *const tx = get_tx_from_thd(thd);
+  if (tx == nullptr) return false;
+  // Rdb_writebatch_impl posts its write batch as it is and never flushes these.
+  if (tx->is_writebatch_trx()) return false;
+
+  const key_part_map part_map = make_keypart_map(prefix_len - 1);
+
+  // pack_record() rewrites the record it is given, so the bounds are packed
+  // out of a copy of the record.
+  std::vector<uchar> record(table->s->reclength);
+  memcpy(record.data(), table->record[0], record.size());
+  std::vector<uchar> packed(kd.max_storage_fmt_length());
+
+  const auto pack = [&](const key_part_map map, const uchar *const key_tuple,
+                        uchar *const out) -> uint {
+    key_restore(record.data(), const_cast<uchar *>(key_tuple),
+                &table->key_info[keyno], calculate_key_len(table, keyno, map));
+    return kd.pack_record(table, m_pack_buffer, record.data(), out, nullptr,
+                          false, 0, my_count_bits(map));
+  };
+
+  uchar infimum[INDEX_NUMBER_SIZE];
+  uchar supremum[INDEX_NUMBER_SIZE];
+  uint infimum_size = 0;
+  uint supremum_size = 0;
+  kd.get_infimum_key(infimum, &infimum_size);
+  kd.get_supremum_key(supremum, &supremum_size);
+
+  std::vector<Rdb_transaction::Staged_range_delete> deletes;
+  ha_rows rows = 0;
+  KEY_MULTI_RANGE range;
+  range_seq_t rseq = seq->init(seq_init_param, n_ranges, mode);
+  while (seq->next(rseq, &range) == 0) {
+    const uint flags = range.range_flag;
+    if ((flags & (NULL_RANGE | DESC_FLAG)) != 0) return false;
+    // An equality on the whole primary key names one row, not a range; it is
+    // deleted as a point, which needs neither a range deletion nor a read.
+    if (prefix_len == kd.get_key_parts() &&
+        (flags & (NO_MIN_RANGE | NO_MAX_RANGE)) == 0 &&
+        range.start_key.flag == HA_READ_KEY_EXACT &&
+        range.end_key.flag == HA_READ_AFTER_KEY &&
+        range.start_key.keypart_map == range.end_key.keypart_map &&
+        range.start_key.length == range.end_key.length &&
+        memcmp(range.start_key.key, range.end_key.key,
+               range.start_key.length) == 0)
+      return false;
+
+    std::string start(reinterpret_cast<const char *>(infimum), infimum_size);
+    std::string limit(reinterpret_cast<const char *>(supremum), supremum_size);
+
+    if ((flags & NO_MIN_RANGE) == 0) {
+      const key_part_map map = range.start_key.keypart_map;
+      // A bound covers the leading key parts, packed in exactly
+      // calculate_key_len() bytes.
+      if (map == 0 || (map & (map + 1)) != 0 || (map & ~part_map) != 0 ||
+          range.start_key.length != calculate_key_len(table, keyno, map))
+        return false;
+      const uint len = pack(map, range.start_key.key, packed.data());
+      switch (range.start_key.flag) {
+        case HA_READ_KEY_EXACT:
+        case HA_READ_KEY_OR_NEXT:
+          start.assign(reinterpret_cast<const char *>(packed.data()), len);
+          break;
+        case HA_READ_AFTER_KEY:
+          if (rdb_key_bytes_are_all_ff(packed.data(), len))
+            continue;  // no key of this index is above the bound
+          kd.successor(packed.data(), len);
+          start.assign(reinterpret_cast<const char *>(packed.data()), len);
+          break;
+        default:
+          return false;
+      }
+    }
+
+    if ((flags & NO_MAX_RANGE) == 0) {
+      const key_part_map map = range.end_key.keypart_map;
+      if (map == 0 || (map & (map + 1)) != 0 || (map & ~part_map) != 0 ||
+          range.end_key.length != calculate_key_len(table, keyno, map))
+        return false;
+      const uint len = pack(map, range.end_key.key, packed.data());
+      switch (range.end_key.flag) {
+        case HA_READ_BEFORE_KEY:
+          limit.assign(reinterpret_cast<const char *>(packed.data()), len);
+          break;
+        case HA_READ_AFTER_KEY:
+          if (!rdb_key_bytes_are_all_ff(packed.data(), len)) {
+            kd.successor(packed.data(), len);
+            limit.assign(reinterpret_cast<const char *>(packed.data()), len);
+          }
+          break;
+        default:
+          return false;
+      }
+    }
+
+    if (rocksdb::Slice(start).compare(rocksdb::Slice(limit)) >= 0) continue;
+    deletes.push_back({&kd.get_cf(), start, limit});
+    // The rows of a range deletion are never read, so affected rows can only be
+    // the estimate the optimizer itself uses for this range.
+    rows += records_in_range(
+        keyno, (flags & NO_MIN_RANGE) ? nullptr : &range.start_key,
+        (flags & NO_MAX_RANGE) ? nullptr : &range.end_key);
+  }
+
+  for (const auto &r : deletes) tx->stage_range_delete(r.cfh, r.start, r.limit);
+  if (!deletes.empty()) {
+    // No row goes through ha_delete_row(), so nothing else marks this
+    // statement as a write. Without that the engine is left out of the two
+    // phase commit, whose prepare is what accepts the binlog marker in the
+    // commit time batch.
+    thd->get_ha_data(ht->slot)->ha_info[0].set_trx_read_write();
+    // No row is read either, so the delayed snapshot would still be pending
+    // when the statement is rolled back. A writing statement must hold one.
+    tx->acquire_snapshot(true, TABLE_TYPE::USER_TABLE);
+  }
+  // on_commit() refreshes the update time of the tables in modified_tables, and
+  // nothing else on this path puts this table there.
+  if (!deletes.empty()) {
+    tx->log_table_write_op(m_tbl_def);
+    DEBUG_SYNC(thd, "rocksdb.delete_range_staged");
+  }
+  m_delete_range_rows = rows;
+  return true;
+}
+
 // Initialize an MRR scan
 int ha_rocksdb::multi_range_read_init(RANGE_SEQ_IF *seq, void *seq_init_param,
                                       uint n_ranges, uint mode,
                                       HANDLER_BUFFER *buf) {
   m_need_build_decoder = true;
+  m_delete_range_scan = false;
+  m_delete_range_rows = 0;
+  if (try_delete_range_scan(seq, seq_init_param, n_ranges, mode)) {
+    m_delete_range_scan = true;
+    return 0;
+  }
   auto &thd = *ha_thd();
   m_active_index_type = ActiveIndexType::Unknown;
 
@@ -22090,6 +22575,11 @@ void ha_rocksdb::mrr_free_rows() {
 }
 
 int ha_rocksdb::multi_range_read_next(char **range_info) {
+  if (m_delete_range_scan) {
+    table->m_status = STATUS_NOT_FOUND;
+    return HA_ERR_END_OF_FILE;
+  }
+
   check_build_decoder();
 
   if (mrr_uses_default_impl) {
