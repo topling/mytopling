@@ -5841,6 +5841,12 @@ class handler {
   }
 
   /**
+    The number of rows the current statement removed with range deletions.
+    The row by row loop of DELETE counts nothing then, so it asks the handler.
+  */
+  virtual ha_rows ha_deleted_rows_by_range(void) { return (ha_rows)0; }
+
+  /**
     Normally, when running UPDATE or DELETE queries, we need to wait for other
     transactions to release their locks on a given row before we can read it and
     potentially update it. However, in READ UNCOMMITTED and READ COMMITTED, we

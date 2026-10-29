@@ -630,6 +630,8 @@ bool Sql_cmd_delete::delete_from_single_table(THD *thd) {
       /* Only handler knows how many records were really written */
       deleted_rows = table->file->end_read_removal();
     }
+    /* The rows removed by range deletions never passed the loop above */
+    deleted_rows += table->file->ha_deleted_rows_by_range();
     if (query_block->active_options() & OPTION_QUICK)
       (void)table->file->ha_extra(HA_EXTRA_NORMAL);
   }  // End of scope for Modification_plan
