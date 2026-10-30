@@ -496,6 +496,7 @@ class ha_rocksdb final : public my_core::handler, public blob_buffer {
                 (rocksdb_column_default_value_as_expression
                      ? HA_SUPPORTS_DEFAULT_EXPRESSION
                      : 0) |
+                HA_DESCENDING_INDEX |
                 HA_ATTACHABLE_TRX_COMPATIBLE | HA_NO_READ_LOCAL_LOCK);
   }
 

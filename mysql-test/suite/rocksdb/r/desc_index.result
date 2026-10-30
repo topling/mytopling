@@ -1,0 +1,208 @@
+#
+# A DESC key part is stored as the ASC image with every byte complemented,
+# so every access path that walks a key must agree with the SQL layer on
+# what the order is: point and range lookups, index-only scans, the
+# backwards walk for "ORDER BY ... ASC" and the NULL/space padded
+# variable length formats.
+#
+CREATE TABLE t1 (
+a INT NOT NULL,
+b INT,
+c VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
+d VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+PRIMARY KEY (a),
+KEY kb (b DESC),
+KEY kbc (b, c DESC),
+KEY kd (d DESC)
+) ENGINE=rocksdb;
+INSERT INTO t1 VALUES
+(1, 1, 'aaa', 'aaa'),
+(2, 2, 'bbb', 'bbb'),
+(3, 3, 'ccc', 'ccc'),
+(4, NULL, 'ddd', 'ddd'),
+(5, 2, 'zzz', 'zzz'),
+(6, 1, 'aaa', 'aaa'),
+(7, NULL, 'aab', 'aab'),
+(8, 10, 'ab', 'ab'),
+(9, 10, 'ab ', 'ab '),
+(10, -3, '', ''),
+(11, -3, 'ab   ', 'ab   '),
+(12, 20, 'abcdefghi', 'abcdefgh'),
+(13, 20, 'abcdefghijklmnopqr', 'abcdefghijklmnop');
+# point lookup on the DESC index
+SELECT a, b FROM t1 FORCE INDEX (kb) WHERE b = 2 ORDER BY a;
+a	b
+2	2
+5	2
+# range lookup on the DESC index
+SELECT a, b FROM t1 FORCE INDEX (kb) WHERE b >= 1 AND b <= 3 ORDER BY a;
+a	b
+1	1
+2	2
+3	3
+5	2
+6	1
+# index-only scan: every column comes out of the key
+SELECT b, a FROM t1 FORCE INDEX (kb) WHERE b IS NOT NULL ORDER BY b DESC, a;
+b	a
+20	12
+20	13
+10	8
+10	9
+3	3
+2	2
+2	5
+1	1
+1	6
+-3	10
+-3	11
+# the index is read backwards for the other direction
+SELECT b, a FROM t1 FORCE INDEX (kb) WHERE b IS NOT NULL ORDER BY b ASC, a;
+b	a
+-3	10
+-3	11
+1	1
+1	6
+2	2
+2	5
+3	3
+10	8
+10	9
+20	12
+20	13
+# NULL sorts after every value in a DESC part
+SELECT a, b FROM t1 FORCE INDEX (kb) WHERE b IS NULL ORDER BY a;
+a	b
+4	NULL
+7	NULL
+# composite key, second part DESC
+SELECT a, b, c FROM t1 FORCE INDEX (kbc) WHERE b = 1 ORDER BY c DESC, a;
+a	b	c
+1	1	aaa
+6	1	aaa
+# empty string and trailing spaces are distinct values of utf8mb4_bin
+SELECT a, c FROM t1 FORCE INDEX (kbc) WHERE b = -3 AND c >= '' ORDER BY c DESC, a;
+a	c
+11	ab   
+10	
+# NO PAD collation goes through the other variable length format
+SELECT a, d FROM t1 FORCE INDEX (kd) WHERE d <= 'ab' ORDER BY d DESC, a;
+a	d
+8	ab
+7	aab
+1	aaa
+6	aaa
+10	
+# a short value that is a prefix of a longer one, with both of them
+# ending exactly on an encoding block boundary
+SELECT a, c FROM t1 FORCE INDEX (kbc) WHERE b = 20 ORDER BY c DESC, a;
+a	c
+13	abcdefghijklmnopqr
+12	abcdefghi
+SELECT a, c FROM t1 FORCE INDEX (kbc) WHERE b = 20 ORDER BY c ASC, a;
+a	c
+12	abcdefghi
+13	abcdefghijklmnopqr
+SELECT a, d FROM t1 FORCE INDEX (kd)
+WHERE d >= 'abcdefgh' AND d <= 'abcdefghijklmnop' ORDER BY d DESC, a;
+a	d
+13	abcdefghijklmnop
+12	abcdefgh
+SELECT a, d FROM t1 FORCE INDEX (kd) WHERE d = 'abcdefgh';
+a	d
+12	abcdefgh
+# DELETE and UPDATE find their rows through the DESC index
+UPDATE t1 FORCE INDEX (kb) SET c = 'updated' WHERE b = -3;
+SELECT a, b, c FROM t1 WHERE b = -3 ORDER BY a;
+a	b	c
+10	-3	updated
+11	-3	updated
+DELETE t1 FROM t1 FORCE INDEX (kb) WHERE b = 10;
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+11
+# a DESC key part added after the fact
+ALTER TABLE t1 ADD KEY ka (a DESC);
+SELECT a FROM t1 FORCE INDEX (ka) WHERE a >= 8 ORDER BY a DESC;
+a
+13
+12
+11
+10
+ALTER TABLE t1 DROP KEY ka;
+#
+# The auto increment recovery walks the index in the direction of its
+# first key part.
+#
+CREATE TABLE t2 (
+id INT NOT NULL AUTO_INCREMENT,
+x INT,
+PRIMARY KEY (id DESC)
+) ENGINE=rocksdb;
+INSERT INTO t2 (x) VALUES (1), (2), (3);
+SELECT * FROM t2 ORDER BY id;
+id	x
+1	1
+2	2
+3	3
+# restart
+INSERT INTO t2 (x) VALUES (4);
+SELECT * FROM t2 ORDER BY id;
+id	x
+1	1
+2	2
+3	3
+4	4
+#
+# A primary key column can be descending in a secondary key while it is
+# ascending in the primary key, and the other way round: the key part
+# then has to be complemented again when it is copied over to look up
+# the row in the primary key.
+#
+CREATE TABLE t3 (
+a INT NOT NULL,
+b INT,
+PRIMARY KEY (a),
+KEY ka_desc (a DESC)
+) ENGINE=rocksdb;
+INSERT INTO t3 VALUES (1,10),(2,20),(3,30),(4,40);
+# covering scan
+SELECT a FROM t3 FORCE INDEX (ka_desc) WHERE a >= 3 ORDER BY a DESC;
+a
+4
+3
+# the row itself comes from the primary key
+SELECT a, b FROM t3 FORCE INDEX (ka_desc) WHERE a >= 3 ORDER BY a DESC;
+a	b
+4	40
+3	30
+UPDATE t3 FORCE INDEX (ka_desc) SET b = b + 1 WHERE a = 4;
+DELETE t3 FROM t3 FORCE INDEX (ka_desc) WHERE a = 2;
+SELECT a, b FROM t3 ORDER BY a;
+a	b
+1	10
+3	30
+4	41
+CREATE TABLE t4 (
+a INT NOT NULL,
+b INT,
+PRIMARY KEY (a DESC),
+KEY ka_asc (a)
+) ENGINE=rocksdb;
+INSERT INTO t4 VALUES (1,10),(2,20),(3,30),(4,40);
+SELECT a FROM t4 FORCE INDEX (ka_asc) WHERE a >= 3 ORDER BY a;
+a
+3
+4
+SELECT a, b FROM t4 FORCE INDEX (ka_asc) WHERE a >= 3 ORDER BY a;
+a	b
+3	30
+4	40
+UPDATE t4 FORCE INDEX (ka_asc) SET b = b + 1 WHERE a = 4;
+DELETE t4 FROM t4 FORCE INDEX (ka_asc) WHERE a = 2;
+SELECT a, b FROM t4 ORDER BY a;
+a	b
+1	10
+3	30
+4	41
+DROP TABLE t1, t2, t3, t4;
