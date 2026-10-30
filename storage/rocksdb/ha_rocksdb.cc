@@ -10659,7 +10659,12 @@ ulonglong ha_rocksdb::load_auto_incr_value_from_index() {
   m_converter->set_is_key_requested(true);
   SetActiveIndexType();
 
-  if (!index_last(table->record[0])) {
+  // With a DESC first key part, the byte maximum of the index holds the
+  // smallest value.
+  const bool desc_first =
+      m_key_descr_arr[active_index_pos()]->get_pack_info(0)->m_is_desc;
+  if (!(desc_first ? index_first(table->record[0])
+                   : index_last(table->record[0]))) {
     Field *field =
         table->key_info[table->s->next_number_index].key_part[0].field;
     ulonglong max_val = field->get_max_int_value();
