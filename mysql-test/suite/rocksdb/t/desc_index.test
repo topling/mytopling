@@ -135,4 +135,25 @@ UPDATE t4 FORCE INDEX (ka_asc) SET b = b + 1 WHERE a = 4;
 DELETE t4 FROM t4 FORCE INDEX (ka_asc) WHERE a = 2;
 SELECT a, b FROM t4 ORDER BY a;
 
-DROP TABLE t1, t2, t3, t4;
+--echo #
+--echo # Dropping and re-adding an index in place with the same name and the
+--echo # same columns but the other direction has to rebuild it: the parts are
+--echo # stored complemented, so the old definition can not be reused.
+--echo #
+
+CREATE TABLE t5 (
+  a INT NOT NULL,
+  b INT,
+  PRIMARY KEY (a),
+  KEY kb (b)
+) ENGINE=rocksdb;
+
+INSERT INTO t5 VALUES (1,10),(2,20),(3,30),(4,40);
+SELECT a FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b;
+ALTER TABLE t5 DROP INDEX kb, ADD INDEX kb (b DESC), ALGORITHM=INPLACE;
+SELECT a FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b DESC;
+SELECT a, b FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b DESC;
+ALTER TABLE t5 DROP INDEX kb, ADD INDEX kb (b), ALGORITHM=INPLACE;
+SELECT a FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b;
+
+DROP TABLE t1, t2, t3, t4, t5;

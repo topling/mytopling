@@ -12001,6 +12001,12 @@ int ha_rocksdb::compare_key_parts(const KEY *const old_key,
     if (old_key->key_part[i].length != new_key->key_part[i].length) {
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
+
+    /* A part that changed direction is stored differently */
+    if ((old_key->key_part[i].key_part_flag & HA_REVERSE_SORT) !=
+        (new_key->key_part[i].key_part_flag & HA_REVERSE_SORT)) {
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
   }
 
   DBUG_RETURN(HA_EXIT_SUCCESS);

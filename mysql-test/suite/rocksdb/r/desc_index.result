@@ -205,4 +205,38 @@ a	b
 1	10
 3	30
 4	41
-DROP TABLE t1, t2, t3, t4;
+#
+# Dropping and re-adding an index in place with the same name and the
+# same columns but the other direction has to rebuild it: the parts are
+# stored complemented, so the old definition can not be reused.
+#
+CREATE TABLE t5 (
+a INT NOT NULL,
+b INT,
+PRIMARY KEY (a),
+KEY kb (b)
+) ENGINE=rocksdb;
+INSERT INTO t5 VALUES (1,10),(2,20),(3,30),(4,40);
+SELECT a FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b;
+a
+2
+3
+4
+ALTER TABLE t5 DROP INDEX kb, ADD INDEX kb (b DESC), ALGORITHM=INPLACE;
+SELECT a FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b DESC;
+a
+4
+3
+2
+SELECT a, b FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b DESC;
+a	b
+4	40
+3	30
+2	20
+ALTER TABLE t5 DROP INDEX kb, ADD INDEX kb (b), ALGORITHM=INPLACE;
+SELECT a FROM t5 FORCE INDEX (kb) WHERE b >= 20 ORDER BY b;
+a
+2
+3
+4
+DROP TABLE t1, t2, t3, t4, t5;
