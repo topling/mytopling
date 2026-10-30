@@ -794,27 +794,64 @@ DATA_IO_DUMP_RAW_MEM_E(enum_field_types) // global namespace
 namespace myrocks {
 DATA_IO_DUMP_RAW_MEM_E(Rdb_key_def::INDEX_KEY_TYPE)
 struct Rdb_field_packing_fixed_part : Rdb_field_packing {
-  DATA_IO_LOAD_SAVE(Rdb_field_packing_fixed_part,
-    & m_max_image_len
-    & m_unpack_data_len
-    & m_unpack_data_offset
-    & m_field_is_nullable
-    & m_field_unsigned_flag
-    & m_field_real_type
-    & m_field_null_bit_mask
-    & m_field_pack_length
-    & m_field_null_offset
-    & m_field_offset
-    // & m_field_charset
-    & m_is_secondary_key
-    & m_varlength_bytes
-    & m_segment_size
-    & m_unpack_info_uses_two_bytes
-    & m_covered
-    & m_unpack_info_stores_value
-    & m_max_field_bytes
-    & m_is_desc
-  );
+  // The keydef stream carries neither a version nor a length and is parsed by
+  // position, so a flag added to it must not take a byte of its own, otherwise
+  // a compaction worker of the previous release would lose every field that
+  // follows. m_is_desc instead rides in the second bit of the byte that
+  // carries m_unpack_info_stores_value.
+  template<class DataIO>
+  void dio_save(DataIO& dio) const {
+    dio & m_max_image_len
+        & m_unpack_data_len
+        & m_unpack_data_offset
+        & m_field_is_nullable
+        & m_field_unsigned_flag
+        & m_field_real_type
+        & m_field_null_bit_mask
+        & m_field_pack_length
+        & m_field_null_offset
+        & m_field_offset
+        // & m_field_charset
+        & m_is_secondary_key
+        & m_varlength_bytes
+        & m_segment_size
+        & m_unpack_info_uses_two_bytes
+        & m_covered;
+    unsigned char pack_flags = m_unpack_info_stores_value ? 1 : 0;
+    if (m_is_desc) {
+      pack_flags |= 2;
+    }
+    dio & pack_flags;
+    dio & m_max_field_bytes;
+  }
+
+  template<class DataIO>
+  void dio_load(DataIO& dio) {
+    dio & m_max_image_len
+        & m_unpack_data_len
+        & m_unpack_data_offset
+        & m_field_is_nullable
+        & m_field_unsigned_flag
+        & m_field_real_type
+        & m_field_null_bit_mask
+        & m_field_pack_length
+        & m_field_null_offset
+        & m_field_offset
+        // & m_field_charset
+        & m_is_secondary_key
+        & m_varlength_bytes
+        & m_segment_size
+        & m_unpack_info_uses_two_bytes
+        & m_covered;
+    unsigned char pack_flags = 0;
+    dio & pack_flags;
+    m_unpack_info_stores_value = (pack_flags & 1) != 0;
+    m_is_desc = (pack_flags & 2) != 0;
+    dio & m_max_field_bytes;
+  }
+
+  DATA_IO_REG_LOAD(Rdb_field_packing_fixed_part)
+  DATA_IO_REG_SAVE(Rdb_field_packing_fixed_part)
 };
 
 const long MYTOPLING_LOG_LEVEL = terark::getEnvLong("MYTOPLING_LOG_LEVEL");

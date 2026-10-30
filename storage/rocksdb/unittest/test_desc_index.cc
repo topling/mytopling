@@ -31,7 +31,23 @@
 #include <cstring>
 #include <string>
 
+#include <terark/io/DataIO.hpp>
+#include <terark/io/FileStream.hpp>
+
 #include "../rdb_datadic.h"
+
+DATA_IO_DUMP_RAW_MEM_E(enum_field_types)
+
+namespace myrocks {
+DATA_IO_DUMP_RAW_MEM_E(Rdb_key_def::INDEX_KEY_TYPE)
+
+void Rdb_field_packing_write(
+    terark::LittleEndianDataOutput<terark::NonOwnerFileStream> &,
+    const Rdb_field_packing &);
+void Rdb_field_packing_read(
+    terark::LittleEndianDataInput<terark::NonOwnerFileStream> &,
+    Rdb_field_packing &);
+}  // namespace myrocks
 
 namespace {
 
@@ -485,6 +501,129 @@ void test_composite_desc() {
                    pack_both(1, "b", true, true)) > 0);
 }
 
+using DioReader = terark::LittleEndianDataInput<terark::NonOwnerFileStream>;
+using DioWriter = terark::LittleEndianDataOutput<terark::NonOwnerFileStream>;
+
+/*
+  The fixed part of a field packing as the previous release wrote it, before
+  the DESC flag existed. The keydef stream that a compaction worker receives
+  carries no version and is parsed by position, so this layout has to keep
+  decoding: the flag may only ride in a free bit of an existing byte.
+*/
+struct Legacy_field_packing_fixed_part : Rdb_field_packing {
+  DATA_IO_LOAD_SAVE(Legacy_field_packing_fixed_part,
+    & m_max_image_len
+    & m_unpack_data_len
+    & m_unpack_data_offset
+    & m_field_is_nullable
+    & m_field_unsigned_flag
+    & m_field_real_type
+    & m_field_null_bit_mask
+    & m_field_pack_length
+    & m_field_null_offset
+    & m_field_offset
+    & m_is_secondary_key
+    & m_varlength_bytes
+    & m_segment_size
+    & m_unpack_info_uses_two_bytes
+    & m_covered
+    & m_unpack_info_stores_value
+    & m_max_field_bytes
+  );
+};
+
+std::string slurp(FILE *const f) {
+  std::fflush(f);
+  std::rewind(f);
+  std::string out;
+  char buf[256];
+  size_t n;
+  while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
+  std::fclose(f);
+  return out;
+}
+
+void test_serde_desc_flag() {
+  Record_ctx ctx;
+  Field_long field(ctx.record, 4, nullptr, 0, Field::NONE, "c", false, false);
+  field.table = &ctx.table;
+  ctx.attach(&field);
+
+  Test_key_def kd(512);
+  Rdb_field_packing fpi;
+  CHECK(fpi.setup(&kd, &field, 0, 0, 4));
+  kd.bind(&fpi);
+
+  auto encode = [&](const bool stores_value, const bool desc) {
+    fpi.m_unpack_info_stores_value = stores_value;
+    fpi.m_is_desc = desc;
+    FILE *const f = std::tmpfile();
+    CHECK(f != nullptr);
+    terark::NonOwnerFileStream fs(f);
+    Rdb_field_packing_write(static_cast<DioWriter &>(fs), fpi);
+    return slurp(f);
+  };
+  /* The whole fixed part, plus the four function ids that follow it. */
+  auto encode_legacy = [&](const bool stores_value) {
+    fpi.m_unpack_info_stores_value = stores_value;
+    fpi.m_is_desc = false;
+    FILE *const f = std::tmpfile();
+    CHECK(f != nullptr);
+    terark::NonOwnerFileStream fs(f);
+    auto &dio = static_cast<DioWriter &>(fs);
+    dio & static_cast<const Legacy_field_packing_fixed_part &>(fpi);
+    return slurp(f);
+  };
+  auto decode = [](const std::string &bytes, Rdb_field_packing *out) {
+    FILE *const f = std::tmpfile();
+    CHECK(f != nullptr);
+    std::fwrite(bytes.data(), 1, bytes.size(), f);
+    std::fflush(f);
+    std::rewind(f);
+    terark::NonOwnerFileStream fs(f);
+    Rdb_field_packing_read(static_cast<DioReader &>(fs), *out);
+    std::fclose(f);
+  };
+
+  for (const bool stores_value : {false, true}) {
+    const std::string legacy = encode_legacy(stores_value);
+    const std::string asc = encode(stores_value, false);
+    const std::string desc = encode(stores_value, true);
+
+    /* Not a single byte moved: the previous layout is a prefix. */
+    CHECK_EQ(asc.size(), legacy.size() + 8);
+    CHECK_EQ(asc.compare(0, legacy.size(), legacy), 0);
+
+    /* Only the DESC bit tells the two streams apart, and only in one byte. */
+    CHECK_EQ(desc.size(), asc.size());
+    size_t ndiff = 0;
+    size_t at = 0;
+    for (size_t i = 0; i < desc.size(); ++i) {
+      if (desc[i] != asc[i]) {
+        ++ndiff;
+        at = i;
+      }
+    }
+    CHECK_EQ(ndiff, (size_t)1);
+    CHECK_EQ(static_cast<uchar>(desc[at]) ^ static_cast<uchar>(asc[at]),
+             static_cast<uchar>(2));
+
+    /* A stream written before the flag existed decodes with DESC off; only
+       the four function ids that follow the fixed part are taken from the
+       current stream, they did not change. */
+    Rdb_field_packing out;
+    decode(legacy + asc.substr(asc.size() - 8), &out);
+    CHECK_EQ(out.m_unpack_info_stores_value, stores_value);
+    CHECK(!out.m_is_desc);
+
+    decode(desc, &out);
+    CHECK_EQ(out.m_unpack_info_stores_value, stores_value);
+    CHECK(out.m_is_desc);
+  }
+
+  fpi.m_is_desc = false;
+}
+
 }  // namespace
 
 int main() {
@@ -495,6 +634,7 @@ int main() {
   test_varchar_space_pad_desc();
   test_varchar_nopad_desc();
   test_composite_desc();
+  test_serde_desc_flag();
 
   if (g_failures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", g_failures);
