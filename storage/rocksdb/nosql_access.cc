@@ -2256,6 +2256,15 @@ select_exec_result INLINE_ATTR select_exec::run() {
   m_key_def = m_tbl_def->m_key_descr_arr[m_index];
   m_pk_def = m_tbl_def->m_key_descr_arr[m_table_share->primary_key];
 
+  // pack_index_tuple() below encodes the bounds by hand with ASC semantics,
+  // so a DESC key part can not go through the bypass.
+  for (uint i = 0; i < m_key_def->get_key_parts(); ++i) {
+    if (m_key_def->get_pack_info(i)->m_is_desc) {
+      m_error_msg = "Descending index is not supported by select bypass";
+      return UNSUPPORTED;
+    }
+  }
+
   // Query on table with instant cols require dd::Table
   dd::cache::Dictionary_client *dd_client = m_thd->dd_client();
   dd::cache::Dictionary_client::Auto_releaser releaser(dd_client);
