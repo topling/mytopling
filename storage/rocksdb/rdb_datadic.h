@@ -842,7 +842,8 @@ class Rdb_key_def {
                                    const size_t size, const int exp_digit,
                                    const uchar *const zero_pattern,
                                    const uchar *const zero_val,
-                                   void (*swap_func)(uchar *, const uchar *));
+                                   void (*swap_func)(uchar *, const uchar *),
+                                   const bool desc);
 
   static void make_unpack_simple_varlength(
       const Rdb_field_packing *const fpi, const Field *const field,
@@ -1116,6 +1117,11 @@ class Rdb_field_packing {
     Valid only for varlength fields i.e varchar and blob.
   */
   bool m_is_secondary_key;
+  /*
+    true  <=> this key part is declared DESC, its mem-comparable image is
+    the ASC image with every byte complemented (NULL marker included).
+  */
+  bool m_is_desc;
   uint m_varlength_bytes;
   // uint m_varchar_char_length;
 

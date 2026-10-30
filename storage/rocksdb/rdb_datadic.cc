@@ -76,6 +76,42 @@ template<class T>
 T* MyMalloc(size_t num) { return (T*)PSI_my_malloc(sizeof(T) * num); }
 extern bool g_svr_read_only;
 
+/*
+  A DESC key part is stored as the ASC image with every byte complemented,
+  the part's NULL marker included. Everything read from the key reader is
+  such an image; the unpack_info lives in the value and never is.
+*/
+static inline void rdb_copy_image(uchar *dst, const uchar *src, size_t n,
+                                  bool desc) {
+  if (likely(!desc)) {
+    memcpy(dst, src, n);
+    return;
+  }
+  for (size_t i = 0; i < n; ++i) {
+    dst[i] = (uchar)~src[i];
+  }
+}
+
+static inline uchar rdb_uncomplement(uchar b, bool desc) {
+  return desc ? (uchar)~b : b;
+}
+
+static inline void rdb_complement_image(uchar *b, const uchar *e) {
+  for (; b < e; ++b) {
+    *b = (uchar)~*b;
+  }
+}
+
+/* Read a `bytes` wide code unit out of a (possibly complemented) image. */
+static inline my_wc_t rdb_read_code_unit(const uchar *src, int bytes,
+                                         bool desc) {
+  my_wc_t wc = 0;
+  for (int i = 0; i < bytes; ++i) {
+    wc = (wc << 8) | rdb_uncomplement(src[i], desc);
+  }
+  return wc;
+}
+
 struct DcompactAutoInitMySQL {
    DcompactAutoInitMySQL() {  my_thread_global_init(); }
   ~DcompactAutoInitMySQL() {  my_thread_global_end();  }
@@ -112,11 +148,12 @@ int Rdb_convert_to_record_key_decoder::decode_field(
     if (!(nullp = reader->read(1))) {
       return HA_EXIT_FAILURE;
     }
+    const uchar null_marker = rdb_uncomplement(*nullp, fpi->m_is_desc);
 
-    if (likely(*nullp == 1)) {
+    if (likely(null_marker == 1)) {
       /* Clear the NULL-bit of this field */
       buf[fpi->m_field_null_offset] &= (uchar) ~(fpi->m_field_null_bit_mask);
-    } else if (*nullp == 0) {
+    } else if (null_marker == 0) {
       /* Set the NULL-bit of this field */
       buf[fpi->m_field_null_offset] |= fpi->m_field_null_bit_mask;
 
@@ -205,12 +242,13 @@ int Rdb_convert_to_record_key_decoder::skip(
     if (!(nullp = reader->read(1))) {
       return HA_ERR_ROCKSDB_CORRUPT_DATA;
     }
-    if (*nullp == 0) {
+    const uchar null_marker = rdb_uncomplement(*nullp, fpi->m_is_desc);
+    if (null_marker == 0) {
       /* This is a NULL value */
       return HA_EXIT_SUCCESS;
     }
     /* If NULL marker is not '0', it can be only '1'  */
-    if (*nullp != 1) {
+    if (null_marker != 1) {
       return HA_ERR_ROCKSDB_CORRUPT_DATA;
     }
   }
@@ -495,6 +533,11 @@ uint Rdb_key_def::setup(const TABLE &tbl, const Rdb_tbl_def &tbl_def,
         }
         m_pack_info[dst_i].setup(this, field, keyno_to_set, keypart_to_set,
                                  key_length);
+        // key_part is the PK's part for the extended key tail, so a PK
+        // column keeps its direction when it is appended to a secondary key.
+        if (key_part && (key_part->key_part_flag & HA_REVERSE_SORT)) {
+          m_pack_info[dst_i].m_is_desc = true;
+        }
         m_pack_info[dst_i].m_unpack_data_offset = unpack_len;
 
         if (pk_info) {
@@ -574,6 +617,18 @@ uint Rdb_key_def::setup(const TABLE &tbl, const Rdb_tbl_def &tbl_def,
     /* Cache prefix extractor for bloom filter usage later */
     const auto opt = rdb_get_rocksdb_db()->GetOptions(&get_cf());
     m_prefix_extractor = opt.prefix_extractor;
+
+    /*
+      A vector part stores the faiss list id as a plain integer that the
+      vector index reads back, so it can not be complemented.
+    */
+    if (m_vector_index_config.type() != FB_VECTOR_INDEX_TYPE::NONE &&
+        m_key_parts > 0 && m_pack_info[0].m_is_desc) {
+      my_error(ER_NOT_SUPPORTED_YET, MYF(0),
+               "descending index on a vector column");
+      RDB_MUTEX_UNLOCK_CHECK(m_mutex);
+      return HA_ERR_UNSUPPORTED;
+    }
 
     uint rtn = setup_vector_index(tbl, tbl_def, cmd_srv_helper);
     if (rtn) {
@@ -758,6 +813,7 @@ struct Rdb_field_packing_fixed_part : Rdb_field_packing {
     & m_covered
     & m_unpack_info_stores_value
     & m_max_field_bytes
+    & m_is_desc
   );
 };
 
@@ -1279,12 +1335,14 @@ int Rdb_key_def::read_memcmp_key_part(Rdb_string_reader *reader,
   if (m_pack_info[part_num].m_field_is_nullable) {
     const char *nullp;
     if (!(nullp = reader->read(1))) return 1;
-    if (*nullp == 0) {
+    const uchar null_marker =
+        rdb_uncomplement(*nullp, m_pack_info[part_num].m_is_desc);
+    if (null_marker == 0) {
       /* This is a NULL value */
       return -1;
     } else {
       /* If NULL marker is not '0', it can be only '1'  */
-      if (*nullp != 1) return 1;
+      if (null_marker != 1) return 1;
     }
   }
 
@@ -1338,6 +1396,7 @@ uint Rdb_key_def::get_primary_key_tuple(const Rdb_key_def &pk_descr,
 
   const char *start_offs[MAX_REF_PARTS];
   const char *end_offs[MAX_REF_PARTS];
+  bool desc_flags[MAX_REF_PARTS] = {false};
   int pk_key_part;
   uint i;
   Rdb_string_reader reader(key);
@@ -1348,6 +1407,7 @@ uint Rdb_key_def::get_primary_key_tuple(const Rdb_key_def &pk_descr,
   for (i = 0; i < m_key_parts; i++) {
     if ((pk_key_part = m_pk_part_no[i]) != -1) {
       start_offs[pk_key_part] = reader.get_current_ptr();
+      desc_flags[pk_key_part] = m_pack_info[i].m_is_desc;
     }
 
     if (read_memcmp_key_part(&reader, i) > 0) {
@@ -1362,6 +1422,11 @@ uint Rdb_key_def::get_primary_key_tuple(const Rdb_key_def &pk_descr,
   for (i = 0; i < m_pk_key_parts; i++) {
     const uint part_size = end_offs[i] - start_offs[i];
     memcpy(buf, start_offs[i], end_offs[i] - start_offs[i]);
+    // The same column can be descending in this key and ascending in the
+    // primary key, so the image has to be complemented on the way over.
+    if (unlikely(desc_flags[i] != pk_descr.m_pack_info[i].m_is_desc)) {
+      rdb_complement_image(buf, buf + part_size);
+    }
     buf += part_size;
     size += part_size;
   }
@@ -1630,6 +1695,7 @@ uchar *Rdb_key_def::pack_field(
     uchar *const packed_tuple MY_ATTRIBUTE((__unused__)),
     uchar *const pack_buffer, Rdb_string_writer *const unpack_info,
     uint *const n_null_fields) const {
+  uchar *const part_start = tuple;
   if (field->is_nullable()) {
     assert(is_storage_available(tuple - packed_tuple, 1));
     if (field->is_real_null()) {
@@ -1637,6 +1703,9 @@ uchar *Rdb_key_def::pack_field(
       *tuple++ = 0;
       /* That's it, don't store anything else */
       if (n_null_fields) (*n_null_fields)++;
+      if (unlikely(pack_info->m_is_desc)) {
+        rdb_complement_image(part_start, tuple);
+      }
       return tuple;
     } else {
       /* Not a NULL value. Store '1' */
@@ -1659,6 +1728,10 @@ uchar *Rdb_key_def::pack_field(
   /* Make "unpack info" to be stored in the value */
   if (create_unpack_info) {
     (pack_info->m_make_unpack_info_func)(pack_info, field, &pack_ctx);
+  }
+
+  if (unlikely(pack_info->m_is_desc)) {
+    rdb_complement_image(part_start, tuple);
   }
 
   return tuple;
@@ -1939,7 +2012,7 @@ int Rdb_key_def::compare_keys(const rocksdb::Slice *key1,
         return HA_EXIT_SUCCESS;
       }
 
-      if (*nullp1 == 0) {
+      if (rdb_uncomplement(*nullp1, fpi->m_is_desc) == 0) {
         /* This is a NULL value */
         continue;
       }
@@ -2295,8 +2368,9 @@ int Rdb_key_def::skip_variable_length_encoding(
   while ((ptr = (const uchar *)reader->read(RDB_ESCAPE_LENGTH))) {
     uint used_bytes;
 
-    used_bytes =
-        calc_unpack_variable_format(ptr[RDB_ESCAPE_LENGTH - 1], &finished);
+    used_bytes = calc_unpack_variable_format(
+        rdb_uncomplement(ptr[RDB_ESCAPE_LENGTH - 1], fpi->m_is_desc),
+        &finished);
 
     if (used_bytes == (uint)-1 || dst_len < used_bytes) {
       return HA_EXIT_FAILURE;  // Corruption in the data
@@ -2331,7 +2405,8 @@ int Rdb_key_def::skip_variable_space_pad(const Rdb_field_packing *const fpi,
 
   size_t dst_len = fpi->m_max_field_bytes; /* How much data can be there */
 
-  uchar encoded_byte = *(const uchar *)reader->read(1);
+  uchar encoded_byte =
+      rdb_uncomplement(*(const uchar *)reader->read(1), fpi->m_is_desc);
   // Check if lead segment byte is VARCHAR_CMP_EQUAL_TO_SPACES.
   // This indicates empty content and we can return prematurely.
   if (encoded_byte == VARCHAR_CMP_EQUAL_TO_SPACES) return HA_EXIT_SUCCESS;
@@ -2339,7 +2414,8 @@ int Rdb_key_def::skip_variable_space_pad(const Rdb_field_packing *const fpi,
   /* Decode the length-emitted encoding here */
   while ((ptr = (const uchar *)reader->read(fpi->m_segment_size))) {
     // See pack_with_varlength_space_pad
-    const uchar c = ptr[fpi->m_segment_size - 1];
+    const uchar c =
+        rdb_uncomplement(ptr[fpi->m_segment_size - 1], fpi->m_is_desc);
     if (c == VARCHAR_CMP_EQUAL_TO_SPACES) {
       // This is the last segment
       finished = true;
@@ -2428,7 +2504,7 @@ void Rdb_key_def::pack_unsigned(
 
 template <int length>
 int Rdb_key_def::unpack_integer(
-    Rdb_field_packing *const fpi MY_ATTRIBUTE((__unused__)),
+    Rdb_field_packing *const fpi,
     Rdb_unpack_func_context *const, uchar *const to,
     Rdb_string_reader *const reader,
     Rdb_string_reader *const unp_reader MY_ATTRIBUTE((__unused__))) {
@@ -2437,6 +2513,11 @@ int Rdb_key_def::unpack_integer(
   const uchar *from;
   if (!(from = (const uchar *)reader->read(length))) {
     return UNPACK_FAILURE; /* Mem-comparable image doesn't have enough bytes */
+  }
+  uchar desc_image[length];
+  if (unlikely(fpi->m_is_desc)) {
+    rdb_copy_image(desc_image, from, length, true);
+    from = desc_image;
   }
 
 #ifdef WORDS_BIGENDIAN
@@ -2476,7 +2557,7 @@ int Rdb_key_def::unpack_integer(
 
 template <int length>
 int Rdb_key_def::unpack_unsigned(
-    Rdb_field_packing *const fpi MY_ATTRIBUTE((__unused__)),
+    Rdb_field_packing *const fpi,
     Rdb_unpack_func_context *const, uchar *const to,
     Rdb_string_reader *const reader,
     Rdb_string_reader *const unp_reader MY_ATTRIBUTE((__unused__))) {
@@ -2485,6 +2566,11 @@ int Rdb_key_def::unpack_unsigned(
   const uchar *from;
   if (!(from = (const uchar *)reader->read(length))) {
     return UNPACK_FAILURE; /* Mem-comparable image doesn't have enough bytes */
+  }
+  uchar desc_image[length];
+  if (unlikely(fpi->m_is_desc)) {
+    rdb_copy_image(desc_image, from, length, true);
+    from = desc_image;
   }
 
 #ifdef WORDS_BIGENDIAN
@@ -2544,17 +2630,12 @@ static void rdb_swap_float_bytes(uchar *const dst, const uchar *const src) {
 int Rdb_key_def::unpack_floating_point(
     uchar *const dst, Rdb_string_reader *const reader, const size_t size,
     const int exp_digit, const uchar *const zero_pattern,
-    const uchar *const zero_val, void (*swap_func)(uchar *, const uchar *)) {
-  const uchar *const from = (const uchar *)reader->read(size);
+    const uchar *const zero_val, void (*swap_func)(uchar *, const uchar *),
+    const bool desc) {
+  const uchar *from = (const uchar *)reader->read(size);
   if (from == nullptr) {
     /* Mem-comparable image doesn't have enough bytes */
     return UNPACK_FAILURE;
-  }
-
-  /* Check to see if the value is zero */
-  if (memcmp(from, zero_pattern, size) == 0) {
-    memcpy(dst, zero_val, size);
-    return UNPACK_SUCCESS;
   }
 
 #if defined(WORDS_BIGENDIAN)
@@ -2566,6 +2647,20 @@ int Rdb_key_def::unpack_floating_point(
 #endif
 
   memcpy(tmp, from, size);
+  if (unlikely(desc)) {
+    // `size` is sizeof(float) or sizeof(double), see unpack_float/unpack_double
+    if (size == sizeof(double)) {
+      unaligned_save<uint64_t>(tmp, ~unaligned_load<uint64_t>(tmp));
+    } else {
+      unaligned_save<uint32_t>(tmp, ~unaligned_load<uint32_t>(tmp));
+    }
+  }
+
+  /* Check to see if the value is zero */
+  if (memcmp(tmp, zero_pattern, size) == 0) {
+    memcpy(dst, zero_val, size);
+    return UNPACK_SUCCESS;
+  }
 
   if (tmp[0] & 0x80) {
     // If the high bit is set the original value was positive so
@@ -2702,7 +2797,7 @@ int Rdb_key_def::unpack_double(
 
   return unpack_floating_point(field_ptr, reader, sizeof(double), DBL_EXP_DIG,
                                zero_pattern, (const uchar *)&zero_val,
-                               rdb_swap_double_bytes);
+                               rdb_swap_double_bytes, fpi->m_is_desc);
 }
 
 #if !defined(FLT_EXP_DIG)
@@ -2805,7 +2900,7 @@ int Rdb_key_def::unpack_float(
 
   return unpack_floating_point(field_ptr, reader, sizeof(float), FLT_EXP_DIG,
                                zero_pattern, (const uchar *)&zero_val,
-                               rdb_swap_float_bytes);
+                               rdb_swap_float_bytes, fpi->m_is_desc);
 }
 
 /*
@@ -2851,6 +2946,12 @@ int Rdb_key_def::unpack_newdate(
   if (!(from = reader->read(3))) {
     /* Mem-comparable image doesn't have enough bytes */
     return UNPACK_FAILURE;
+  }
+
+  uchar desc_image[3];
+  if (unlikely(fpi->m_is_desc)) {
+    rdb_copy_image(desc_image, (const uchar *)from, 3, true);
+    from = (const char *)desc_image;
   }
 
   field_ptr[0] = from[2];
@@ -2904,7 +3005,7 @@ int Rdb_key_def::unpack_bit(
   /* We don't support uneven high bits / HA_CAN_BIT_FIELD */
   uint data_length =
       std::min((uint)fpi->m_max_image_len, fpi->m_field_pack_length);
-  memcpy(to, from, data_length);
+  rdb_copy_image(to, (const uchar *)from, data_length, fpi->m_is_desc);
   return UNPACK_SUCCESS;
 }
 
@@ -2945,7 +3046,8 @@ int Rdb_key_def::unpack_binary_str(
     return UNPACK_FAILURE;
   }
 
-  memcpy(to, from, fpi->m_max_image_len);
+  rdb_copy_image(to, (const uchar *)from, fpi->m_max_image_len,
+                 fpi->m_is_desc);
   return UNPACK_SUCCESS;
 }
 
@@ -3027,8 +3129,7 @@ int unpack_utf8_str_templ(
   uchar *const dst_end = dst + fpi->m_field_pack_length;
 
   while (src < src_end) {
-    my_wc_t wc = (bytes == 3) ? (src[0] << 16) | (src[1] << 8) | src[2]
-                              : (src[0] << 8) | src[1];
+    my_wc_t wc = rdb_read_code_unit(src, bytes, fpi->m_is_desc);
     src += bytes;
     int res = cset->cset->wc_mb(cset, wc, dst, dst_end);
     assert(res > 0 && res <= bytes + 1);
@@ -3570,8 +3671,9 @@ int Rdb_key_def::unpack_binary_varlength(
   while ((ptr = (const uchar *)reader->read(RDB_ESCAPE_LENGTH))) {
     uint used_bytes;
 
-    used_bytes =
-        calc_unpack_variable_format(ptr[RDB_ESCAPE_LENGTH - 1], &finished);
+    used_bytes = calc_unpack_variable_format(
+        rdb_uncomplement(ptr[RDB_ESCAPE_LENGTH - 1], fpi->m_is_desc),
+        &finished);
 
     if (used_bytes == (uint)-1 || data_len < used_bytes) {
       return UNPACK_FAILURE;  // Corruption in the data
@@ -3580,7 +3682,7 @@ int Rdb_key_def::unpack_binary_varlength(
     /*
       Now, we need to decode used_bytes of data and append them to the value.
     */
-    memcpy(data, ptr, used_bytes);
+    rdb_copy_image(data, ptr, used_bytes, fpi->m_is_desc);
 
     data += used_bytes;
     data_len -= used_bytes;
@@ -3639,12 +3741,14 @@ int Rdb_key_def::unpack_binary_or_utf8_varlength_space_pad(
   // Check if lead segment byte is VARCHAR_CMP_EQUAL_TO_SPACES.
   // This indicates empty content or just spaces. We can bypass
   // the main loop and check for spaces to be appended.
-  uchar encoded_byte = *(const uchar *)reader->read(1);
+  uchar encoded_byte =
+      rdb_uncomplement(*(const uchar *)reader->read(1), fpi->m_is_desc);
   if (encoded_byte == VARCHAR_CMP_EQUAL_TO_SPACES) goto finished;
 
   /* Decode the length-emitted encoding here */
   while ((ptr = (const uchar *)reader->read(fpi->m_segment_size))) {
-    const char last_byte = ptr[fpi->m_segment_size - 1];
+    const uchar last_byte =
+        rdb_uncomplement(ptr[fpi->m_segment_size - 1], fpi->m_is_desc);
     size_t used_bytes;
     if (last_byte == VARCHAR_CMP_EQUAL_TO_SPACES)  // this is the last segment
     {
@@ -3668,8 +3772,7 @@ int Rdb_key_def::unpack_binary_or_utf8_varlength_space_pad(
       const uchar *src = ptr;
       const uchar *const src_end = ptr + used_bytes;
       while (src < src_end) {
-        my_wc_t wc = (bytes == 3) ? (src[0] << 16) | (src[1] << 8) | src[2]
-                                  : (src[0] << 8) | src[1];
+        my_wc_t wc = rdb_read_code_unit(src, bytes, fpi->m_is_desc);
         src += bytes;
         const CHARSET_INFO *cset = fpi->m_field_charset;
         int res = cset->cset->wc_mb(cset, wc, data, data_end);
@@ -3680,7 +3783,7 @@ int Rdb_key_def::unpack_binary_or_utf8_varlength_space_pad(
       }
     } else {
       if (data + used_bytes > data_end) return UNPACK_FAILURE;
-      memcpy(data, ptr, used_bytes);
+      rdb_copy_image(data, ptr, used_bytes, fpi->m_is_desc);
       data += used_bytes;
       len += used_bytes;
     }
@@ -3867,9 +3970,10 @@ static void rdb_write_unpack_simple(Rdb_bit_writer *const writer,
 static uint rdb_read_unpack_simple(Rdb_bit_reader *const reader,
                                    const Rdb_collation_codec *const codec,
                                    const uchar *const src, const size_t src_len,
-                                   uchar *const dst) {
+                                   uchar *const dst, const bool desc) {
   for (uint i = 0; i < src_len; i++) {
-    if (codec->m_dec_size[src[i]] > 0) {
+    const uchar c = rdb_uncomplement(src[i], desc);
+    if (codec->m_dec_size[c] > 0) {
       uint *ret;
 
       /*
@@ -3895,12 +3999,12 @@ static uint rdb_read_unpack_simple(Rdb_bit_reader *const reader,
         return UNPACK_FAILURE;
       }
 
-      if ((ret = reader->read(codec->m_dec_size[src[i]])) == nullptr) {
+      if ((ret = reader->read(codec->m_dec_size[c])) == nullptr) {
         return UNPACK_FAILURE;
       }
-      dst[i] = codec->m_dec_idx[*ret][src[i]];
+      dst[i] = codec->m_dec_idx[*ret][c];
     } else {
-      dst[i] = codec->m_dec_idx[0][src[i]];
+      dst[i] = codec->m_dec_idx[0][c];
     }
   }
 
@@ -3974,13 +4078,14 @@ int Rdb_key_def::unpack_simple_varlength_space_pad(
   // Check if lead segment byte is VARCHAR_CMP_EQUAL_TO_SPACES.
   // This indicates empty content or just spaces. We can bypass
   // the main loop and check for spaces to be appended.
-  uchar encoded_byte = *(const uchar *)reader->read(1);
+  uchar encoded_byte =
+      rdb_uncomplement(*(const uchar *)reader->read(1), fpi->m_is_desc);
   if (encoded_byte == VARCHAR_CMP_EQUAL_TO_SPACES) goto finished;
 
   /* Decode the length-emitted encoding here */
   while ((ptr = (const uchar *)reader->read(fpi->m_segment_size))) {
-    const char last_byte =
-        ptr[fpi->m_segment_size - 1];  // number of padding bytes
+    const uchar last_byte = rdb_uncomplement(  // number of padding bytes
+        ptr[fpi->m_segment_size - 1], fpi->m_is_desc);
     size_t used_bytes;
     if (last_byte == VARCHAR_CMP_EQUAL_TO_SPACES) {
       // this is the last one
@@ -4004,7 +4109,8 @@ int Rdb_key_def::unpack_simple_varlength_space_pad(
 
     uint ret;
     if ((ret = rdb_read_unpack_simple(&bit_reader, fpi->m_charset_codec, ptr,
-                                      used_bytes, data)) != UNPACK_SUCCESS) {
+                                      used_bytes, data, fpi->m_is_desc)) !=
+        UNPACK_SUCCESS) {
       return ret;
     }
 
@@ -4066,7 +4172,8 @@ int Rdb_key_def::unpack_simple(Rdb_field_packing *const fpi,
   }
 
   return rdb_read_unpack_simple(unp_reader ? &bit_reader : nullptr,
-                                fpi->m_charset_codec, ptr, len, dst);
+                                fpi->m_charset_codec, ptr, len, dst,
+                                fpi->m_is_desc);
 }
 
 Rdb_field_packing *Rdb_key_def::get_pack_info(uint pack_no) {
@@ -4370,6 +4477,7 @@ bool Rdb_field_packing::setup(const Rdb_key_def *const key_descr,
   m_pack_func = nullptr;
 
   m_covered = Rdb_key_def::KEY_NOT_COVERED;
+  m_is_desc = false;
 
   switch (type) {
     case MYSQL_TYPE_LONGLONG:

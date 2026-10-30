@@ -12,11 +12,18 @@ IF (WITH_ROCKSDB_SE_STORAGE_ENGINE AND (NOT HAVE_EXTERNAL_ROCKSDB))
           )
   TARGET_LINK_LIBRARIES(test_properties_collector mysqlserver)
 
+  MYSQL_ADD_EXECUTABLE(test_desc_index
+          test_desc_index.cc
+          )
+  TARGET_LINK_LIBRARIES(test_desc_index mysqlserver)
+
   # Necessary to make sure that we can use the jemalloc API calls.
   GET_TARGET_PROPERTY(mysql_embedded LINK_FLAGS PREV_LINK_FLAGS)
   IF(NOT PREV_LINK_FLAGS)
     SET(PREV_LINK_FLAGS)
   ENDIF()
   SET_TARGET_PROPERTIES(test_properties_collector PROPERTIES LINK_FLAGS
+  "${PREV_LINK_FLAGS} ${WITH_MYSQLD_LDFLAGS}")
+  SET_TARGET_PROPERTIES(test_desc_index PROPERTIES LINK_FLAGS
   "${PREV_LINK_FLAGS} ${WITH_MYSQLD_LDFLAGS}")
 ENDIF()
