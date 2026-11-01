@@ -319,3 +319,176 @@ disconnect con1;
 SET debug_sync = 'RESET';
 DROP TABLE t13;
 
+
+#
+# Every key part type is a range, not just the integer ones: the bound is
+# packed from the value the field stores, and the range optimizer flips
+# NEAR_MIN/NEAR_MAX when that store rounds or truncates the constant, so the
+# range keeps selecting exactly the rows the condition selects. Each case
+# asserts the estimate (10 per range) to show a range deletion was written, and
+# the rows that are left to show each bound was the right one. A constant the
+# part cannot hold unchanged is the one case that stays on the row by row path.
+#
+SET SESSION sql_log_bin = 0;
+SET SESSION rocksdb_records_in_range = 10;
+
+# CHAR: a fixed length part under a PAD SPACE collation.
+CREATE TABLE t14 (k CHAR(4) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t14 VALUES ('aa'),('ab'),('b'),('c'),('cc');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t14 WHERE k >= 'ab' AND k < 'c';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t14;
+
+# CHAR(2) against 'abc': the constant does not fit and is stored as 'ab', which
+# the condition selects, so the upper bound has to include 'ab' itself.
+CREATE TABLE t15 (k CHAR(2) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t15 VALUES ('aa'),('ab'),('ac'),('ba');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t15 WHERE k < 'abc';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t15;
+
+# The same with the other sign: 'abz' is stored as 'ab' too, but the condition
+# does not select it, so the lower bound stays exclusive at 'ab'.
+CREATE TABLE t16 (k CHAR(2) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t16 VALUES ('aa'),('ab'),('ac'),('ba');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t16 WHERE k > 'abz';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t16;
+
+# VARCHAR under a NO PAD collation: 'b ' and 'b!' are both stored as they are
+# and both sort above 'b'.
+CREATE TABLE t17 (k VARCHAR(8) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb
+  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+INSERT INTO t17 VALUES ('a'),('ab'),('b'),('b '),('b!'),('ba'),('c');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t17 WHERE k > 'b';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(HEX(k) ORDER BY k) FROM t17;
+
+# VARBINARY: the binary charset, variable length and no collation at all.
+CREATE TABLE t18 (k VARBINARY(8) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t18 VALUES (X'61'),(X'6162'),(X'62'),(X'6200'),(X'6221'),(X'63');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t18 WHERE k >= X'6162' AND k < X'63';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(HEX(k) ORDER BY k) FROM t18;
+
+# DECIMAL: the constant is rounded to the column's scale, and the bound follows
+# the stored value by one step in the direction of the rounding.
+CREATE TABLE t19 (k DECIMAL(10,2) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t19 VALUES (1.00),(1.01),(1.02),(2.00),(2.50),(3.00);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t19 WHERE k > 1.005 AND k < 3.00;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t19;
+
+# FLOAT: the constant is a double and the bound a float.
+CREATE TABLE t20 (k FLOAT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t20 VALUES (1.1),(1.2),(1.3),(2.0);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t20 WHERE k > 1.15;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t20;
+
+# DATETIME(3): a constant with finer fractional seconds than the column.
+CREATE TABLE t21 (k DATETIME(3) NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t21 VALUES ('2020-01-01 00:00:00.000'),
+                       ('2020-01-01 00:00:00.500'),
+                       ('2020-01-01 00:00:01.000'),
+                       ('2020-01-02 00:00:00.000');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t21 WHERE k > '2020-01-01 00:00:00.4995'
+                  AND k < '2020-01-02 00:00:00.000';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t21;
+
+# DATE.
+CREATE TABLE t22 (k DATE NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t22 VALUES ('2001-01-01'),('2001-01-02'),('2001-02-01'),
+                       ('2002-01-01');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t22 WHERE k >= '2001-01-02' AND k < '2002-01-01';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t22;
+
+# YEAR, a one byte part packed as an unsigned integer.
+CREATE TABLE t23 (k YEAR NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t23 VALUES (2001),(2002),(2003),(2004);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t23 WHERE k > 2001 AND k <= 2003;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t23;
+
+# A composite key whose leading part is a string: the bound covers part 0 only,
+# so the rows whose part 0 equals it are above the bound and stay.
+CREATE TABLE t24 (a VARCHAR(8) NOT NULL, b INT NOT NULL,
+                  PRIMARY KEY (a,b)) ENGINE=rocksdb
+  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+INSERT INTO t24 VALUES ('a',1),('a',2),('b',1),('b',2),('c',1);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t24 WHERE a > 'a';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t24;
+
+# ... and the last part of a composite key as a range of its own.
+CREATE TABLE t25 (a VARCHAR(8) NOT NULL, b INT NOT NULL,
+                  PRIMARY KEY (a,b)) ENGINE=rocksdb
+  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+INSERT INTO t25 VALUES ('a',1),('a',2),('b',1),('b',2),('c',1);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t25 WHERE a = 'a' AND b >= 2;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t25;
+
+# A prefix key part covers many column values, so a TEXT primary key keeps
+# reading the rows one by one: the exact count tells it apart from the estimate.
+CREATE TABLE t26 (k TEXT NOT NULL, PRIMARY KEY (k(8))) ENGINE=rocksdb;
+INSERT INTO t26 VALUES ('a'),('b'),('c'),('d');
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t26 WHERE k > 'a';
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t26;
+
+# An equality has no bound side to adjust, so a constant the field cannot hold
+# unchanged is no range at all: 'abc' is stored as 'ab', which the condition
+# does not select, and the rows have to be read one by one.
+CREATE TABLE t27 (a CHAR(2) NOT NULL, b INT NOT NULL,
+                  PRIMARY KEY (a,b)) ENGINE=rocksdb;
+INSERT INTO t27 VALUES ('ab',1),('ab',2),('ac',1);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t27 WHERE a = 'abc' AND b > 0;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t27;
+
+# The same for a part that rounds: 2.9 is stored as 3.
+CREATE TABLE t28 (a INT NOT NULL, b INT NOT NULL,
+                  PRIMARY KEY (a,b)) ENGINE=rocksdb;
+INSERT INTO t28 VALUES (2,1),(3,1),(3,2),(4,1);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t28 WHERE a = 2.9 AND b > 0;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t28;
+
+# A constant the part holds unchanged keeps the equality on the fast path,
+# rounding to the column's scale included.
+CREATE TABLE t29 (a DECIMAL(10,2) NOT NULL, b INT NOT NULL,
+                  PRIMARY KEY (a,b)) ENGINE=rocksdb;
+INSERT INTO t29 VALUES (2.90,1),(3.00,1),(3.00,2),(4.00,1);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t29 WHERE a = 3.00 AND b > 0;
+SELECT ROW_COUNT();
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t29;
+
+# A conjunct the optimizer cannot use is dropped and the range widened, but the
+# statement still compares every row: only k > 0 is deleted here. ROW_COUNT() is
+# -1 for this statement with or without the hint, so the rows say what happened.
+CREATE TABLE t30 (k INT NOT NULL, PRIMARY KEY (k)) ENGINE=rocksdb;
+INSERT INTO t30 VALUES (-1),(0),(1);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+       FROM t30 WHERE k > 'foo';
+SELECT GROUP_CONCAT(k ORDER BY k) FROM t30;
+
+DROP TABLE t14,t15,t16,t17,t18,t19,t20,t21,t22,t23,t24,t25,t26,t27,t28,t29,t30;
