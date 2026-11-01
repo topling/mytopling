@@ -10052,6 +10052,11 @@ if (repo_support_dynamic_create_cf()) { // just check in mtr
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
     cf_handles = g_dbm->cf_handles;
+    // The repo owns the handles it opened and deletes them on CloseAllDB(),
+    // cf_manager deletes its own: clone so both sides delete a different object.
+    for (auto& cfh : cf_handles) {
+      cfh = cfh->CloneHandle();
+    }
   }
   else {
     status = rocksdb::TransactionDB::Open(
@@ -10422,7 +10427,7 @@ static int rocksdb_shutdown(bool minimalShutdown) {
     clone::donor_shutdown();
 
     if (side_conf) {
-      g_repo.CloseAllDB(false); // dont delete rdb and cf_handles
+      g_repo.CloseAllDB(false); // dont delete rdb
       g_dbm = nullptr;
     }
     delete rdb;
