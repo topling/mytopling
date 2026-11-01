@@ -21961,15 +21961,16 @@ class Mrr_sec_key_rowid_source : public Mrr_rowid_source {
   select exactly the rows the WHERE clause selects. That needs every top level
   conjunct to compare one primary key part against a constant the range
   optimizer can turn into an exact bound, which is what comparable_in_index()
-  and the type test below establish.
+  establishes.
 
   A range deletion shadows every older key in the range, so a row another
   transaction commits between the statement's snapshot and its commit is
   deleted as well, though the statement never saw it.
 */
 struct Rdb_pk_range_info {
-  ulonglong parts = 0;        // bit i: the WHERE clause constrains part i
-  ulonglong range_parts = 0;  // bit i: part i is constrained by an inequality
+  ulonglong parts = 0;      // bit i: the WHERE clause constrains part i
+  ulonglong min_parts = 0;  // bit i: ... from below, by =, > or >=
+  ulonglong max_parts = 0;  // bit i: ... from above, by =, < or <=
 };
 
 static int rdb_pk_part_of_field(const TABLE &table, const uint keyno,
@@ -21982,10 +21983,14 @@ static int rdb_pk_part_of_field(const TABLE &table, const uint keyno,
 }
 
 /*
-  Integer parts only: storing any other constant into the key part may round or
-  truncate it, and the stored value is what the range bound is made of.
+  The bound is packed from the value the field stores, not from the constant:
+  the range optimizer stores the constant first and flips NEAR_MIN/NEAR_MAX
+  when the store rounded or truncated it, so its bound keeps selecting the rows
+  the condition selects whatever the type of the part is. All that is left to
+  ask here is that the value is known at execution time; one read from another
+  table or from a subquery is not.
 */
-static bool rdb_pk_part_value_is_exact(const Field &field, Item *const value) {
+static bool rdb_pk_part_value_is_const(Item *const value) {
   if (value->type() == Item::SUBSELECT_ITEM) return false;
   if (value->is_non_deterministic()) return false;
   // A bound statement parameter reports INNER_TABLE_BIT, so const_item() is
@@ -21996,38 +22001,36 @@ static bool rdb_pk_part_value_is_exact(const Field &field, Item *const value) {
   if (value->type() == Item::PARAM_ITEM &&
       down_cast<Item_param *>(value)->param_state() == Item_param::NO_VALUE)
     return false;
-  if (value->is_null()) return false;
+  return !value->is_null();
+}
 
-  switch (field.real_type()) {
-    case MYSQL_TYPE_TINY:
-    case MYSQL_TYPE_SHORT:
-    case MYSQL_TYPE_INT24:
-    case MYSQL_TYPE_LONG:
-    case MYSQL_TYPE_LONGLONG:
-      break;
-    default:
-      return false;
-  }
-  if (value->result_type() != INT_RESULT) return false;
-
-  // "int_col > 4294967296" selects nothing, but is packed as 4294967295.
-  const ulonglong max_value = field.get_max_int_value();
-  const longlong int_value = value->val_int();
-  if (value->unsigned_flag) {
-    return static_cast<ulonglong>(int_value) <= max_value;
-  }
-  if (field.is_unsigned()) {
-    return int_value >= 0 && static_cast<ulonglong>(int_value) <= max_value;
-  }
-  return int_value >= -static_cast<longlong>(max_value) - 1 &&
-         int_value <= static_cast<longlong>(max_value);
+/*
+  "k = 2.9" on an integer part is a range of exactly one key, 3, which the
+  condition does not select: unlike < and >, an equality gives the range
+  optimizer no side to move the bound to. Storing the constant and comparing it
+  back, which is how the optimizer compares the two, keeps only the equalities
+  whose point is still the condition.
+*/
+static bool rdb_pk_part_equality_is_exact(TABLE &table, Field &field,
+                                          Item *const value) {
+  // The field's storage is record[0], which holds no row of interest here, but
+  // the store still has to be undone.
+  std::vector<uchar> saved(table.s->reclength);
+  memcpy(saved.data(), table.record[0], saved.size());
+  const type_conversion_status err =
+      value->save_in_field_no_warnings(&field, true);
+  const bool exact =
+      err == TYPE_OK &&
+      stored_field_cmp_to_item(current_thd, &field, value) == 0;
+  memcpy(table.record[0], saved.data(), saved.size());
+  return exact;
 }
 
 static bool rdb_pk_range_part(Item *const cond, const Field &field,
                               Item *const value, const Item_func::Functype comp,
                               TABLE &table, const uint keyno,
                               Rdb_pk_range_info *const info) {
-  if (!rdb_pk_part_value_is_exact(field, value)) return false;
+  if (!rdb_pk_part_value_is_const(value)) return false;
 
   const int part = rdb_pk_part_of_field(table, keyno, field);
   if (part < 0) return false;
@@ -22043,10 +22046,18 @@ static bool rdb_pk_range_part(Item *const cond, const Field &field,
     return false;
   if (!comparable_in_index(cond, &field, Field::itRAW, comp, value))
     return false;
+  const bool is_equality =
+      comp == Item_func::EQ_FUNC || comp == Item_func::EQUAL_FUNC;
+  if (is_equality &&
+      !rdb_pk_part_equality_is_exact(table, *key_part.field, value))
+    return false;
 
-  info->parts |= 1ULL << part;
-  if (comp != Item_func::EQ_FUNC && comp != Item_func::EQUAL_FUNC)
-    info->range_parts |= 1ULL << part;
+  const ulonglong bit = 1ULL << part;
+  info->parts |= bit;
+  if (comp != Item_func::LT_FUNC && comp != Item_func::LE_FUNC)
+    info->min_parts |= bit;
+  if (comp != Item_func::GT_FUNC && comp != Item_func::GE_FUNC)
+    info->max_parts |= bit;
   return true;
 }
 
@@ -22137,17 +22148,21 @@ static bool rdb_pk_range_conjuncts(Item *const cond, TABLE &table,
   rest of the condition to be checked per row.
 */
 static bool rdb_pk_range_prefix(Item *const where, TABLE &table,
-                                const uint keyno, uint *const prefix_len) {
-  Rdb_pk_range_info info;
-  if (!rdb_pk_range_conjuncts(where, table, keyno, &info)) return false;
-  if (info.parts == 0) return false;
+                                const uint keyno, uint *const prefix_len,
+                                Rdb_pk_range_info *const info) {
+  if (!rdb_pk_range_conjuncts(where, table, keyno, info)) return false;
+  if (info->parts == 0) return false;
 
   uint len = 0;
-  while ((info.parts >> len) != 0) ++len;
+  while ((info->parts >> len) != 0) ++len;
 
   const ulonglong prefix_mask = make_keypart_map(len - 1);
-  if (info.parts != prefix_mask) return false;
-  if ((info.range_parts & (prefix_mask >> 1)) != 0) return false;
+  if (info->parts != prefix_mask) return false;
+  // Only the last part may be an inequality; the parts before it are
+  // equalities.
+  if ((info->parts & ~(info->min_parts & info->max_parts) &
+       (prefix_mask >> 1)) != 0)
+    return false;
 
   *prefix_len = len;
   return true;
@@ -22220,8 +22235,9 @@ bool ha_rocksdb::try_delete_range_scan(RANGE_SEQ_IF *const seq,
   Item *const where = thd->lex->query_block->where_cond();
   const uint keyno = table->s->primary_key;
   uint prefix_len = 0;
+  Rdb_pk_range_info info;
   if (where == nullptr ||
-      !rdb_pk_range_prefix(where, *table, keyno, &prefix_len))
+      !rdb_pk_range_prefix(where, *table, keyno, &prefix_len, &info))
     return false;
 
   const Rdb_key_def &kd = *m_pk_descr;
@@ -22262,6 +22278,20 @@ bool ha_rocksdb::try_delete_range_scan(RANGE_SEQ_IF *const seq,
   while (seq->next(rseq, &range) == 0) {
     const uint flags = range.range_flag;
     if ((flags & (NULL_RANGE | DESC_FLAG)) != 0) return false;
+    // A conjunct the range optimizer cannot turn into a bound is dropped and
+    // the range widened, leaving it to be checked per row. The statement's own
+    // conditions must be in the bound on the side each of them pins.
+    for (uint part = 0; part < prefix_len; part++) {
+      const key_part_map mask = make_keypart_map(part);
+      if ((info.min_parts & (1ULL << part)) != 0 &&
+          ((flags & NO_MIN_RANGE) != 0 ||
+           (range.start_key.keypart_map & mask) != mask))
+        return false;
+      if ((info.max_parts & (1ULL << part)) != 0 &&
+          ((flags & NO_MAX_RANGE) != 0 ||
+           (range.end_key.keypart_map & mask) != mask))
+        return false;
+    }
     // An equality on the whole primary key names one row, not a range; it is
     // deleted as a point, which needs neither a range deletion nor a read.
     if (prefix_len == kd.get_key_parts() &&
