@@ -1,3 +1,4 @@
 --rocksdb_enable_delete_range_for_drop_index=ON
 --rocksdb_reuse_iter=ON
 --rocksdb_default_cf_options=prefix_extractor=capped:4
+--rocksdb_debug_optimizer_n_rows=1000

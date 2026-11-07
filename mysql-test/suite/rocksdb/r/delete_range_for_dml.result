@@ -111,6 +111,36 @@ ROW_COUNT()
 SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t3;
 GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b)
 1:1,1:2,2:1,2:2,3:1
+CREATE TABLE t_range_prefix (a INT NOT NULL, b INT NOT NULL,
+PRIMARY KEY (a,b)) ENGINE=rocksdb;
+INSERT INTO t_range_prefix VALUES (1,5),(1,9),(2,0),(2,6),(2,99),(3,7),(3,9);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t_range_prefix WHERE a BETWEEN 1 AND 3 AND b BETWEEN 5 AND 7;
+SELECT ROW_COUNT();
+ROW_COUNT()
+3
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t_range_prefix;
+GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b)
+1:9,2:0,2:99,3:9
+INSERT INTO t_range_prefix VALUES (1,5),(2,6),(3,7);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t_range_prefix WHERE a >= 1 AND a <= 3 AND b >= 5 AND b <= 7;
+SELECT ROW_COUNT();
+ROW_COUNT()
+3
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t_range_prefix;
+GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b)
+1:9,2:0,2:99,3:9
+INSERT INTO t_range_prefix VALUES (1,5),(2,6),(3,7);
+DELETE /*+ SET_VAR(rocksdb_use_range_del=ON) */
+FROM t_range_prefix WHERE a IN (1,3) AND b BETWEEN 5 AND 7;
+SELECT ROW_COUNT();
+ROW_COUNT()
+20
+SELECT GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b) FROM t_range_prefix;
+GROUP_CONCAT(CONCAT(a,':',b) ORDER BY a,b)
+1:9,2:0,2:6,2:99,3:9
+DROP TABLE t_range_prefix;
 CREATE TABLE t4 (k INT NOT NULL, v INT, PRIMARY KEY (k), KEY v_idx (v))
 ENGINE=rocksdb;
 INSERT INTO t4 VALUES (1,10),(2,20),(3,30),(4,40),(5,50);

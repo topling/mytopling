@@ -21971,6 +21971,7 @@ struct Rdb_pk_range_info {
   ulonglong parts = 0;      // bit i: the WHERE clause constrains part i
   ulonglong min_parts = 0;  // bit i: ... from below, by =, > or >=
   ulonglong max_parts = 0;  // bit i: ... from above, by =, < or <=
+  ulonglong range_parts = 0;  // bit i: an inequality constrains part i
 };
 
 static int rdb_pk_part_of_field(const TABLE &table, const uint keyno,
@@ -22054,6 +22055,7 @@ static bool rdb_pk_range_part(Item *const cond, const Field &field,
 
   const ulonglong bit = 1ULL << part;
   info->parts |= bit;
+  if (!is_equality) info->range_parts |= bit;
   if (comp != Item_func::LT_FUNC && comp != Item_func::LE_FUNC)
     info->min_parts |= bit;
   if (comp != Item_func::GT_FUNC && comp != Item_func::GE_FUNC)
@@ -22158,11 +22160,10 @@ static bool rdb_pk_range_prefix(Item *const where, TABLE &table,
 
   const ulonglong prefix_mask = make_keypart_map(len - 1);
   if (info->parts != prefix_mask) return false;
-  // Only the last part may be an inequality; the parts before it are
-  // equalities.
-  if ((info->parts & ~(info->min_parts & info->max_parts) &
-       (prefix_mask >> 1)) != 0)
-    return false;
+  // Only the last part may be an inequality. BETWEEN and paired lower/upper
+  // bounds still describe a range, even though both min_parts and max_parts
+  // contain the part: later parts would only narrow the range's endpoints.
+  if ((info->range_parts & (prefix_mask >> 1)) != 0) return false;
 
   *prefix_len = len;
   return true;
