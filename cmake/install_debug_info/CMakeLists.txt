@@ -11,7 +11,11 @@
 
 INSTALL(CODE "
   IF(\"\$ENV{STRIP_DEBUG_INFO}\" STREQUAL \"1\")
-    STRING(REPLACE \";\" \"\\n\" manifest \"\${CMAKE_INSTALL_MANIFEST_FILES}\")
+    # Manifest paths omit DESTDIR; resolve the files in the staging tree.
+    SET(manifest \"\")
+    FOREACH(binary IN LISTS CMAKE_INSTALL_MANIFEST_FILES)
+      STRING(APPEND manifest \"\$ENV{DESTDIR}\${binary}\\n\")
+    ENDFOREACH()
     FILE(WRITE \"${CMAKE_BINARY_DIR}/install_debug_info_files.txt\" \"\${manifest}\")
     EXECUTE_PROCESS(COMMAND \"${CMAKE_COMMAND}\"
       \"-DDEBUG_INFO_PREFIX=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\"
